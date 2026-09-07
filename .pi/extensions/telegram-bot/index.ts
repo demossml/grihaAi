@@ -6,20 +6,27 @@ import {
   type TelegramBotFactory,
   type TelegramBotLike,
 } from "./TelegramBotController.js";
+import { TelegramSessionPool } from "./TelegramSessionPool.js";
 import { loadConfig, saveConfig } from "../../../src/utils/config.js";
-
-const emulatedAgent: GrishaAgent = async (input) => `Гриша (эмуляция): ${input.message}`;
 
 const realBotFactory: TelegramBotFactory = (token) =>
   new Bot(token) as unknown as TelegramBotLike;
 
 let controller: TelegramBotController | null = null;
+let pool: TelegramSessionPool | null = null;
+
+function grishaAgent(): GrishaAgent {
+  return async (input) => {
+    if (!pool) return "Гриша временно недоступен.";
+    return pool.handleMessage(input.userId, input.message);
+  };
+}
 
 function getController(): TelegramBotController {
   if (!controller) {
     const cfg = loadConfig();
     controller = new TelegramBotController(
-      emulatedAgent,
+      grishaAgent(),
       cfg?.telegram?.allowedUserIds ?? [],
       realBotFactory,
     );
@@ -43,12 +50,17 @@ async function stopBot(): Promise<void> {
 }
 
 export default function telegramBot(pi: ExtensionAPI): void {
+  pool = new TelegramSessionPool();
+
   pi.on("session_start", () => {
     startBot();
   });
 
   pi.on("session_shutdown", async () => {
     await stopBot();
+    await pool?.disposeAll();
+    pool = null;
+    controller = null;
   });
 
   pi.on("before_agent_start", async (event) => {
@@ -102,7 +114,7 @@ export default function telegramBot(pi: ExtensionAPI): void {
       const running = controller?.isRunning() ?? false;
       const text = !tg
         ? "Telegram bot не настроен. Используй /telegram-setup."
-        : `Token: ${tg.botToken ? "set" : "missing"}\nAllowed users: ${tg.allowedUserIds?.length ?? 0}\nRunning: ${running ? "да (long polling)" : "нет"}`;
+        : `Token: ${tg.botToken ? "set" : "missing"}\nAllowed users: ${tg.allowedUserIds?.length ?? 0}\nRunning: ${running ? "да (long polling)" : "нет"}\nActive user sessions: ${pool?.activeCount() ?? 0}`;
       pi.sendMessage({
         customType: "telegram-status",
         content: [{ type: "text", text }],

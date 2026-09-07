@@ -8,6 +8,8 @@ import {
   TelegramBotController,
   type TelegramBotLike,
 } from "../../.pi/extensions/telegram-bot/TelegramBotController.js";
+import { TelegramSessionPool } from "../../.pi/extensions/telegram-bot/TelegramSessionPool.js";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "../../src/utils/config.js";
 import type { GrishAiConfig } from "../../src/types/config.js";
 
@@ -147,5 +149,82 @@ describe("telegram bot controller", () => {
     controller.start("token");
     controller.start("token");
     assert.equal(fake.started, 1);
+  });
+});
+
+class FakeAgentSession {
+  listeners: Array<(event: unknown) => void> = [];
+  prompts: string[] = [];
+  lastText = "";
+  disposed = false;
+
+  subscribe(listener: (event: unknown) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      const i = this.listeners.indexOf(listener);
+      if (i >= 0) this.listeners.splice(i, 1);
+    };
+  }
+
+  async prompt(message: string): Promise<void> {
+    this.prompts.push(message);
+    this.lastText = `ответ на: ${message}`;
+    for (const l of [...this.listeners]) l({ type: "agent_end", messages: [] });
+  }
+
+  getLastAssistantText(): string {
+    return this.lastText;
+  }
+
+  get isStreaming(): boolean {
+    return false;
+  }
+
+  dispose(): void {
+    this.disposed = true;
+  }
+}
+
+describe("telegram session pool", () => {
+  function makePool() {
+    const sessions = new Map<number, FakeAgentSession>();
+    const pool = new TelegramSessionPool({
+      sessionFactory: async (userId) => {
+        const s = new FakeAgentSession();
+        sessions.set(userId, s);
+        return s as unknown as AgentSession;
+      },
+    });
+    return { pool, sessions };
+  }
+
+  it("creates one isolated session per user", async () => {
+    const { pool, sessions } = makePool();
+    const a = await pool.handleMessage(1, "привет");
+    const b = await pool.handleMessage(2, "hi");
+    assert.equal(a, "ответ на: привет");
+    assert.equal(b, "ответ на: hi");
+    assert.equal(pool.activeCount(), 2);
+    assert.equal(sessions.size, 2);
+    assert.deepEqual(sessions.get(1)!.prompts, ["привет"]);
+    assert.deepEqual(sessions.get(2)!.prompts, ["hi"]);
+  });
+
+  it("reuses the same session for the same user", async () => {
+    const { pool, sessions } = makePool();
+    await pool.handleMessage(1, "первое");
+    await pool.handleMessage(1, "второе");
+    assert.equal(sessions.size, 1);
+    assert.deepEqual(sessions.get(1)!.prompts, ["первое", "второе"]);
+    assert.equal(pool.activeCount(), 1);
+  });
+
+  it("disposes all sessions on shutdown", async () => {
+    const { pool, sessions } = makePool();
+    await pool.handleMessage(1, "x");
+    await pool.handleMessage(2, "y");
+    await pool.disposeAll();
+    assert.equal(pool.activeCount(), 0);
+    for (const s of sessions.values()) assert.equal(s.disposed, true);
   });
 });

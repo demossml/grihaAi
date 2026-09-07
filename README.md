@@ -1,82 +1,114 @@
 # grish-ai
 
-Modern rewrite of the core capabilities of the **Nous Research Hermes Agent** on top of **pi.dev**, aligned with latest Hermes (2026): closed learning loop, layered memory, named Bot Mode, and autonomous skill creation.
+Агент **Гриша** — TypeScript-переписывание ключевых возможностей **Nous Research Hermes Agent** поверх платформы **pi.dev** (версия Hermes 2026): замкнутый цикл обучения, слоистая память, именованный Bot Mode, автономное создание skills.
 
-## Stack
+## Роль агента
 
-- **Platform**: [pi.dev](https://pi.dev) — `@earendil-works/pi-coding-agent`, `pi-agent-core`, `pi-ai`
-- **Language**: TypeScript (strict, NodeNext/ESM)
-- **Memory**: `better-sqlite3` + FTS5 (sqlite-rag / sqlite.ai compatible hybrid memory)
-- **Tests**: `node:test` via `tsx`
+Профессиональный ассистент **менеджера / секретаря / бухгалтера** — расписания, документы, отчёты, переписка, исследования, заметки со встреч, лёгкая финансовая поддержка. Инструменты программирования — вторичны.
 
-## Final agent role
+## Стек
 
-Professional assistant for a **manager / secretary / accountant** — scheduling, documents, reports, communication, research, meeting notes, light financial support. Coding tools are secondary.
+- **Платформа**: [pi.dev](https://pi.dev) — `@earendil-works/pi-coding-agent`, `pi-agent-core`, `pi-ai` (v0.85.1)
+- **Язык**: TypeScript (strict, NodeNext/ESM, target ES2022)
+- **Память**: `better-sqlite3` + FTS5 (гибридный поиск: FTS + вектора)
+- **Telegram**: `grammy` (long polling)
+- **Тесты**: `node:test` через `tsx`
 
-## Features (initial working project)
+## Быстрый старт
 
-- Hybrid FTS5 memory — durable facts, session search, recent-facts listing (`memory_add` / `memory_search`)
-- Skills with `autoCreated` support (agentskills.io frontmatter, closed learning loop)
-- Named Bot registry (Bot Mode spirit)
-- pi extensions: `sqlite-rag-memory`, `core-agent`, `multi-agent`
-- Strict tests + clean TypeScript
+```bash
+npm install               # зависимости
+npm run typecheck         # строгая проверка типов
+npm test                  # 63 теста (unit)
+./node_modules/.bin/pi    # запустить агента (CLI pi)
 
-## Project structure
+# В pi при первом запуске откроется мастер настройки:
+#   провайдер → модель → API-ключ (или /setup повторно)
+```
+
+## Как это устроено (кратко)
+
+Вся бизнес-логика — **расширения pi.dev** в `.pi/extensions/`. Каждое расширение — файл `index.ts` с `export default function (pi: ExtensionAPI)`, который подписывается на события агента, регистрирует LLM-инструменты и slash-команды.
+
+| Расширение | Что даёт |
+|---|---|
+| `first-run-setup` | Мастер настройки провайдера/модели/ключа (`/setup`, `/model`) |
+| `core-agent` | Skills + политика делегирования + закрытый цикл обучения в system-prompt |
+| `sqlite-rag-memory` | Гибридная память (`memory_add`, `memory_search`) |
+| `multi-agent` | Делегирование, боты, субагенты, Shared Insights |
+| `cron` | Планировщик задач с continuity и monitorMode |
+| `model-router` | Маршрутизация main/vision + `analyze_image` |
+| `personal-learning` | Профиль пользователя, заметки, авто-дообучение |
+| `telegram-bot` | Telegram-бот (long polling) + изолированные сессии на пользователя |
+
+Подробности: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) и [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
+
+## Структура проекта
 
 ```
 grish-ai/
-├── package.json
-├── tsconfig.json
-├── .pi/settings.json
-├── .pi/extensions/
-│   ├── sqlite-rag-memory/   # hybrid memory + memory tools
-│   ├── core-agent/          # skills injection + /skills
-│   └── multi-agent/         # Bot Mode registry + /bots commands
-├── skills/
-│   └── core/SKILL.md        # manager/secretary/accountant core skill
+├── package.json / tsconfig.json
+├── .pi/
+│   ├── settings.json          # какие расширения и skills грузить
+│   └── extensions/            # расширения (вся бизнес-логика)
+│       ├── core-agent/  first-run-setup/  sqlite-rag-memory/
+│       ├── multi-agent/  cron/  model-router/
+│       ├── personal-learning/  telegram-bot/
+├── skills/core/SKILL.md       # базовый skill (agentskills.io frontmatter)
 ├── src/
-│   ├── types/               # shared TypeBox schemas + types
-│   └── utils/               # skills discovery/formatting
+│   ├── types/                 # TypeBox-схемы и TS-типы
+│   └── utils/                 # чистые утилиты (config, skills, embeddings, роутеры…)
 ├── tests/
-│   ├── unit/
-│   ├── integration/
+│   ├── unit/                  # 13 тест-файлов (node:test)
+│   ├── integration/           # зарезервировано
 │   └── setup.ts
-└── README.md
+├── docs/                      # документация
+│   ├── ARCHITECTURE.md        # общая картина, платформа, «мелочи»
+│   ├── EXTENSIONS.md          # пофайловый справочник
+│   └── TELEGRAM-BOT.md        # глубокий разбор бота
+└── README.md / STATUS.md
 ```
 
-## Commands
+## Команды npm
 
 ```bash
-npm install       # install dependencies
-npm run build     # compile to dist/
-npm test          # run tests
-npm run typecheck # strict type check
+npm install       # зависимости
+npm run build     # компиляция в dist/
+npm test          # tsx --test tests/**/*.test.ts
+npm run typecheck # tsc --noEmit (strict)
 ```
 
-## Status
+## Конфигурация и секреты
 
-See [STATUS.md](./STATUS.md) for phase-by-phase progress.
+- Конфиг: `~/.grish-ai/config.json` (переопределяется `GRISH_AI_HOME`).
+- **Секреты** (API-ключ, Telegram-токен) лежат **только там**, вне репозитория.
+- В `.gitignore`: `node_modules/`, `dist/`, `*.log`, `.DS_Store`, `.env`, `tests/.tmp-db/`, `.grish-ai/`.
+- GitHub-репозиторий приватный; коммит без секретов.
 
-## Telegram bot (long polling)
-
-Встроенный Telegram-бот работает через **long polling** (без webhook).
+## Telegram-бот (long polling)
 
 ```bash
-# 1. Создать бота в @BotFather и получить токен
-
-# 2. В pi: настроить токен и whitelist
-/telegram-setup
+# 1. @BotFather → создать бота, получить токен
+# 2. В pi:
+/telegram-setup        # токен + whitelist user_id через запятую
+/telegram-status       # статус (токен, whitelist, polling, активные сессии)
+/telegram-start        # запустить long polling
+/telegram-stop         # остановить long polling
 ```
 
-Полезные команды:
+В Telegram: `/start`, `/status`, `/new`. Каждый пользователь получает **изолированную сессию Гриши** (свой `sessionId`). Разбор — [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md).
 
-- `/telegram-setup` — интерактивная настройка токена и списка разрешённых `user_id`
-- `/telegram-status` — статус бота (токен, whitelist, запущен ли polling)
-- `/telegram-start` — запустить long polling
-- `/telegram-stop` — остановить long polling
+## Ограничения проекта
 
-## Constraints honored
+- Платформа: только pi.dev, весь код на TypeScript.
+- Хранилище: только sqlite-rag / sqlite.ai (better-sqlite3 + FTS5).
+- Исключено: биллинг, монетизация, платёжный трекинг, генерация траекторий для обучения/продажи.
 
-- Platform: only pi.dev, all application code in TypeScript
-- Storage: only sqlite-rag / sqlite.ai (better-sqlite3 + FTS5)
-- Excluded: billing, monetization, payment tracking, trajectory generation for training/sale
+## Документация для передачи другому агенту
+
+Рекомендуемый порядок чтения:
+
+1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — как устроено, платформа, события, конфиг, секреты, все «мелочи».
+2. [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
+3. [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — бот и изоляция сессий.
+4. [STATUS.md](STATUS.md) — прогресс по фазам.

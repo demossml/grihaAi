@@ -60,7 +60,8 @@
 - [x] TypeScript only (grammy)
 - [x] Long polling (без webhook)
 - [x] Белый список пользователей
-- [x] Двусторонняя связь с Гришей
+- [x] Двусторонняя связь с Гришей (реальный агент, не эхо-заглушка)
+- [x] Изолированные сессии на пользователя (`TelegramSessionPool`, отдельный `AgentSession`/sessionId на `tg:<userId>`)
 - [x] Поддержка текста и фото
 - [x] /telegram-setup и статус
 - [x] Tests green
