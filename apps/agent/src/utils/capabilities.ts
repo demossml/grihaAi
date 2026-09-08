@@ -1,21 +1,70 @@
 import type { ExternalCapability } from "../types/index.js";
 
 /**
- * Connector capability contract.
+ * Capability Registry — the single source of truth for what the system can do.
  *
- * Skills check a capability before claiming an external action. When a
- * capability is absent, the skill must fall back to a local workflow and tell
- * the user the limitation — never pretend the action succeeded.
+ * Four statuses:
+ *  - AVAILABLE             — implemented and usable now;
+ *  - UNAVAILABLE           — not implemented;
+ *  - REQUIRES_CONNECTION   — needs a connector that is not connected;
+ *  - REQUIRES_APPROVAL     — implemented, but the action needs explicit approval.
  *
- * Today no external connectors are implemented: everything is local
- * (Telegram, internal calendar, SQLite). This module is the single place that
- * will become non-empty when connectors land.
+ * Skills check capabilities instead of guessing. An unavailable capability must
+ * never produce fake success.
  */
 
-/** Capabilities currently provided by a real connector (none yet). */
-const AVAILABLE = new Set<ExternalCapability>([]);
+export type InternalCapability =
+  | "memory.search"
+  | "memory.write"
+  | "cron.create"
+  | "cron.list"
+  | "cron.delete"
+  | "telegram.send"
+  | "stt.transcribe"
+  | "ocr.process"
+  | "report.pdf"
+  | "report.pptx"
+  | "multi_agent.delegate"
+  | "finance.pay";
 
-const LIMITATIONS: Record<ExternalCapability, string> = {
+export type CapabilityId = InternalCapability | ExternalCapability;
+
+export type CapabilityStatus =
+  | "AVAILABLE"
+  | "UNAVAILABLE"
+  | "REQUIRES_CONNECTION"
+  | "REQUIRES_APPROVAL";
+
+const CAPABILITIES: Record<CapabilityId, CapabilityStatus> = {
+  // Internal — implemented.
+  "memory.search": "AVAILABLE",
+  "memory.write": "AVAILABLE",
+  "cron.create": "AVAILABLE",
+  "cron.list": "AVAILABLE",
+  "cron.delete": "AVAILABLE",
+  "telegram.send": "AVAILABLE",
+  "stt.transcribe": "AVAILABLE",
+  "ocr.process": "AVAILABLE",
+  "report.pdf": "AVAILABLE",
+  "report.pptx": "AVAILABLE",
+  "multi_agent.delegate": "AVAILABLE",
+  // Internal — implemented but approval-gated.
+  "finance.pay": "REQUIRES_APPROVAL",
+  // External — no connectors connected yet.
+  "email.read": "REQUIRES_CONNECTION",
+  "email.draft": "REQUIRES_CONNECTION",
+  "email.send": "REQUIRES_CONNECTION",
+  "calendar.read": "REQUIRES_CONNECTION",
+  "calendar.write": "REQUIRES_CONNECTION",
+  "travel.read": "REQUIRES_CONNECTION",
+  "travel.book": "REQUIRES_CONNECTION",
+  "crm.read": "REQUIRES_CONNECTION",
+  "crm.write": "REQUIRES_CONNECTION",
+  "accounting.read": "REQUIRES_CONNECTION",
+  "accounting.write": "REQUIRES_CONNECTION",
+};
+
+const LIMITATIONS: Partial<Record<CapabilityId, string>> = {
   "email.read": "Gmail/IMAP connector не подключён — чтение почты недоступно.",
   "email.draft": "Почтовый connector не подключён — можно только подготовить draft локально.",
   "email.send": "Почтовый connector не подключён — отправка невозможна (draft + approval).",
@@ -29,36 +78,38 @@ const LIMITATIONS: Record<ExternalCapability, string> = {
   "accounting.write": "Accounting connector не подключён — запись во внешнюю систему недоступна.",
 };
 
-export function capabilityAvailable(cap: ExternalCapability): boolean {
-  return AVAILABLE.has(cap);
+export function getCapabilityStatus(cap: CapabilityId): CapabilityStatus {
+  return CAPABILITIES[cap] ?? "UNAVAILABLE";
 }
 
-export function describeLimitation(cap: ExternalCapability): string {
-  return LIMITATIONS[cap];
+/** True only when the capability is fully usable without further conditions. */
+export function capabilityAvailable(cap: CapabilityId): boolean {
+  return getCapabilityStatus(cap) === "AVAILABLE";
+}
+
+export function describeLimitation(cap: CapabilityId): string {
+  return LIMITATIONS[cap] ?? `Capability "${cap}" is ${getCapabilityStatus(cap)}.`;
 }
 
 export interface CapabilityReport {
-  capabilities: Record<ExternalCapability, boolean>;
+  capabilities: Record<CapabilityId, CapabilityStatus>;
   degradedSkills: string[];
   approvalRequiredActions: string[];
 }
 
-/**
- * Machine-readable capability report: which capabilities exist, which skills
- * are degraded by their absence, and which actions always need approval.
- */
+/** Machine-readable capability report. */
 export function capabilitiesReport(): CapabilityReport {
-  const capabilities = {} as Record<ExternalCapability, boolean>;
-  for (const cap of Object.keys(LIMITATIONS) as ExternalCapability[]) {
-    capabilities[cap] = capabilityAvailable(cap);
-  }
+  const capabilities = { ...CAPABILITIES };
 
   const degradedSkills: string[] = [];
-  if (!capabilityAvailable("email.send")) degradedSkills.push("correspondence", "inbox-triage");
-  if (!capabilityAvailable("calendar.read") || !capabilityAvailable("calendar.write")) {
+  if (getCapabilityStatus("email.send") !== "AVAILABLE") degradedSkills.push("correspondence", "inbox-triage");
+  if (
+    getCapabilityStatus("calendar.read") !== "AVAILABLE" ||
+    getCapabilityStatus("calendar.write") !== "AVAILABLE"
+  ) {
     degradedSkills.push("calendar-scheduling");
   }
-  if (!capabilityAvailable("travel.book")) degradedSkills.push("travel-coordination");
+  if (getCapabilityStatus("travel.book") !== "AVAILABLE") degradedSkills.push("travel-coordination");
 
   return {
     capabilities,
@@ -68,7 +119,7 @@ export function capabilitiesReport(): CapabilityReport {
       "calendar.write",
       "travel.book",
       "accounting.write",
-      "invoice.pay",
+      "finance.pay",
       "delete",
       "publish",
     ],

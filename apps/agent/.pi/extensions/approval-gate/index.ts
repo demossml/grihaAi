@@ -102,6 +102,7 @@ export default function approvalGate(pi: ExtensionAPI): void {
         actionClass: decision.actionClass,
         target: params.target,
         args,
+        scope: params.scope,
         expiresAt: new Date(Date.now() + APPROVAL_TTL_MS).toISOString(),
       });
 
@@ -109,7 +110,7 @@ export default function approvalGate(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: `Approval required for "${params.action}" (${decision.actionClass}).\nReason: ${decision.reason}\nRequest id: ${request.id}\nAsk the user to approve with /approve ${request.id.slice(0, 8)} or deny with /deny ${request.id.slice(0, 8)}. Do NOT perform the action until approval_status says granted.`,
+            text: `Approval required for "${params.action}" (${decision.actionClass}, scope=${request.scope}).\nReason: ${decision.reason}\nRequest id: ${request.id}\nAsk the user to approve with /approve ${request.id.slice(0, 8)} or deny with /deny ${request.id.slice(0, 8)}. Do NOT perform the action until approval_status says approved.`,
           },
         ],
         details: {
@@ -177,6 +178,23 @@ export default function approvalGate(pi: ExtensionAPI): void {
       return {
         content: [{ type: "text", text: denied ? "Approval denied." : "Approval request not pending." }],
         details: { denied },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "approval_cancel",
+    label: "Cancel approval",
+    description: "Отменить запрос на подтверждение.",
+    parameters: ApprovalGrantSchema,
+    async execute(
+      _toolCallId: string,
+      params: ApprovalGrantParams,
+    ): Promise<AgentToolResult<{ cancelled: boolean }>> {
+      const cancelled = getService().cancel(params.id);
+      return {
+        content: [{ type: "text", text: cancelled ? "Approval cancelled." : "Approval request not pending." }],
+        details: { cancelled },
       };
     },
   });

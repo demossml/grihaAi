@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { RuleKind, RuleScope, UserRule } from "@griha/shared-types";
+import type { RuleClass, RuleKind, RuleScope, UserRule } from "@griha/shared-types";
 import { getConfigDir } from "@griha/config";
 import { detectKind } from "./prefilter.js";
 
@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS user_rules (
   owner_user_id TEXT,
   text          TEXT NOT NULL,
   kind          TEXT NOT NULL DEFAULT 'soft',
+  rule_class    TEXT,
   enabled       INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
@@ -31,6 +32,7 @@ interface RuleRow {
   owner_user_id: string | null;
   text: string;
   kind: string;
+  rule_class: string | null;
   enabled: number;
   created_at: string;
   updated_at: string;
@@ -41,6 +43,7 @@ export interface RuleAddInput {
   chatId?: string;
   text: string;
   kind?: RuleKind;
+  ruleClass?: RuleClass;
   ownerUserId?: string;
 }
 
@@ -48,6 +51,7 @@ export interface RuleEditPatch {
   text?: string;
   enabled?: boolean;
   kind?: RuleKind;
+  ruleClass?: RuleClass;
 }
 
 export interface RuleListFilter {
@@ -78,7 +82,19 @@ export class UserRulesService {
     this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
+    this.migrate();
     this.rebuildCache();
+  }
+
+  /** Add rule_class column onto older rule DBs. */
+  private migrate(): void {
+    const db = this.requireDb();
+    const columns = new Set(
+      (db.pragma("table_info(user_rules)") as Array<{ name: string }>).map((c) => c.name),
+    );
+    if (!columns.has("rule_class")) {
+      db.exec(`ALTER TABLE user_rules ADD COLUMN rule_class TEXT`);
+    }
   }
 
   close(): void {
@@ -149,13 +165,14 @@ export class UserRulesService {
       owner_user_id: input.ownerUserId ?? null,
       text: input.text,
       kind: input.kind ?? detectKind(input.text),
+      rule_class: input.ruleClass ?? defaultRuleClass(input.kind ?? detectKind(input.text)),
       enabled: 1,
       created_at: now,
       updated_at: now,
     };
     db.prepare(
-      `INSERT INTO user_rules (id, scope, chat_id, owner_user_id, text, kind, enabled, created_at, updated_at)
-       VALUES (@id, @scope, @chat_id, @owner_user_id, @text, @kind, @enabled, @created_at, @updated_at)`,
+      `INSERT INTO user_rules (id, scope, chat_id, owner_user_id, text, kind, rule_class, enabled, created_at, updated_at)
+       VALUES (@id, @scope, @chat_id, @owner_user_id, @text, @kind, @rule_class, @enabled, @created_at, @updated_at)`,
     ).run(row);
     this.rebuildCache();
     return this.rowToRule(row);
@@ -170,13 +187,14 @@ export class UserRulesService {
       ...existing,
       text: patch.text ?? existing.text,
       kind: patch.kind ?? existing.kind,
+      ruleClass: patch.ruleClass ?? existing.ruleClass ?? defaultRuleClass(patch.kind ?? existing.kind),
       enabled: patch.enabled ?? existing.enabled,
       updatedAt: new Date().toISOString(),
     };
 
     db.prepare(
-      `UPDATE user_rules SET text = ?, kind = ?, enabled = ?, updated_at = ? WHERE id = ?`,
-    ).run(next.text, next.kind, next.enabled ? 1 : 0, next.updatedAt, id);
+      `UPDATE user_rules SET text = ?, kind = ?, rule_class = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+    ).run(next.text, next.kind, next.ruleClass, next.enabled ? 1 : 0, next.updatedAt, id);
     this.rebuildCache();
     return next;
   }
@@ -200,11 +218,17 @@ export class UserRulesService {
       ownerUserId: row.owner_user_id ?? null,
       text: row.text,
       kind: row.kind as RuleKind,
+      ruleClass: (row.rule_class ?? defaultRuleClass(row.kind as RuleKind)) as RuleClass,
       enabled: row.enabled !== 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   }
+}
+
+/** Intent class default: hard → restriction, soft → preference. */
+function defaultRuleClass(kind: RuleKind): RuleClass {
+  return kind === "hard" ? "restriction" : "preference";
 }
 
 let singleton: UserRulesService | null = null;

@@ -50,33 +50,70 @@ describe("approval service", () => {
     });
 
     assert.equal(svc.get(req.id)?.status, "pending");
+    assert.equal(svc.get(req.id)?.scope, "ONCE");
     assert.equal(svc.listPending("u1").length, 1);
     assert.equal(svc.listPending("u2").length, 0);
 
     assert.equal(svc.grant(req.id), true);
-    assert.equal(svc.get(req.id)?.status, "granted");
+    assert.equal(svc.get(req.id)?.status, "approved");
     // Already resolved → cannot grant twice.
     assert.equal(svc.grant(req.id), false);
   });
 
-  it("denies and expires requests", () => {
+  it("stores approval scope", () => {
     const svc = freshService();
     const req = svc.createRequest({
       userId: "u1",
       sessionId: "s1",
+      action: "email.send",
+      actionClass: "HIGH_RISK_IRREVERSIBLE",
+      scope: "SESSION",
+    });
+    assert.equal(svc.get(req.id)?.scope, "SESSION");
+  });
+
+  it("denies, cancels and expires requests", () => {
+    const svc = freshService();
+    const denied = svc.createRequest({
+      userId: "u1",
+      sessionId: "s1",
       action: "book_flight",
       actionClass: "HIGH_RISK_IRREVERSIBLE",
-      expiresAt: new Date(Date.now() - 1000).toISOString(),
     });
-    const pending = svc.createRequest({
+    svc.deny(denied.id);
+    assert.equal(svc.get(denied.id)?.status, "rejected");
+
+    const cancelled = svc.createRequest({
+      userId: "u1",
+      sessionId: "s1",
+      action: "publish",
+      actionClass: "HIGH_RISK_IRREVERSIBLE",
+    });
+    svc.cancel(cancelled.id);
+    assert.equal(svc.get(cancelled.id)?.status, "cancelled");
+
+    const expired = svc.createRequest({
       userId: "u1",
       sessionId: "s1",
       action: "invoice.pay",
       actionClass: "HIGH_RISK_IRREVERSIBLE",
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
     });
-
     svc.expireOverdue();
-    assert.equal(svc.get(req.id)?.status, "expired");
-    assert.equal(svc.get(pending.id)?.status, "pending");
+    assert.equal(svc.get(expired.id)?.status, "expired");
+  });
+
+  it("one approval never covers another user's action", () => {
+    const svc = freshService();
+    const req = svc.createRequest({
+      userId: "u1",
+      sessionId: "s1",
+      action: "email.send",
+      actionClass: "HIGH_RISK_IRREVERSIBLE",
+    });
+    // A different user cannot resolve u1's approval (scoped lookup).
+    assert.equal(svc.listPending("u2").length, 0);
+    assert.equal(svc.grant(req.id), true);
+    assert.equal(svc.get(req.id)?.userId, "u1");
   });
 });

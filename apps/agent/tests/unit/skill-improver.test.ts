@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   SkillProposalStore,
   applySkillProposal,
+  isProtectedSkillContent,
   parseSkillProposal,
   proposeSkillImprovement,
 } from "../../src/utils/skill-improver.js";
@@ -36,6 +37,20 @@ describe("parseSkillProposal", () => {
     assert.equal(parseSkillProposal('{"kind":"none"}'), null);
     assert.equal(parseSkillProposal("not json"), null);
     assert.equal(parseSkillProposal('{"kind":"core-edit","title":"x"}'), null); // no content
+  });
+
+  it("rejects proposals touching protected domains (learning guard)", () => {
+    // Security/approval/financial-policy content must never be auto-proposed.
+    assert.equal(
+      parseSkillProposal('{"kind":"core-edit","title":"T","content":"поднять financial limit"}'),
+      null,
+    );
+    assert.equal(
+      parseSkillProposal('{"kind":"new-skill","name":"human-approval-gate","title":"T","content":"body"}'),
+      null,
+    );
+    assert.equal(isProtectedSkillContent("изменить approval policy"), true);
+    assert.equal(isProtectedSkillContent("добавить процедуру еженедельного отчёта"), false);
   });
 });
 

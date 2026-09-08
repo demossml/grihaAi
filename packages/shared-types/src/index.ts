@@ -64,6 +64,13 @@ export interface GrishAiConfig {
 export type RuleScope = "global" | "chat";
 export type RuleKind = "hard" | "soft";
 
+/**
+ * Architectural class of a rule. `kind` (hard/soft) describes enforcement
+ * strength; `ruleClass` describes intent. Learning must never auto-create or
+ * auto-modify `policy`, `permission` or `restriction` rules.
+ */
+export type RuleClass = "preference" | "policy" | "permission" | "restriction";
+
 export interface UserRule {
   id: string;
   scope: RuleScope;
@@ -71,6 +78,8 @@ export interface UserRule {
   ownerUserId?: string | null;
   text: string;
   kind: RuleKind;
+  /** Intent class; defaults to "preference" for soft and "restriction" for hard. */
+  ruleClass?: RuleClass | null;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;

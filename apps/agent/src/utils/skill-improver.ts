@@ -111,7 +111,9 @@ function buildSkillProposalPrompt(notes: string[]): string {
 
 /**
  * Parse an LLM response into a pending proposal. Returns null when the model
- * decided there is nothing to propose.
+ * decided there is nothing to propose, or when the proposal touches protected
+ * domains (security / approval / financial policy / permissions / restrictions)
+ * — learning must never auto-propose changes to those.
  */
 export function parseSkillProposal(raw: string, now: string = new Date().toISOString()): SkillProposal | null {
   const match = raw.match(/\{[\s\S]*\}/);
@@ -149,7 +151,46 @@ export function parseSkillProposal(raw: string, now: string = new Date().toISOSt
     proposal.description = typeof parsed.description === "string" ? parsed.description.trim() : title;
   }
 
+  // Learning guard: never propose changes to protected domains.
+  if (isProtectedSkillContent(`${proposal.title}\n${proposal.content}`, proposal.name)) {
+    return null;
+  }
+
   return proposal;
+}
+
+const PROTECTED_SKILL_NAMES = new Set([
+  "human-approval-gate",
+  "approval-thresholds",
+  "privacy-data-hygiene",
+  "delegation-triage",
+]);
+
+const PROTECTED_TERMS = [
+  "approval",
+  "security",
+  "permission",
+  "restriction",
+  "financial policy",
+  "approval policy",
+  "security policy",
+  "financial limit",
+  "порог",
+  "одобр",
+  "разрешени",
+  "ограничени",
+  "безопасност",
+];
+
+/**
+ * True when the proposed content/name targets a domain that learning must not
+ * auto-modify (financial limits, permissions, restrictions, approval or
+ * security policies).
+ */
+export function isProtectedSkillContent(text: string, name?: string): boolean {
+  if (name && PROTECTED_SKILL_NAMES.has(name)) return true;
+  const lower = text.toLowerCase();
+  return PROTECTED_TERMS.some((t) => lower.includes(t));
 }
 
 /** Generate a review-gated skill proposal from accumulated notes. */

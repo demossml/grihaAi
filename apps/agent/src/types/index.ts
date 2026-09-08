@@ -270,7 +270,9 @@ export interface ApprovalPolicyRecord {
   updatedAt: string;
 }
 
-export type ApprovalStatus = "pending" | "granted" | "denied" | "expired";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "cancelled";
+
+export type ApprovalScope = "ONCE" | "SESSION" | "WORKFLOW";
 
 export interface ApprovalRequestRecord {
   id: string;
@@ -280,6 +282,7 @@ export interface ApprovalRequestRecord {
   actionClass: ApprovalActionClass;
   target?: string;
   args?: Record<string, unknown>;
+  scope: ApprovalScope;
   status: ApprovalStatus;
   expiresAt?: string;
   createdAt: string;
@@ -338,6 +341,9 @@ export const ApprovalRequestSchema = Type.Object({
   action: Type.String({ minLength: 1 }),
   target: Type.Optional(Type.String()),
   arguments: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  scope: Type.Optional(Type.Union([
+    Type.Literal("ONCE"), Type.Literal("SESSION"), Type.Literal("WORKFLOW"),
+  ])),
 });
 export type ApprovalRequestParams = Static<typeof ApprovalRequestSchema>;
 

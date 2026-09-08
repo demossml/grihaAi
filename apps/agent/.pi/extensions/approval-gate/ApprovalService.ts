@@ -4,6 +4,7 @@ import type {
   ApprovalActionClass,
   ApprovalPolicyRecord,
   ApprovalRequestRecord,
+  ApprovalScope,
   ApprovalStatus,
   FinancialApprovalPolicy,
 } from "../../../src/types/index.js";
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS approval_requests (
   action_class TEXT NOT NULL,
   target       TEXT,
   args_json    TEXT,
+  scope        TEXT NOT NULL DEFAULT 'ONCE',
   status       TEXT NOT NULL DEFAULT 'pending',
   expires_at   TEXT,
   created_at   TEXT NOT NULL,
@@ -55,6 +57,7 @@ interface RequestRow {
   action_class: string;
   target: string | null;
   args_json: string | null;
+  scope: string;
   status: string;
   expires_at: string | null;
   created_at: string;
@@ -75,6 +78,7 @@ export interface CreateRequestInput {
   actionClass: ApprovalActionClass;
   target?: string;
   args?: Record<string, unknown>;
+  scope?: ApprovalScope;
   expiresAt?: string;
 }
 
@@ -101,6 +105,7 @@ function rowToRequest(row: RequestRow): ApprovalRequestRecord {
     actionClass: row.action_class as ApprovalActionClass,
     target: row.target ?? undefined,
     args: row.args_json ? (JSON.parse(row.args_json) as Record<string, unknown>) : undefined,
+    scope: row.scope as ApprovalScope,
     status: row.status as ApprovalStatus,
     expiresAt: row.expires_at ?? undefined,
     createdAt: row.created_at,
@@ -129,6 +134,18 @@ export class ApprovalService {
     this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
+    this.migrate();
+  }
+
+  /** Add scope column onto older approval DBs. */
+  private migrate(): void {
+    const db = this.requireDb();
+    const columns = new Set(
+      (db.pragma("table_info(approval_requests)") as Array<{ name: string }>).map((c) => c.name),
+    );
+    if (!columns.has("scope")) {
+      db.exec(`ALTER TABLE approval_requests ADD COLUMN scope TEXT NOT NULL DEFAULT 'ONCE'`);
+    }
   }
 
   close(): void {
@@ -187,14 +204,15 @@ export class ApprovalService {
       actionClass: input.actionClass,
       target: input.target,
       args: input.args,
+      scope: input.scope ?? "ONCE",
       status: "pending",
       expiresAt: input.expiresAt,
       createdAt: new Date().toISOString(),
     };
     db.prepare(
       `INSERT INTO approval_requests
-       (id, user_id, session_id, action, action_class, target, args_json, status, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, session_id, action, action_class, target, args_json, scope, status, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       record.id,
       record.userId,
@@ -203,6 +221,7 @@ export class ApprovalService {
       record.actionClass,
       record.target ?? null,
       record.args ? JSON.stringify(record.args) : null,
+      record.scope,
       record.status,
       record.expiresAt ?? null,
       record.createdAt,
@@ -226,14 +245,18 @@ export class ApprovalService {
 
   /** Returns false when the request is already resolved or expired. */
   grant(id: string): boolean {
-    return this.resolve(id, "granted");
+    return this.resolve(id, "approved");
   }
 
   deny(id: string): boolean {
-    return this.resolve(id, "denied");
+    return this.resolve(id, "rejected");
   }
 
-  private resolve(id: string, status: "granted" | "denied"): boolean {
+  cancel(id: string): boolean {
+    return this.resolve(id, "cancelled");
+  }
+
+  private resolve(id: string, status: "approved" | "rejected" | "cancelled"): boolean {
     const db = this.requireDb();
     const result = db
       .prepare(
