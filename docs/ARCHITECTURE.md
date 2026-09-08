@@ -144,8 +144,13 @@ TelegramBridge (whitelist-проверка, команды, фото/докум�
 TelegramSessionPool.handleMessage(userId, text)
         │   └─ изолированный AgentSession на tg:<userId>
         ▼
-agent_end → getLastAssistantText() → ответ в Telegram-чат
+agent_end → getLastAssistantText() + takeSessionFile(sessionId)
+        │   └─ ответ { text, filePath? }
+        ▼
+sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : ничего)
 ```
+
+Сгенерированные файлы (`generate_report`/`generate_presentation`) доходят до пользователя как документ: инструмент регистрирует путь в per-session registry (`src/utils/session-files.ts`), пул забирает его на `agent_end`.
 
 Полный разбор бота — в [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md).
 
@@ -269,7 +274,8 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
   - `renderHtml(type, data)` — компиляция Handlebars + подстановка (чистая, тестируется без браузера/сети);
   - `renderPdfReport(type, data, options)` — HTML → PDF через **Playwright** (headless Chromium: `page.setContent(html)` + `page.pdf({ format: "A4", printBackground: true })`). Playwright — осознанно тяжёлая зависимость (Chromium) ради пиксель-точного рендера; браузер ставится один раз через `npx playwright install chromium`;
   - `renderPresentation(slides, options)` — PPTX через **pptxgenjs**, один фиксированный slide-master (шапка-заголовок, единый шрифт/цвета); данные — просто массив `{ title, bullets[] }`.
-- **Инструменты**: `generate_report(reportType, data)` и `generate_presentation(slides)`. Параметра `style`/`layout` **нет намеренно** — это гарантия однотипности, а не случайное ограничение. Оба возвращают путь к файлу в `details`, файл никуда не отправляется (доставка — отдельным промптом).
+- **Инструменты**: `generate_report(reportType, data)` и `generate_presentation(slides)`. Параметра `style`/`layout` **нет намеренно** — это гарантия однотипности, а не случайное ограничение. Оба возвращают путь к файлу в `details` и регистрируют его в per-session registry (`src/utils/session-files.ts`, `setSessionFile`) через `ctx.sessionManager.getSessionId()`.
+- **Доставка в Telegram**: `TelegramSessionPool.runPrompt` на `agent_end` забирает файл (`takeSessionFile`) и возвращает `{ text, filePath? }`; бот доставляет текст как обычно, а при наличии файла — `sendDocument` (grammy `InputFile`). Подробности — [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md).
 - **DI**: `pdfRenderFn`/`pptxWriteFn` инжектируемы (тот же паттерн, что у `HttpEmbeddingService`/`fetchFn`) — unit-тесты подменяют Playwright/pptxgenjs; integration-тест с реальным Chromium скипается, если браузер не установлен.
 - **Путь вывода**: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
 

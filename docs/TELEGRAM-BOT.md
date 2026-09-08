@@ -41,7 +41,10 @@ TelegramBridge  — whitelist, команды, разбор типа сообщ�
 TelegramSessionPool.handleMessage(userId, text)
      │   изолированный AgentSession на tg:<userId>
      ▼
-ответ → bot.api.sendMessage(chatId, text)
+ответ { text, filePath? }
+     │
+     ▼
+bot.api.sendMessage(chatId, text)  +  filePath ? bot.api.sendDocument(chatId, filePath) : ничего
 ```
 
 ---
@@ -50,10 +53,10 @@ TelegramSessionPool.handleMessage(userId, text)
 
 | Файл | Роль |
 |---|---|
-| `index.ts` | Точка входа расширения. Создаёт пул, регистрирует команды, авто-старт/остановку. |
-| `TelegramBotController.ts` | Жизненный цикл grammy `Bot`: `start`/`stop`, приём сообщений, `toTgUpdate`. |
-| `TelegramBridge.ts` | Чистая, без grammy, логика маршрутизации/авторизации (тестируется юнитами). |
-| `TelegramSessionPool.ts` | Изолированные `AgentSession` на пользователя. |
+| `index.ts` | Точка входа расширения. Создаёт пул, регистрирует команды, авто-старт/остановку. Адаптер реального `Bot`: `sendDocument` оборачивает путь в `new InputFile(path)` (иначе строка трактуется как remote file_id). |
+| `TelegramBotController.ts` | Жизненный цикл grammy `Bot`: `start`/`stop`, приём сообщений, `toTgUpdate`. Sender: `sendMessage`, затем `sendDocument`, если ответ несёт файл. |
+| `TelegramBridge.ts` | Чистая, без grammy, логика маршрутизации/авторизации (тестируется юнитами). Ответ агента — `{ text, filePath? }`. |
+| `TelegramSessionPool.ts` | Изолированные `AgentSession` на пользователя. Возвращает `{ text, filePath? }`, забирая файл из `src/utils/session-files.ts`. |
 
 ---
 
@@ -67,11 +70,13 @@ TelegramSessionPool.handleMessage(userId, text)
   - `botFactory: TelegramBotFactory` — по токену возвращает grammy-подобный бот (`TelegramBotLike`).
 - `start(token)`:
   - если уже `running` — ничего не делает (защита от повторного старта);
-  - создаёт бота, строит `TelegramBridge` с sender'ом `(chatId, text) => bot.api.sendMessage(chatId, text)`;
+  - создаёт бота, строит `TelegramBridge` с sender'ом `async (chatId, text, filePath) => { await sendMessage; if (filePath) await sendDocument; }`;
   - `bot.on("message", ctx => bridge.handleUpdate(toTgUpdate(ctx)))` — обработка асинхронно, `void`, чтобы не блокировать event loop;
   - `void bot.start().catch(...)` — в catch сбрасывает `running` и `bot`.
 - `stop()` — `bot.stop()`, сброс состояния.
 - `toTgUpdate(ctx)` — аккуратно достаёт поля из grammy-контекста в «нейтральный» `TgUpdate` (чтобы `TelegramBridge` не зависел от grammy).
+
+**Доставка файла**: `TelegramBotLike.api.sendDocument(chatId, filePath)` в реальном адаптере (`index.ts`) делает `bot.api.sendDocument(chatId, new InputFile(filePath))` — grammy `InputFile` обязателен для локального пути (голая строка = remote `file_id`). В тестах `FakeBot` записывает переданный путь как есть — это граница, где grammy-специфика не нужна.
 
 ### `TelegramBridge`
 
@@ -88,7 +93,7 @@ TelegramSessionPool.handleMessage(userId, text)
   7. `document` → аналогично с `file_id`;
   8. иначе (текст) → `agent({ message: text, userId, platform: "telegram", sessionKey: "tg:<userId>" })`.
 
-Ответ агента — строка, отправляется через `sender`.
+Ответ агента — `{ text, filePath? }`, отправляется через `sender(chatId, text, filePath?)`. Поле `filePath` заполнено только если ход агента сгенерировал файл (report-generator).
 
 ---
 
@@ -128,7 +133,7 @@ createAgentSession({
     cwd,
     agentDir: getAgentDir(),
     noExtensions: true,                 // не грузить .pi/extensions автоматически (иначе рекурсия)
-    extensionFactories: [coreAgent, multiAgent, modelRouter, providerBootstrap],
+    extensionFactories: [coreAgent, multiAgent, modelRouter, userRules, gateway, reportGenerator, providerBootstrap],
   }),
   sessionManager: SessionManager.create(cwd, sessionsDir), // файловая сессия на пользователя
   sessionStartEvent: { type: "session_start", reason: "startup" },
@@ -159,9 +164,9 @@ await session.bindExtensions({ mode: "json" });
 3. `runPrompt(session, message)`:
    - подписывается на событие `agent_end`;
    - `session.prompt(message, { source: "extension", streamingBehavior: "followUp" если занят })`;
-   - по `agent_end` берёт ответ через `session.getLastAssistantText()`;
+   - по `agent_end` берёт ответ через `session.getLastAssistantText()` и файл через `takeSessionFile(sessionId)` (per-session registry, `src/utils/session-files.ts` — файл туда кладёт `generate_report`/`generate_presentation` через `setSessionFile`);
    - при ошибке/пустом ответе — фолбэк «Не удалось получить ответ от Гриши» / «Гриша не ответил».
-4. Возвращает строку ответа (её бридж отправляет в чат).
+4. Возвращает `{ text, filePath? }` (её бридж отправляет в чат: текст всегда, документ — при наличии файла).
 
 `disposeAll()` — закрывает все субсессии (на `session_shutdown`).
 
@@ -174,6 +179,9 @@ await session.bindExtensions({ mode: "json" });
 - `core-agent` (skills + политика делегирования);
 - `multi-agent` (делегирование);
 - `model-router` (`analyze_image`);
+- `user-rules` (инъекция правил + Telegram-контекст в system-prompt);
+- `gateway` (блокировка shell/мутаций для untrusted-веток внутри субсессии);
+- `report-generator` (`generate_report`/`generate_presentation` — иначе Telegram-пользователь не смог бы генерировать отчёты);
 - `providerBootstrap` (авторизация/модель).
 
 **Исключены**:
@@ -216,7 +224,7 @@ await session.bindExtensions({ mode: "json" });
 
 ## 8. Известные ограничения
 
-- Голос — заглушка (транскрипция не реализована).
+- Голос — заглушка (транскрипция в Telegram не подключена; STT есть только как отдельный HTTP-эндпоинт `apps/api` `/transcribe`).
 - Фото/документ передаются агенту как `file_id` + подпись, но реальный vision-вызов в Telegram пока эмулирован (см. `model-router` `emulatedVision`).
 - Память в субсессиях не изолирована по пользователям (расширения памяти намеренно исключены).
 - Бот не логирует ошибки `bot.start()` (в catch сбрасывает состояние без вывода) — стоит добавить лог при диагностике.

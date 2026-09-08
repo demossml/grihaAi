@@ -19,7 +19,7 @@
 ```bash
 npm install               # workspace-зависимости
 npm run typecheck         # turbo: typecheck всех пакетов (собирает @griha/*)
-npm test                  # turbo: тесты агента (72 unit)
+npm test                  # turbo: тесты агента (133 unit)
 npm run build             # turbo: сборка пакетов в dist/
 
 # Запуск агента — из apps/agent (pi читает .pi/ и skills/ оттуда):
@@ -71,7 +71,8 @@ grihaAi/
 ├── docs/                     # документация
 │   ├── ARCHITECTURE.md       # общая картина, платформа, «мелочи»
 │   ├── EXTENSIONS.md         # пофайловый справочник
-│   └── TELEGRAM-BOT.md       # глубокий разбор бота
+│   ├── TELEGRAM-BOT.md       # глубокий разбор бота
+│   └── SECURITY.md           # периметр, модель доверия, gateway, sandbox
 └── README.md / STATUS.md
 ```
 
@@ -111,7 +112,7 @@ npm test          # tsx --test tests/**/*.test.ts
 /telegram-stop         # остановить long polling
 ```
 
-В Telegram: `/start`, `/status`, `/new`. Каждый пользователь получает **изолированную сессию Гриши** (свой `sessionId`). Разбор — [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md).
+В Telegram: `/start`, `/status`, `/new`. Каждый пользователь получает **изолированную сессию Гриши** (свой `sessionId`). Сгенерированные файлы (`generate_report`/`generate_presentation`) приходят обратно как документ (`sendDocument`). Разбор — [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md).
 
 ## Ограничения проекта
 
@@ -126,4 +127,5 @@ npm test          # tsx --test tests/**/*.test.ts
 1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — как устроено, платформа, события, конфиг, секреты, все «мелочи».
 2. [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
 3. [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — бот и изоляция сессий.
-4. [STATUS.md](STATUS.md) — прогресс по фазам.
+4. [docs/SECURITY.md](docs/SECURITY.md) — периметр, модель доверия, gateway и sandbox-слои.
+5. [STATUS.md](STATUS.md) — прогресс по фазам.

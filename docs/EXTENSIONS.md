@@ -101,6 +101,40 @@
 
 - `formatPersonalContext(profile, notes)` — компактный блок `## Профиль пользователя` / `## Заметки` для system-prompt.
 
+### `src/utils/gateway-policy.ts`
+
+Чистая allowlist-политика инструментов (без побочных эффектов):
+
+- `evaluateToolCall(toolName, trust)` → `{ allow, reason? }`.
+- `trusted` — всё разрешено; `untrusted` (субагенты/cron) — запрещены `bash`/`powershell` и `edit`/`write`; read-only (`read`/`grep`/`find`/`ls`) и кастомные инструменты — разрешены.
+
+### `src/utils/report-schemas.ts`
+
+TypeBox-схемы данных отчётов (`SalesReportSchema`, `ExpenseReportSchema`, `MeetingMinutesSchema`), `ReportTypeSchema`, `REPORT_SCHEMAS`. Валидация (`Check`/`Errors` из `typebox/value`) — **до** рендера.
+
+### `src/utils/report-renderer.ts`
+
+- `renderHtml(type, data)` — Handlebars + подстановка (чистая, тестируется без браузера).
+- `renderPdfReport(type, data, options)` — HTML → PDF через Playwright (headless Chromium).
+- `renderPresentation(slides, options)` — PPTX через pptxgenjs.
+- DI: `pdfRenderFn`/`pptxWriteFn` инжектируемы для тестов.
+
+### `src/utils/session-files.ts`
+
+Per-session registry для доставки файлов: `setSessionFile(sessionId, filePath)` / `takeSessionFile(sessionId)` (get + delete). Связывает `report-generator` (кладёт путь) и `TelegramSessionPool` (забирает на `agent_end`).
+
+### `src/utils/telegram-files.ts`
+
+Резолв Telegram-фото `file_id` в base64 через Bot API (`getFile` + скачивание) — для `analyze_image`.
+
+### `src/utils/http-embeddings.ts` / `http-vision.ts` / `http-learning.ts`
+
+OpenAI-совместимые HTTP-вызовы: `HttpEmbeddingService` (`POST /embeddings`), `createHttpVisionCaller` (`/chat/completions` к `models.vision`), `createHttpLearningLlm` (`/chat/completions` для дообучения).
+
+### `src/utils/skill-improver.ts`
+
+Предложение правки `core/SKILL.md` или нового skill (`autoCreated: true`) через LLM на основе заметок; review-gated — применяется только после `ctx.ui.confirm`, иначе `pending`.
+
 ---
 
 ## Расширения (`.pi/extensions/`)
@@ -247,16 +281,47 @@
 
 Полный разбор — в [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md). Кратко:
 
-- `index.ts` — точка входа: создаёт пул, команды `/telegram-setup`, `/telegram-status`, `/telegram-start`, `/telegram-stop`, авто-старт на `session_start`, очистка на `session_shutdown`.
-- `TelegramBotController.ts` — владеет grammy `Bot` (через инжектируемую фабрику), start/stop long polling, преобразует grammy `ctx` → `TgUpdate`.
-- `TelegramBridge.ts` — чистая логика: whitelist, команды `/start` `/status` `/new`, голос (заглушка), фото/документ/текст → агент.
-- `TelegramSessionPool.ts` — изолированный `AgentSession` на пользователя.
+- `index.ts` — точка входа: создаёт пул, команды `/telegram-setup`, `/telegram-status`, `/telegram-start`, `/telegram-stop`, авто-старт на `session_start`, очистка на `session_shutdown`. Реальный адаптер: `sendDocument(chatId, path)` → `bot.api.sendDocument(chatId, new InputFile(path))`.
+- `TelegramBotController.ts` — владеет grammy `Bot` (через инжектируемую фабрику), start/stop long polling, преобразует grammy `ctx` → `TgUpdate`; sender доставляет текст + опционально документ.
+- `TelegramBridge.ts` — чистая логика: whitelist, команды `/start` `/status` `/new` `/rules`, голос (заглушка), фото/документ/текст → агент; ответ `{ text, filePath? }`.
+- `TelegramSessionPool.ts` — изолированный `AgentSession` на пользователя; на `agent_end` забирает `takeSessionFile` и возвращает `{ text, filePath? }`.
+
+### `user-rules/`
+
+Файлы: `index.ts`, `UserRulesService.ts`, `prefilter.ts`, `commands.ts`, `context.ts`.
+
+- `UserRulesService.ts` — SQLite-хранилище правил (CRUD + in-memory cache); hard/soft по `kind`; скоупы `global`/`chat`; `ownerUserId`.
+- `prefilter.ts` — Layer-1: `detectKind` (hard/soft), `isOnlyOwnerRule`, `shouldProcessMessage` (0 токенов, до агента).
+- `context.ts` — per-session Telegram-контекст (`setSessionContext`/`getSessionContext`/`clearSessionContext`).
+- `index.ts` — Layer-2: инъекция soft-правил + Telegram-контекста в `before_agent_start`; инструменты `rules_list`/`rules_add`/`rules_edit`/`rules_delete`/`rules_get`; команда `/rules`; экспортирует `telegramRulesHandler`.
+
+### `gateway/`
+
+Файлы: `index.ts`. Единая точка блокировки side-effect tool-calls:
+
+- `pi.on("tool_call")` → `getSessionTrust(sessionId)` + `evaluateToolCall(toolName, trust)` → при запрете `{ block: true, reason }`.
+
+### `report-generator/`
+
+Файлы: `index.ts`, `templates/*.html` (sales-report, expense-report, meeting-minutes).
+
+- **Инструменты**: `generate_report(reportType, data)` (PDF) и `generate_presentation(slides)` (PPTX).
+- Валидация данных — `src/utils/report-schemas.ts`; рендер — `src/utils/report-renderer.ts`; путь файла регистрируется в `src/utils/session-files.ts` через `ctx.sessionManager.getSessionId()` (для Telegram-доставки).
+- Вывод: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
+
+## `src/sandbox/` — изоляция выполнения
+
+- `types.ts` — `SandboxProvider`, `SandboxRunOptions`, `SandboxResult`, `SandboxKind`.
+- `index.ts` — `createSandboxProvider(backend, options?)`: `dev` → `LocalSandboxProvider` (локальный процесс), `runsc` → `RunscSandboxProvider` (gVisor).
+- `local-sandbox.ts` / `runsc-sandbox.ts` — реализации провайдеров.
+- `gateway-context.ts` — `getSessionTrust(sessionId)` (trusted/untrusted по sessionId) + `TrustLevel`.
+- `process.ts` — низкоуровневый запуск процесса.
 
 ---
 
 ## `packages/skills/skills/core/SKILL.md`
 
-Канонический каталог skills (`@griha/skills`). Базовый skill `core` с frontmatter (`name: core`, `description`, `tags`) и политикой памяти: использовать `memory_add` для durable-фактов, `memory_search` перед использованием неуверенного контекста, не хранить секреты. Плюс правило закрытого цикла обучения.
+Канонический каталог skills (`@griha/skills`). Базовый skill `core` с frontmatter (`name: core`, `description`, `tags`) и политикой памяти: использовать `memory_add` для durable-фактов, `memory_search` перед использованием неуверенного контекста, не хранить секреты. Плюс правило закрытого цикла обучения. Дополнительные skills: `sales-report` и `meeting-minutes` (формат отчёта фиксирован шаблоном — агент вызывает `generate_report`, меняя только данные).
 
 ---
 
@@ -264,11 +329,14 @@
 
 - `tests/setup.ts` — `before()` только создаёт `tests/.tmp-db` (без `rm` — см. «мелочи» в ARCHITECTURE). Хелперы `getTestDbPath(name)`, `cleanTestDb(name)`.
 - `tests/unit/*.test.ts` — `node:test` + `assert/strict`:
-  - `smoke`, `config`, `model-catalog`, `model-router` — утилиты;
-  - `memory-service`, `vector-memory` — память (гибрид, эмбеддинги, FTS-fallback);
-  - `bot-registry`, `delegation`, `live-steering` — multi-agent;
-  - `cron`, `personal-learning` — соответствующие расширения;
-  - `telegram` — bridge, controller, **пул изолированных сессий**.
+  - утилиты: `smoke`, `config`, `model-catalog`, `model-router`, `gateway-policy`, `sandbox`, `skill-improver`, `report-schemas`, `report-renderer`;
+  - память: `memory-service`, `vector-memory`, `sqlite-vec`, `http-embeddings`;
+  - multi-agent: `bot-registry`, `delegation`, `live-steering`, `real-subagent-runner`;
+  - cron: `cron`, `cron-real`; обучение: `personal-learning`, `learning-schema`;
+  - HTTP-вызовы: `http-vision`, `http-learning`, `telegram-files`;
+  - telegram: `telegram` (bridge/controller/pool + доставка файла), `telegram-reset`;
+  - `user-rules`.
+- `tests/unit/*.integration.test.ts` — интеграционные (`real-subagent-runner`, `report-renderer`): реальный Chromium/субагент; скипаются без браузера/сети.
 - `tests/integration/` — пусто (зарезервировано).
 
 Запуск: `npm test` (это `tsx --test tests/**/*.test.ts`).
