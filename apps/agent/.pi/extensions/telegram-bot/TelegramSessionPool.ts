@@ -20,6 +20,7 @@ import reportGenerator from "../report-generator/index.js";
 import approvalGate from "../approval-gate/index.js";
 import commitmentTracking from "../commitment-tracking/index.js";
 import voiceIntake from "../voice-intake/index.js";
+import proactiveAssistant from "../proactive-assistant/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 
 /**
@@ -51,6 +52,7 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   approvalGate,
   commitmentTracking,
   voiceIntake,
+  proactiveAssistant,
   providerBootstrap,
 ];
 

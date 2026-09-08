@@ -367,3 +367,98 @@ export const CommitmentUpdateSchema = Type.Object({
   dueDate: Type.Optional(Type.String()),
 });
 export type CommitmentUpdateParams = Static<typeof CommitmentUpdateSchema>;
+
+/** Phase 17 — Proactive assistant: calendar, briefing, anomalies */
+
+export type EventKind = "meeting" | "event" | "focus" | "other";
+
+export type CalendarEventStatus = "scheduled" | "cancelled";
+
+export interface CalendarEvent {
+  id: string;
+  userId: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  participants: string[];
+  location?: string;
+  kind: EventKind;
+  source: string;
+  status: CalendarEventStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type BriefingKind =
+  | "event"
+  | "meeting"
+  | "commitment"
+  | "followup"
+  | "client_note"
+  | "anomaly"
+  | "approval";
+
+export interface BriefingItem {
+  kind: BriefingKind;
+  title: string;
+  detail?: string;
+  dueAt?: string;
+  severity?: "info" | "warning" | "critical";
+}
+
+export type AnomalyStatus = "new" | "acknowledged" | "resolved";
+
+export interface Anomaly {
+  id: string;
+  userId: string;
+  type: string;
+  severity: "info" | "warning" | "critical";
+  detectedAt: string;
+  explanation: string;
+  evidence: Record<string, unknown>;
+  status: AnomalyStatus;
+}
+
+export const EventAddSchema = Type.Object({
+  title: Type.String({ minLength: 1 }),
+  startsAt: Type.String(),
+  endsAt: Type.String(),
+  timezone: Type.Optional(Type.String()),
+  participants: Type.Optional(Type.Array(Type.String())),
+  location: Type.Optional(Type.String()),
+  kind: Type.Optional(Type.Union([
+    Type.Literal("meeting"), Type.Literal("event"), Type.Literal("focus"), Type.Literal("other"),
+  ])),
+});
+export type EventAddParams = Static<typeof EventAddSchema>;
+
+export const EventListSchema = Type.Object({
+  from: Type.Optional(Type.String()),
+  to: Type.Optional(Type.String()),
+  kind: Type.Optional(Type.Union([
+    Type.Literal("meeting"), Type.Literal("event"), Type.Literal("focus"), Type.Literal("other"),
+  ])),
+});
+export type EventListParams = Static<typeof EventListSchema>;
+
+export const EventCancelSchema = Type.Object({ id: Type.String() });
+export type EventCancelParams = Static<typeof EventCancelSchema>;
+
+export const BriefingGenerateSchema = Type.Object({
+  timezone: Type.Optional(Type.String()),
+  force: Type.Optional(Type.Boolean()),
+});
+export type BriefingGenerateParams = Static<typeof BriefingGenerateSchema>;
+
+export const AnomalyAckSchema = Type.Object({
+  id: Type.String(),
+  status: Type.Union([Type.Literal("acknowledged"), Type.Literal("resolved")]),
+});
+export type AnomalyAckParams = Static<typeof AnomalyAckSchema>;
+
+export const ContactBriefingSchema = Type.Object({ contactName: Type.String({ minLength: 1 }) });
+export type ContactBriefingParams = Static<typeof ContactBriefingSchema>;
+
+export const MeetingPrepSchema = Type.Object({ eventId: Type.String() });
+export type MeetingPrepParams = Static<typeof MeetingPrepSchema>;

@@ -157,5 +157,16 @@
 - [x] Skills: `human-approval-gate`, `approval-thresholds`, `commitment-tracking`, `voice-intake`, `privacy-data-hygiene`, `delegation-triage`
 - [x] Tests: approval boundaries/thresholds, approval service, commitment extraction/status/refresh, secret filter, voice confidence, delegation triage (168 tests)
 
+## Phase 17 — Proactive executive assistant (этап 3)
+
+- [x] `proactive-assistant` extension: `CalendarService` (события, connector-ready), `AnomalyService`, `BriefingService` (подавление дублей по user+день)
+- [x] Tools: `event_add/list/cancel`, `briefing_generate`, `anomaly_list/ack`, `meeting_prep`, `contact_briefing`
+- [x] `src/utils/briefing.ts` — чистая агрегация брифинга (timezone, пустые секции опускаются, overdue/today/followup/approvals/anomalies/клиенты)
+- [x] `src/utils/anomaly-detect.ts` — детекторы: commitment overdue, duplicate invoices, expense spikes (baseline × threshold + explanation)
+- [x] `src/utils/focus-time.ts` — плотность дня, фрагментация, focus-блоки, предложение альтернативного слота
+- [x] `proactive-assistant` добавлен в `SUB_SESSION_EXTENSIONS` Telegram-сессий
+- [x] Skills: `daily-briefing`, `anomaly-watch`, `meeting-prep`, `meeting-followup`, `contact-context-briefing`, `calendar-scheduling`, `focus-time-protection`, `meeting-notes`
+- [x] Tests: briefing timezone/empty sections/commitments, focus-time, anomaly detectors, calendar service (184 tests)
+
 
 
