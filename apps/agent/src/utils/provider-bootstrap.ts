@@ -58,6 +58,19 @@ export function registerDeepSeekProvider(pi: ExtensionAPI, cfg: GrishAiConfig): 
 }
 
 /**
+ * OpenAI-compatible base URL for a model config, falling back to known
+ * provider defaults. Shared by the vision and learning HTTP callers.
+ */
+export function resolveModelBaseUrl(cfg: ModelConfig): string {
+  const base = cfg.baseUrl
+    ? cfg.baseUrl
+    : cfg.provider === "deepseek"
+      ? DEEPSEEK_BASE_URL
+      : CUSTOM_BASE_URL_DEFAULT;
+  return base.replace(/\/+$/, "");
+}
+
+/**
  * Register a model config's provider key through pi — the same mechanism
  * `applyConfig` uses for the main model. A literal `apiKey` marks the provider
  * as "authorized" without relying on `process.env`, which pi only snapshots at

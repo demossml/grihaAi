@@ -2,6 +2,8 @@ import path from "node:path";
 import { homedir } from "node:os";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { loadConfig } from "@griha/config";
+import { getSkillsRoot } from "@griha/skills";
 import { UserProfileService } from "../sqlite-rag-memory/UserProfileService.js";
 import { ClientNotesService } from "../sqlite-rag-memory/ClientNotesService.js";
 import {
@@ -11,6 +13,13 @@ import {
   summarizeExtraction,
   type LearningLlm,
 } from "../../../src/utils/learning-extractor.js";
+import { createHttpLearningLlm } from "../../../src/utils/http-learning.js";
+import {
+  SkillProposalStore,
+  applySkillProposal,
+  proposeSkillImprovement,
+  type SkillProposal,
+} from "../../../src/utils/skill-improver.js";
 import { formatPersonalContext } from "../../../src/utils/personal-context.js";
 import type { ClientNote, UserProfile } from "../../../src/types/index.js";
 
@@ -39,11 +48,28 @@ async function getNotes(): Promise<ClientNotesService> {
 }
 
 /**
- * Emulated extraction LLM — returns an empty extraction. Swap for a real,
- * cheap LLM call (ctx.modelRegistry) later.
+ * Emulated extraction LLM kept for offline/time-free unit tests. Production
+ * uses `getLlm()` below — an OpenAI-compatible call with the configured model.
  */
-const emulatedLlm: LearningLlm = async () =>
+export const emulatedLlm: LearningLlm = async () =>
   JSON.stringify({ facts: [], preferences: {}, notes: [] });
+
+/** Real extraction LLM (configured model, never a hardcoded name). */
+function getLlm(): LearningLlm {
+  const cfg = loadConfig();
+  if (!cfg) throw new Error("No config found — run /setup first.");
+  return createHttpLearningLlm(cfg);
+}
+
+let proposals: SkillProposalStore | null = null;
+function getProposals(): SkillProposalStore {
+  if (!proposals) proposals = new SkillProposalStore();
+  return proposals;
+}
+
+async function gatherNotes(): Promise<string[]> {
+  return (await (await getNotes()).listNotes(OWNER_ID)).map((n) => n.content);
+}
 
 function collectRecentDialog(entries: readonly unknown[]): string {
   const lines: string[] = [];
@@ -78,7 +104,7 @@ async function maybeAutoLearn(ctx: ExtensionContext): Promise<void> {
 
   autoLearnInProgress = true;
   try {
-    const extraction = await extractLearning(dialog, emulatedLlm);
+    const extraction = await extractLearning(dialog, getLlm());
     if (isExtractionEmpty(extraction)) return;
 
     const ok = await ctx.ui.confirm("Сохранить извлечённое?", summarizeExtraction(extraction));
@@ -86,9 +112,45 @@ async function maybeAutoLearn(ctx: ExtensionContext): Promise<void> {
 
     await applyLearning(extraction, OWNER_ID, await getProfiles(), await getNotes());
     ctx.ui.notify("Обучение сохранено.", "info");
+  } catch {
+    // Learning is best-effort — never break the agent on extraction errors.
   } finally {
     autoLearnInProgress = false;
   }
+}
+
+/**
+ * Generate a skill-improvement proposal from accumulated notes and, when a UI
+ * is available, apply it only after explicit user confirmation. Without a UI
+ * the proposal stays `pending` in the durable queue for manual review.
+ */
+async function proposeAndConfirm(ctx?: ExtensionContext): Promise<SkillProposal | null> {
+  const list = await gatherNotes();
+  if (list.length === 0) return null;
+
+  const proposal = await proposeSkillImprovement(list, getLlm());
+  if (!proposal) return null;
+
+  const store = getProposals();
+  await store.save(proposal);
+
+  if (ctx?.hasUI) {
+    const ok = await ctx.ui.confirm(
+      "Применить предложенное улучшение навыка?",
+      `${proposal.title}\n\n${proposal.content}`,
+    );
+    if (ok) {
+      await applySkillProposal(proposal, getSkillsRoot());
+      const applied = await store.updateStatus(proposal.id, "applied");
+      ctx.ui.notify(`Skill proposal "${proposal.title}" applied.`, "info");
+      return applied ?? { ...proposal, status: "applied" as const };
+    }
+    await store.updateStatus(proposal.id, "rejected");
+    return { ...proposal, status: "rejected" as const };
+  }
+
+  // No UI: queued for manual confirmation via /skills-approve.
+  return proposal;
 }
 
 export default function personalLearning(pi: ExtensionAPI): void {
@@ -204,7 +266,7 @@ export default function personalLearning(pi: ExtensionAPI): void {
       _id: string,
       params: { dialog: string },
     ): Promise<AgentToolResult<{ extraction: unknown; saved: { preferencesSaved: number; notesSaved: number } }>> {
-      const extraction = await extractLearning(params.dialog, emulatedLlm);
+      const extraction = await extractLearning(params.dialog, getLlm());
       const saved = await applyLearning(extraction, OWNER_ID, await getProfiles(), await getNotes());
       return {
         content: [
@@ -244,7 +306,7 @@ export default function personalLearning(pi: ExtensionAPI): void {
         pi.sendMessage({ customType: "learn-empty", content: [{ type: "text", text: "No conversation to learn from." }], display: true });
         return;
       }
-      const extraction = await extractLearning(dialog, emulatedLlm);
+      const extraction = await extractLearning(dialog, getLlm());
       const saved = await applyLearning(extraction, OWNER_ID, await getProfiles(), await getNotes());
       pi.sendMessage({
         customType: "learn-result",
@@ -257,6 +319,124 @@ export default function personalLearning(pi: ExtensionAPI): void {
         display: true,
         details: { extraction, saved },
       });
+    },
+  });
+
+  pi.registerTool({
+    name: "propose_skill_improvement",
+    label: "Propose skill improvement",
+    description: "На основе накопленных заметок предложить улучшение навыков (review-gated).",
+    parameters: Type.Object({}),
+    async execute(
+      _id: string,
+      _params: Record<string, never>,
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ proposal: SkillProposal | null }>> {
+      const proposal = await proposeAndConfirm(ctx);
+      const text = proposal
+        ? `Proposal "${proposal.title}" (${proposal.id}) — status: ${proposal.status}.`
+        : "No proposal generated.";
+      return { content: [{ type: "text", text }], details: { proposal } };
+    },
+  });
+
+  pi.registerTool({
+    name: "list_skill_proposals",
+    label: "List skill proposals",
+    description: "Показать предложения по улучшению навыков (очередь на подтверждение).",
+    parameters: Type.Object({}),
+    async execute(): Promise<AgentToolResult<{ proposals: SkillProposal[] }>> {
+      const list = await getProposals().list();
+      const text =
+        list.length === 0
+          ? "No skill proposals."
+          : list.map((p) => `- [${p.status}] ${p.title} (${p.id})`).join("\n");
+      return { content: [{ type: "text", text }], details: { proposals: list } };
+    },
+  });
+
+  pi.registerCommand("skills-improve", {
+    description: "Propose a skill improvement from accumulated notes",
+    async handler(_args, ctx) {
+      try {
+        const proposal = await proposeAndConfirm(ctx);
+        pi.sendMessage({
+          customType: "skills-improve",
+          content: [
+            {
+              type: "text",
+              text: proposal
+                ? `Proposal "${proposal.title}" (${proposal.id}) — status: ${proposal.status}.`
+                : "No proposal generated (not enough notes or nothing new).",
+            },
+          ],
+          display: true,
+          details: { proposal },
+        });
+      } catch (error) {
+        pi.sendMessage({
+          customType: "skills-improve-error",
+          content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+          display: true,
+        });
+      }
+    },
+  });
+
+  pi.registerCommand("skills-proposals", {
+    description: "List skill proposals awaiting review",
+    async handler() {
+      const list = await getProposals().list();
+      const text =
+        list.length === 0
+          ? "No skill proposals."
+          : list.map((p) => `- [${p.status}] ${p.title} (${p.id})`).join("\n");
+      pi.sendMessage({ customType: "skills-proposals", content: [{ type: "text", text }], display: true, details: { proposals: list } });
+    },
+  });
+
+  pi.registerCommand("skills-approve", {
+    description: "Approve and apply a pending skill proposal",
+    async handler(args) {
+      const id = args.trim();
+      if (!id) {
+        pi.sendMessage({ customType: "skills-approve-error", content: [{ type: "text", text: "Usage: /skills-approve <id>" }], display: true });
+        return;
+      }
+      const store = getProposals();
+      const proposal = await store.get(id);
+      if (!proposal) {
+        pi.sendMessage({ customType: "skills-approve-error", content: [{ type: "text", text: `Proposal ${id} not found.` }], display: true });
+        return;
+      }
+      if (proposal.status !== "pending") {
+        pi.sendMessage({ customType: "skills-approve-error", content: [{ type: "text", text: `Proposal ${id} is already ${proposal.status}.` }], display: true });
+        return;
+      }
+      const target = await applySkillProposal(proposal, getSkillsRoot());
+      await store.updateStatus(id, "applied");
+      pi.sendMessage({ customType: "skills-approve", content: [{ type: "text", text: `Applied "${proposal.title}" → ${target}` }], display: true });
+    },
+  });
+
+  pi.registerCommand("skills-reject", {
+    description: "Reject a pending skill proposal",
+    async handler(args) {
+      const id = args.trim();
+      if (!id) {
+        pi.sendMessage({ customType: "skills-reject-error", content: [{ type: "text", text: "Usage: /skills-reject <id>" }], display: true });
+        return;
+      }
+      const store = getProposals();
+      const proposal = await store.get(id);
+      if (!proposal) {
+        pi.sendMessage({ customType: "skills-reject-error", content: [{ type: "text", text: `Proposal ${id} not found.` }], display: true });
+        return;
+      }
+      await store.updateStatus(id, "rejected");
+      pi.sendMessage({ customType: "skills-reject", content: [{ type: "text", text: `Rejected "${proposal.title}" (${id}).` }], display: true });
     },
   });
 }

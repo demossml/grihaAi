@@ -73,7 +73,7 @@
 - [x] Подмешивание профиля и заметок в контекст
 - [x] /profile, /notes, /learn
 - [x] Tests green
-- [ ] Auto skill improvement (отложено)
+- [x] Auto skill improvement (review-gated: LLM-предложение → `ctx.ui.confirm`/очередь → apply в skills)
 
 ## Phase 10 — Multi-Model Routing
 - [x] Конфиг models.main + models.vision

@@ -218,14 +218,14 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 | Субагенты | `SubAgentRunner` | `createRealSubAgentRunner` (изолированный `AgentSession` по `subtreeSessionId`) | `emulatedRunner` (для юнит-тестов) |
 | Cron | `CronRunner`, `CronChangeDetector` | `createRealCronRunner` (через `SubAgentRunner`), `createRealCronChangeDetector` (дифф `state_snapshot` в sqlite) | `emulatedRunner` (для юнит-тестов) |
 | Vision | `VisionCaller` | `createHttpVisionCaller` (OpenAI-совместимый `/chat/completions` к `models.vision`) | `emulatedVision` (для юнит-тестов) |
-| Обучение | `LearningLlm` | (пока нет) | `emulatedLlm` (пустая выдача) |
+| Обучение | `LearningLlm` | `createHttpLearningLlm` (OpenAI-совместимый `/chat/completions`, модель из конфига) | `emulatedLlm` (для юнит-тестов) |
 | Telegram-бот | `TelegramBotFactory` (grammy `Bot`) | `new Bot(token)` | `FakeBot` в тестах |
 | Telegram-сессии | `TelegramSessionFactory` | `createAgentSession` | `FakeAgentSession` в тестах |
 | Роутер моделей | `ModelCaller` | (пока нет) | мок в тестах |
 
 **Правило**: `src/utils/*` — чистые функции без побочных эффектов; `*.pi/extensions/*` — тонкие обёртки, которые связывают чистые утилиты с `pi`/`ctx`. Сервисы (`SqliteRagMemoryService`, `CronService`, `UserProfileService`, `ClientNotesService`) — классы с `init()`/`close()` и ленивой инициализацией.
 
-Единственная оставшаяся «эмуляция» (Обучение) — это **осознанная заглушка** с комментарием «swap for a real … later». Она делает фазу рабочей end-to-end, пока не подключён реальный LLM-вызов.
+Эмуляции в проде больше не используются — все реальные реализации подключены; `emulated*` остались только как инъекции для юнит-тестов без сети/времени.
 
 ---
 

@@ -234,13 +234,14 @@
 
 Файлы: `index.ts`.
 
-- `OWNER_ID = "owner"`; `emulatedLlm` — заглушка (пустая выдача).
+- `OWNER_ID = "owner"`; `emulatedLlm` — заглушка (пустая выдача), оставлена для юнит-тестов; в проде — `getLlm()` → `createHttpLearningLlm` (`src/utils/http-learning.ts`, OpenAI-совместимый `/chat/completions`, модель из конфига).
 - **События**:
   - `session_start` → init профилей и заметок;
   - `before_agent_start` → `formatPersonalContext` в system-prompt;
   - `agent_settled` → `maybeAutoLearn` (собрать диалог из `ctx.sessionManager.getEntries()`, `extractLearning`, confirm в UI, `applyLearning`).
-- **Инструменты**: `get_user_profile`, `update_user_profile`, `add_client_note`, `list_client_notes`, `extract_learning`.
-- **Команды**: `/profile`, `/notes`, `/learn`.
+- **Инструменты**: `get_user_profile`, `update_user_profile`, `add_client_note`, `list_client_notes`, `extract_learning`, `propose_skill_improvement`, `list_skill_proposals`.
+- **Команды**: `/profile`, `/notes`, `/learn`, `/skills-improve`, `/skills-proposals`, `/skills-approve <id>`, `/skills-reject <id>`.
+- **Auto skill improvement** (`src/utils/skill-improver.ts`): LLM-предложение правки `skills/core/SKILL.md` или нового skill (`autoCreated: true`) на основе заметок; review-gated — применяется только после `ctx.ui.confirm`, иначе остаётся `pending` в durable-очереди (`~/.grish-ai/skill-proposals/*.json`).
 
 ### `telegram-bot/`
 
