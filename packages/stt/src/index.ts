@@ -22,7 +22,11 @@ export async function transcribeVoice(
   }
 
   return new Promise<TranscribeResult>((resolve) => {
-    const child = spawn("python3", [script, filePath], {
+    const args = [script, filePath];
+    if (options.language) {
+      args.push("--language", options.language);
+    }
+    const child = spawn("python3", args, {
       timeout: options.timeoutMs,
     });
 

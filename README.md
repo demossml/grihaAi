@@ -54,7 +54,7 @@ grihaAi/
 │   ├── agent/                # главный агент (pi extensions, telegram, memory)
 │   │   ├── .pi/extensions/   # все расширения (вся бизнес-логика)
 │   │   ├── src/              # types + utils (agent-only)
-│   │   ├── scripts/stt_local.py  # голосовой STT (v1, stub)
+│   │   ├── scripts/stt_local.py  # голосовой STT (faster-whisper, офлайн) + requirements.txt
 │   │   └── tests/
 │   ├── api/                  # Hono HTTP-скелет (health; будущий STT/admin)
 ├── packages/

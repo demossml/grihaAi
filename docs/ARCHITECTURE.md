@@ -60,7 +60,7 @@ grihaAi/
 │   │   ├── .pi/extensions/       # все расширения (core-agent, memory, multi-agent, cron,
 │   │   │                         #   model-router, personal-learning, telegram-bot, user-rules)
 │   │   ├── src/types, src/utils  # agent-only типы и утилиты
-│   │   └── scripts/stt_local.py  # голосовой STT (stub)
+│   │   └── scripts/stt_local.py  # голосовой STT (faster-whisper, офлайн) + requirements.txt
 │   └── api/                      # Hono HTTP-скелет (createApp + /health)
 ├── packages/
 │   ├── shared-types/             # общие доменные типы (@griha/shared-types)

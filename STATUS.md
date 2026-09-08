@@ -98,7 +98,7 @@
 - [x] packages/tsconfig (@griha/tsconfig: base.json, node.json)
 - [x] packages/shared-types (@griha/shared-types: config types, UserRule, STT)
 - [x] packages/config (@griha/config: ~/.grish-ai helpers)
-- [x] packages/stt (@griha/stt: transcribeVoice → python3 bridge)
+- [x] packages/stt (@griha/stt: transcribeVoice → python3 bridge; backend — faster-whisper офлайн)
 - [x] apps/agent — все .pi/extensions + src + skills + tests перенесены
 - [x] apps/api — Hono skeleton (createApp + /health)
 - [x] apps/skills — stub package
