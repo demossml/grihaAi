@@ -4,8 +4,10 @@ import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-ag
 import { SqliteRagMemoryService } from "./MemoryService.js";
 import {
   MemoryAddSchema,
+  MemoryDeleteSchema,
   MemorySearchSchema,
   type MemoryAddParams,
+  type MemoryDeleteParams,
   type MemorySearchParams,
   type SearchResult,
 } from "../../../src/types/index.js";
@@ -91,6 +93,29 @@ export default function sqliteRagMemory(pi: ExtensionAPI): void {
       return {
         content: [{ type: "text", text }],
         details: { results },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "memory_delete",
+    label: "Delete memory",
+    description: "Delete a stored fact from long-term memory by id.",
+    parameters: MemoryDeleteSchema,
+    async execute(
+      _toolCallId: string,
+      params: MemoryDeleteParams,
+    ): Promise<AgentToolResult<{ deleted: boolean }>> {
+      const service = await getService();
+      const deleted = await service.deleteFact(params.id);
+      return {
+        content: [
+          {
+            type: "text",
+            text: deleted ? `Deleted memory ${params.id}` : `Memory ${params.id} not found.`,
+          },
+        ],
+        details: { deleted },
       };
     },
   });

@@ -1,0 +1,15 @@
+# Griha AI — ежедневный бэкап SQLite-баз (VACUUM INTO, консистентные снимки).
+# Работает независимо от того, запущен ли агент (не cron-расширение).
+#
+# Установка (user-юниты):
+#   cp deploy/griha-ai-backup.service deploy/griha-ai-backup.timer ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now griha-ai-backup.timer
+[Unit]
+Description=Griha AI SQLite backup (VACUUM INTO)
+
+[Service]
+Type=oneshot
+User=admingimolost
+WorkingDirectory=/home/admingimolost/grihaAi/apps/agent
+ExecStart=/home/admingimolost/grihaAi/node_modules/.bin/tsx /home/admingimolost/grihaAi/apps/agent/scripts/backup.ts

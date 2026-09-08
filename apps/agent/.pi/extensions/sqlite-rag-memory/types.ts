@@ -15,6 +15,7 @@ export interface MemoryService {
     query: string,
     options?: { limit?: number; projectId?: ProjectId; category?: string; botId?: BotId },
   ): Promise<SearchResult[]>;
+  deleteFact(id: string): Promise<boolean>;
   addMessage(msg: Omit<SessionMessage, "id" | "createdAt">): Promise<SessionMessage>;
   getSessionMessages(sessionId: SessionId, limit?: number): Promise<SessionMessage[]>;
   searchSessions(

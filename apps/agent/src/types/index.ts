@@ -64,6 +64,8 @@ export interface SearchResult {
   score: number;
   source: "vector" | "fts" | "hybrid";
   metadata?: Record<string, unknown>;
+  /** ISO timestamp of the fact's last update (facts only; used by recency ranking). */
+  updatedAt?: string;
 }
 
 export const MemoryAddSchema = Type.Object({
@@ -86,6 +88,11 @@ export const MemorySearchSchema = Type.Object({
   botId: Type.Optional(Type.String()),
 });
 export type MemorySearchParams = Static<typeof MemorySearchSchema>;
+
+export const MemoryDeleteSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+});
+export type MemoryDeleteParams = Static<typeof MemoryDeleteSchema>;
 
 /** Phase 5 — Smart Delegation */
 

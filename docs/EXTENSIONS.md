@@ -222,7 +222,7 @@ Allowlist capabilities для субагентов (untrusted): только `me
 - `DB_PATH = ~/.grish-ai/memory.sqlite`.
 - `getService()` — ленивый синглтон с `HashingEmbeddingService`.
 - **События**: `session_start` → init; `session_shutdown` → close.
-- **Инструменты**: `memory_add`, `memory_search`.
+- **Инструменты**: `memory_add` (с дедупликацией почти точных дублей — обновляет `updated_at` существующей записи), `memory_search` (гибридный RRF с recency-фактором), `memory_delete` (удаление по id).
 - **Команды**: `/memory-reembed`.
 
 ### `multi-agent/`

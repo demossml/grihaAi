@@ -44,6 +44,7 @@ interface FactSearchRow {
   category: string;
   project_id: string | null;
   bot_id: string | null;
+  updated_at: string;
   score: number;
 }
 
@@ -161,6 +162,27 @@ function clampLimit(limit?: number): number {
   return Math.min(Math.max(Math.trunc(limit), 1), 50);
 }
 
+/** Collapse case/whitespace differences for near-duplicate comparison. */
+function normalizeText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Default recency half-life: 30 days. */
+export const DEFAULT_RECENCY_HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Recency multiplier for RRF scores: 1.0 for brand-new facts, approaching 0.5
+ * as facts age (exponential decay with the configured half-life). The factor
+ * never drops below 0.5 on purpose — recency only breaks ties in favour of
+ * fresher facts, it does not bury old ones.
+ */
+export function recencyFactor(updatedAt: string | undefined, nowMs: number, halfLifeMs: number): number {
+  if (!updatedAt) return 1;
+  const ageMs = nowMs - Date.parse(updatedAt);
+  if (!Number.isFinite(ageMs) || ageMs <= 0) return 1;
+  return 0.5 + 0.5 * Math.pow(0.5, ageMs / halfLifeMs);
+}
+
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   let dot = 0;
   let na = 0;
@@ -174,11 +196,12 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-function reciprocalRankFusion(
+export function reciprocalRankFusion(
   vector: SearchResult[],
   fts: SearchResult[],
   limit: number,
   k = 60,
+  recencyHalfLifeMs = DEFAULT_RECENCY_HALF_LIFE_MS,
 ): SearchResult[] {
   const fused = new Map<string, { result: SearchResult; score: number; sources: Set<string> }>();
   const add = (list: SearchResult[], source: "vector" | "fts") => {
@@ -191,7 +214,10 @@ function reciprocalRankFusion(
   };
   add(vector, "vector");
   add(fts, "fts");
+  const nowMs = Date.now();
   return [...fused.values()]
+    // Recency: при прочих равных более свежий факт должен быть выше.
+    .map((e) => ({ ...e, score: e.score * recencyFactor(e.result.updatedAt, nowMs, recencyHalfLifeMs) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((e) => ({
@@ -237,6 +263,17 @@ export class SqliteRagMemoryService implements MemoryService {
 
   async addFact(fact: Omit<MemoryFact, "id" | "createdAt" | "updatedAt">): Promise<MemoryFact> {
     const db = this.requireDb();
+
+    // Dedup: если почти точный дубль уже есть в той же категории/scope — не
+    // создаём вторую запись, а обновляем updated_at существующей (факт снова
+    // «свежий», что корректно и для recency-ранжирования).
+    const duplicate = this.findNearDuplicate(fact);
+    if (duplicate) {
+      const now = new Date().toISOString();
+      db.prepare(`UPDATE facts SET updated_at = ? WHERE id = ?`).run(now, duplicate.id);
+      return this.rowToFact({ ...duplicate, updated_at: now });
+    }
+
     const now = new Date().toISOString();
     const id = randomUUID();
 
@@ -263,6 +300,44 @@ export class SqliteRagMemoryService implements MemoryService {
        VALUES (@id, @content, @category, @project_id, @agent_id, @bot_id, @created_at, @updated_at, @metadata, @embedding)`,
     ).run(row);
     return this.rowToFact(row);
+  }
+
+  /**
+   * Ищет почти точный дубликат факта (FTS по его тексту + нормализованное
+   * сравнение) в той же категории и scope (projectId/botId).
+   */
+  private findNearDuplicate(
+    fact: Omit<MemoryFact, "id" | "createdAt" | "updatedAt">,
+  ): FactRow | undefined {
+    const db = this.requireDb();
+    const fts = buildFtsQuery(fact.content);
+    if (!fts) return undefined;
+    let rows: FactRow[] = [];
+    try {
+      rows = db
+        .prepare(
+          `SELECT f.* FROM facts_fts JOIN facts f ON f.rowid = facts_fts.rowid
+           WHERE facts_fts MATCH ? LIMIT 5`,
+        )
+        .all(fts) as FactRow[];
+    } catch {
+      return undefined;
+    }
+    const needle = normalizeText(fact.content);
+    for (const row of rows) {
+      if (row.category !== fact.category) continue;
+      if ((row.project_id ?? null) !== (fact.projectId ?? null)) continue;
+      if ((row.bot_id ?? null) !== (fact.botId ?? null)) continue;
+      if (normalizeText(row.content) === needle) return row;
+    }
+    return undefined;
+  }
+
+  /** Удаляет факт по id (FTS-триггер чистит индекс; эмбеддинг живёт в самой строке). */
+  async deleteFact(id: string): Promise<boolean> {
+    const db = this.requireDb();
+    const result = db.prepare(`DELETE FROM facts WHERE id = ?`).run(id);
+    return result.changes > 0;
   }
 
   async search(
@@ -309,7 +384,7 @@ export class SqliteRagMemoryService implements MemoryService {
     if (fts) {
       try {
         const where = ["facts_fts MATCH ?", ...filters].join(" AND ");
-        const sql = `SELECT f.id, f.content, f.category, f.project_id, f.bot_id, -bm25(facts_fts) AS score
+        const sql = `SELECT f.id, f.content, f.category, f.project_id, f.bot_id, f.updated_at, -bm25(facts_fts) AS score
           FROM facts_fts
           JOIN facts f ON f.rowid = facts_fts.rowid
           WHERE ${where}
@@ -324,7 +399,7 @@ export class SqliteRagMemoryService implements MemoryService {
     if (rows.length === 0) {
       const like = `%${escapeLike(query)}%`;
       const where = [`f.content LIKE ? ESCAPE '\\'`, ...filters].join(" AND ");
-      const sql = `SELECT f.id, f.content, f.category, f.project_id, f.bot_id, 1.0 AS score
+      const sql = `SELECT f.id, f.content, f.category, f.project_id, f.bot_id, f.updated_at, 1.0 AS score
         FROM facts f
         WHERE ${where}
         ORDER BY f.updated_at DESC
@@ -337,6 +412,7 @@ export class SqliteRagMemoryService implements MemoryService {
       content: r.content,
       score: r.score,
       source: "fts",
+      updatedAt: r.updated_at,
       metadata: {
         category: r.category,
         projectId: r.project_id ?? undefined,
@@ -372,7 +448,7 @@ export class SqliteRagMemoryService implements MemoryService {
       const query = Buffer.from(queryVec.buffer);
       const rows = db
         .prepare(
-          `SELECT id, content, category, project_id, bot_id, vec_distance_cosine(embedding, ?) AS distance
+          `SELECT id, content, category, project_id, bot_id, updated_at, vec_distance_cosine(embedding, ?) AS distance
            FROM facts WHERE ${filters.join(" AND ")}
            ORDER BY distance ASC LIMIT ?`,
         )
@@ -382,6 +458,7 @@ export class SqliteRagMemoryService implements MemoryService {
         category: string;
         project_id: string | null;
         bot_id: string | null;
+        updated_at: string;
         distance: number;
       }>;
       return rows.map((r) => ({
@@ -389,6 +466,7 @@ export class SqliteRagMemoryService implements MemoryService {
         content: r.content,
         score: 1 - r.distance,
         source: "vector" as const,
+        updatedAt: r.updated_at,
         metadata: {
           category: r.category,
           projectId: r.project_id ?? undefined,
@@ -400,7 +478,7 @@ export class SqliteRagMemoryService implements MemoryService {
     // Fallback: manual cosine when the sqlite-vec extension is unavailable.
     const rows = db
       .prepare(
-        `SELECT id, content, category, project_id, bot_id, embedding FROM facts WHERE ${filters.join(" AND ")}`,
+        `SELECT id, content, category, project_id, bot_id, updated_at, embedding FROM facts WHERE ${filters.join(" AND ")}`,
       )
       .all(...params) as Array<{
       id: string;
@@ -408,6 +486,7 @@ export class SqliteRagMemoryService implements MemoryService {
       category: string;
       project_id: string | null;
       bot_id: string | null;
+      updated_at: string;
       embedding: Buffer;
     }>;
 
@@ -423,6 +502,7 @@ export class SqliteRagMemoryService implements MemoryService {
           content: r.content,
           score: cosineSimilarity(queryVec, vec),
           source: "vector" as const,
+          updatedAt: r.updated_at,
           metadata: {
             category: r.category,
             projectId: r.project_id ?? undefined,

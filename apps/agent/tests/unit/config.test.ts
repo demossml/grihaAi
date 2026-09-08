@@ -70,4 +70,24 @@ describe("config storage", () => {
     fs.writeFileSync(getConfigPath(), "{ not json", "utf8");
     assert.equal(loadConfig(), null);
   });
+
+  it("writes config with owner-only permissions (0600 file, 0700 dir)", () => {
+    const dir = path.join(tempHome, ".grish-ai");
+    fs.rmSync(dir, { recursive: true, force: true }); // каталог создаёт сам saveConfig
+
+    saveConfig(makeConfig({ apiKey: "sk-secret", telegram: { botToken: "123:abc", allowedUserIds: [1] } }));
+
+    assert.equal(fs.statSync(getConfigPath()).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  });
+
+  it("tightens permissions of an already-existing config file", () => {
+    const dir = path.join(tempHome, ".grish-ai");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(getConfigPath(), "{}", { mode: 0o644 });
+
+    saveConfig(makeConfig());
+
+    assert.equal(fs.statSync(getConfigPath()).mode & 0o777, 0o600);
+  });
 });

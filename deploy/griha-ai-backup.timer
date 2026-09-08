@@ -1,0 +1,11 @@
+# Ежедневный запуск griha-ai-backup.service (03:00), Persistent=true догонит
+# пропущенные запуски после простоя/выключения.
+[Unit]
+Description=Daily Griha AI SQLite backup
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
