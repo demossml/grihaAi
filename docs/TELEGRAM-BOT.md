@@ -56,7 +56,7 @@ bot.api.sendMessage(chatId, text)  +  filePath ? bot.api.sendDocument(chatId, fi
 | `index.ts` | Точка входа расширения. Создаёт пул, регистрирует команды, авто-старт/остановку. Адаптер реального `Bot`: `sendDocument` оборачивает путь в `new InputFile(path)` (иначе строка трактуется как remote file_id). |
 | `TelegramBotController.ts` | Жизненный цикл grammy `Bot`: `start`/`stop`, приём сообщений, `toTgUpdate`. Sender: `sendMessage`, затем `sendDocument`, если ответ несёт файл. |
 | `TelegramBridge.ts` | Чистая, без grammy, логика маршрутизации/авторизации (тестируется юнитами). Ответ агента — `{ text, filePath? }`. |
-| `TelegramSessionPool.ts` | Изолированные `AgentSession` на пользователя. Возвращает `{ text, filePath? }`, забирая файл из `src/utils/session-files.ts`. |
+| `TelegramSessionPool.ts` | Изолированные `AgentSession` на пользователя. Возвращает `{ text, filePath? }`, забирая файл из `src/utils/telegram/session-files.ts`. |
 
 ---
 
@@ -146,7 +146,7 @@ createAgentSession({
 await session.bindExtensions({ mode: "json" });
 ```
 
-`bindExtensions` «привязывает» расширения к сессии и эмитит `session_start`, из-за чего inline-расширение `providerBootstrap` регистрирует провайдера + модель (вызывает общий `applyConfig` из `src/utils/provider-bootstrap.ts`).
+`bindExtensions` «привязывает» расширения к сессии и эмитит `session_start`, из-за чего inline-расширение `providerBootstrap` регистрирует провайдера + модель (вызывает общий `applyConfig` из `src/utils/bootstrap/provider-bootstrap.ts`).
 
 ### Ключевые детали SDK
 
@@ -164,7 +164,7 @@ await session.bindExtensions({ mode: "json" });
 3. `runPrompt(session, message)`:
    - подписывается на событие `agent_end`;
    - `session.prompt(message, { source: "extension", streamingBehavior: "followUp" если занят })`;
-   - по `agent_end` берёт ответ через `session.getLastAssistantText()` и файл через `takeSessionFile(sessionId)` (per-session registry, `src/utils/session-files.ts` — файл туда кладёт `generate_report`/`generate_presentation` через `setSessionFile`);
+   - по `agent_end` берёт ответ через `session.getLastAssistantText()` и файл через `takeSessionFile(sessionId)` (per-session registry, `src/utils/telegram/session-files.ts` — файл туда кладёт `generate_report`/`generate_presentation` через `setSessionFile`);
    - при ошибке/пустом ответе — фолбэк «Не удалось получить ответ от Гриши» / «Гриша не ответил».
 4. Возвращает `{ text, filePath? }` (её бридж отправляет в чат: текст всегда, документ — при наличии файла).
 

@@ -34,7 +34,7 @@ Execute / Reject / Ask User**.
 
 - **Gateway** (техническая граница) — `tool_call` + trust level: может ли tool/session
   выполнить side effect вообще.
-- **Policy** (разрешено ли действие в контексте) — `src/utils/approval-policy.ts`:
+- **Policy** (разрешено ли действие в контексте) — `src/utils/finance/approval-policy.ts`:
   финансовые пороги (`autoApproveBelow`/`alwaysConfirmAbove`/
   `categoriesAlwaysConfirm`) и `ruleClass` user-rules
   (`preference|policy|permission|restriction`).
@@ -52,7 +52,7 @@ financial limits, permissions, restrictions, approval/security policies.
 
 ## 4. Gateway (`apps/agent/.pi/extensions/gateway`)
 
-Единственный chokepoint для tool-calls с side-effects. Слушает `pi.on("tool_call")` (до выполнения) и применяет политику из `src/utils/gateway-policy.ts` — **не** встраивается в каждый extension.
+Единственный chokepoint для tool-calls с side-effects. Слушает `pi.on("tool_call")` (до выполнения) и применяет политику из `src/utils/security/gateway-policy.ts` — **не** встраивается в каждый extension.
 
 | Инструмент | trusted | untrusted |
 |---|---|---|

@@ -4,9 +4,9 @@ import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-
 import {
   ReportTypeSchema,
   REPORT_SCHEMAS,
-} from "../../../src/utils/report-schemas.js";
-import { renderPdfReport, renderPresentation } from "../../../src/utils/report-renderer.js";
-import { setSessionFile } from "../../../src/utils/session-files.js";
+} from "../../../src/utils/reports/report-schemas.js";
+import { renderPdfReport, renderPresentation } from "../../../src/utils/reports/report-renderer.js";
+import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
 
 /**
  * Deterministic document generation.

@@ -12,10 +12,10 @@ import {
   type ApprovalRequestRecord,
   type FinancialApprovalPolicy,
 } from "../../../src/types/index.js";
-import { requiresApproval } from "../../../src/utils/approval-policy.js";
+import { requiresApproval } from "../../../src/utils/finance/approval-policy.js";
 import { ApprovalService } from "./ApprovalService.js";
 import { getSessionContext } from "../user-rules/context.js";
-import { addSessionInlineButtons } from "../../../src/utils/session-files.js";
+import { addSessionInlineButtons } from "../../../src/utils/telegram/session-files.js";
 
 const DB_PATH = path.join(getConfigDir(), "approvals.sqlite");
 

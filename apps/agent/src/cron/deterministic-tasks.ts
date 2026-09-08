@@ -7,12 +7,12 @@ import type {
   Expense,
   Invoice,
 } from "../types/index.js";
-import { buildBriefing } from "../utils/briefing.js";
+import { buildBriefing } from "../utils/briefing/briefing.js";
 import {
   detectCommitmentOverdue,
   detectDuplicateInvoices,
   detectExpenseOutliers,
-} from "../utils/anomaly-detect.js";
+} from "../utils/finance/anomaly-detect.js";
 
 /**
  * Deterministic cron tasks.

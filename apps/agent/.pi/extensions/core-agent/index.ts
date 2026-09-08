@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { discoverSkills, formatSkillsForPrompt } from "@griha/skills";
 import { loadConfig } from "@griha/config";
-import { buildRouterHint } from "../../../src/utils/adaptive-router.js";
-import { createHttpLearningLlm } from "../../../src/utils/http-learning.js";
+import { buildRouterHint } from "../../../src/utils/routing/adaptive-router.js";
+import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",

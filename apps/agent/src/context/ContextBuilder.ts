@@ -8,8 +8,8 @@ import type {
   Expense,
   Invoice,
 } from "../types/index.js";
-import { buildBriefing, localDayKey } from "../utils/briefing.js";
-import { summarizeExpenses } from "../utils/finance.js";
+import { buildBriefing, localDayKey } from "../utils/briefing/briefing.js";
+import { summarizeExpenses } from "../utils/finance/finance.js";
 
 /**
  * ContextBuilder — the single place that assembles relevant context for skills.

@@ -19,9 +19,9 @@ import {
   categorizeTransaction,
   comparePeriods,
   summarizeExpenses,
-} from "../../../src/utils/finance.js";
-import { requiresApproval } from "../../../src/utils/approval-policy.js";
-import { detectDuplicateInvoices } from "../../../src/utils/anomaly-detect.js";
+} from "../../../src/utils/finance/finance.js";
+import { requiresApproval } from "../../../src/utils/finance/approval-policy.js";
+import { detectDuplicateInvoices } from "../../../src/utils/finance/anomaly-detect.js";
 import { FinanceService } from "./FinanceService.js";
 import { AnomalyService } from "../proactive-assistant/AnomalyService.js";
 import { getSessionContext } from "../user-rules/context.js";

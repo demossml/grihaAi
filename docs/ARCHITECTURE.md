@@ -152,7 +152,7 @@ agent_end → getLastAssistantText() + takeSessionFile(sessionId)
 sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : ничего)
 ```
 
-Сгенерированные файлы (`generate_report`/`generate_presentation`) доходят до пользователя как документ: инструмент регистрирует путь в per-session registry (`src/utils/session-files.ts`), пул забирает его на `agent_end`.
+Сгенерированные файлы (`generate_report`/`generate_presentation`) доходят до пользователя как документ: инструмент регистрирует путь в per-session registry (`src/utils/telegram/session-files.ts`), пул забирает его на `agent_end`.
 
 Полный разбор бота — в [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md).
 
@@ -201,7 +201,7 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 
 ## 6. Провайдеры, модели и bootstrap
 
-Логика «включить модель и провайдера» вынесена в `src/utils/provider-bootstrap.ts` и переиспользуется:
+Логика «включить модель и провайдера» вынесена в `src/utils/bootstrap/provider-bootstrap.ts` и переиспользуется:
 
 - `first-run-setup` — основная сессия (`applyConfig`);
 - `telegram-bot` и `multi-agent` (субагенты) — изолированные субсессии (инлайн `providerBootstrap` → `applyConfig`);
@@ -240,7 +240,7 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 
 **`ModelCaller` — единственный незакрытый компонент таблицы.** Это интерфейс `ModelRouter.call(role, messages)` для прямого вызова текстовой модели (`models.main`/`models.vision`). В проде он **не реализован и не вызывается**: генерация текста идёт через `AgentSession` (цикл pi), а vision — через `createHttpVisionCaller` (обход `ModelRouter.call`; сам `ModelRouter` используется только как `getConfig("vision")`). Приоритет низкий: нужен лишь при появлении сценария прямого LLM-вызова вне агентского цикла — тогда достаточно реализовать `ModelCaller` через OpenAI-совместимый `/chat/completions` (по образцу `createHttpLearningLlm`).
 
-**Правило**: `src/utils/*` — чистые функции без побочных эффектов; `*.pi/extensions/*` — тонкие обёртки, которые связывают чистые утилиты с `pi`/`ctx`. Сервисы (`SqliteRagMemoryService`, `CronService`, `UserProfileService`, `ClientNotesService`) — классы с `init()`/`close()` и ленивой инициализацией.
+**Правило**: `src/utils/**` — чистые функции без побочных эффектов (сгруппированы по доменам); `*.pi/extensions/*` — тонкие обёртки, которые связывают чистые утилиты с `pi`/`ctx`. Сервисы (`SqliteRagMemoryService`, `CronService`, `UserProfileService`, `ClientNotesService`) — классы с `init()`/`close()` и ленивой инициализацией.
 
 Эмуляции в проде больше не используются — все реальные реализации подключены; `emulated*` остались только как инъекции для юнит-тестов без сети/времени.
 
@@ -271,12 +271,12 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 Расширение `report-generator` генерирует PDF/PPTX по **фиксированным шаблонам** — LLM только подставляет данные в готовый макет и **не может** менять layout. Это принципиально: цифры попадают в одно и то же место в каждом отчёте.
 
 - **Шаблоны**: `.pi/extensions/report-generator/templates/*.html` (Handlebars `{{field}}`, `{{#each items}}`) — три типа: `sales-report` (период, итоговая выручка, таблица категорий, топ-сделки), `expense-report` (период, итоговая сумма, категории, построчный список трат), `meeting-minutes` (заголовок, дата, участники, повестка, решения с ответственными). Вёрстка фиксированная, спокойная деловая типографика, без внешних ресурсов (self-contained CSS).
-- **Схемы данных**: `src/utils/report-schemas.ts` (TypeBox) — строгая валидация **до** рендера через `typebox/value` (`Check`/`Errors`). Невалидные данные → понятная ошибка инструмента, а не кривой PDF с пропущенными полями.
-- **Рендер**: `src/utils/report-renderer.ts`:
+- **Схемы данных**: `src/utils/reports/report-schemas.ts` (TypeBox) — строгая валидация **до** рендера через `typebox/value` (`Check`/`Errors`). Невалидные данные → понятная ошибка инструмента, а не кривой PDF с пропущенными полями.
+- **Рендер**: `src/utils/reports/report-renderer.ts`:
   - `renderHtml(type, data)` — компиляция Handlebars + подстановка (чистая, тестируется без браузера/сети);
   - `renderPdfReport(type, data, options)` — HTML → PDF через **Playwright** (headless Chromium: `page.setContent(html)` + `page.pdf({ format: "A4", printBackground: true })`). Playwright — осознанно тяжёлая зависимость (Chromium) ради пиксель-точного рендера; браузер ставится один раз через `npx playwright install chromium`;
   - `renderPresentation(slides, options)` — PPTX через **pptxgenjs**, один фиксированный slide-master (шапка-заголовок, единый шрифт/цвета); данные — просто массив `{ title, bullets[] }`.
-- **Инструменты**: `generate_report(reportType, data)` и `generate_presentation(slides)`. Параметра `style`/`layout` **нет намеренно** — это гарантия однотипности, а не случайное ограничение. Оба возвращают путь к файлу в `details` и регистрируют его в per-session registry (`src/utils/session-files.ts`, `setSessionFile`) через `ctx.sessionManager.getSessionId()`.
+- **Инструменты**: `generate_report(reportType, data)` и `generate_presentation(slides)`. Параметра `style`/`layout` **нет намеренно** — это гарантия однотипности, а не случайное ограничение. Оба возвращают путь к файлу в `details` и регистрируют его в per-session registry (`src/utils/telegram/session-files.ts`, `setSessionFile`) через `ctx.sessionManager.getSessionId()`.
 - **Доставка в Telegram**: `TelegramSessionPool.runPrompt` на `agent_end` забирает файл (`takeSessionFile`) и возвращает `{ text, filePath? }`; бот доставляет текст как обычно, а при наличии файла — `sendDocument` (grammy `InputFile`). Подробности — [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md).
 - **DI**: `pdfRenderFn`/`pptxWriteFn` инжектируемы (тот же паттерн, что у `HttpEmbeddingService`/`fetchFn`) — unit-тесты подменяют Playwright/pptxgenjs; integration-тест с реальным Chromium скипается, если браузер не установлен.
 - **Путь вывода**: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.

@@ -90,12 +90,12 @@
 | Memory | `apps/agent/.pi/extensions/sqlite-rag-memory/*` | `memory_add`, `memory_search` | `~/.grish-ai/memory.sqlite` (facts/messages/insights) | общий синглтон; в Telegram-субсессиях не включён (общая БД) |
 | Cron | `apps/agent/.pi/extensions/cron/*` | `cron_create/list/enable/disable/run_now/update_notepad`, `/cron` | `~/.grish-ai/cron.sqlite` | `monitorMode`, `continuity`, `stateSnapshot`, `notepad`; tick 60s |
 | User rules | `apps/agent/.pi/extensions/user-rules/*` | `rules_*`, `/rules` | `~/.grish-ai/user-rules.sqlite` | hard (prefilter) / soft (injection) |
-| Gateway | `apps/agent/.pi/extensions/gateway/*` + `src/utils/gateway-policy.ts` | `tool_call` → `{block, reason}` | — | trusted/untrusted; untrusted без shell/мутации |
+| Gateway | `apps/agent/.pi/extensions/gateway/*` + `src/utils/security/gateway-policy.ts` | `tool_call` → `{block, reason}` | — | trusted/untrusted; untrusted без shell/мутации |
 | Confirmations | `ctx.ui.confirm` (review-gate для skill-предложений) | — | `~/.grish-ai/skill-proposals/*.json` | общего approval-gate НЕТ |
-| Multi-agent | `apps/agent/.pi/extensions/multi-agent/*` + `src/utils/adaptive-router.ts` | `delegate_tasks`, `check_subagents`, `get_shared_insights`, `list_subagents`, `steer_subagent` | sqlite (memory subtree) | SIMPLE/COMPLEX по `classifyComplexity` |
+| Multi-agent | `apps/agent/.pi/extensions/multi-agent/*` + `src/utils/routing/adaptive-router.ts` | `delegate_tasks`, `check_subagents`, `get_shared_insights`, `list_subagents`, `steer_subagent` | sqlite (memory subtree) | SIMPLE/COMPLEX по `classifyComplexity` |
 | Client notes | `sqlite-rag-memory/ClientNotesService.ts` | `add_client_note`, `list_client_notes` | `memory.sqlite` (client_notes + FTS) | нет structured identity/tags |
-| Report generation | `apps/agent/.pi/extensions/report-generator/*` + `src/utils/report-schemas.ts`, `report-renderer.ts` | `generate_report`, `generate_presentation` | `~/.grish-ai/reports/` | фикс. шаблоны; Playwright/pptxgenjs |
-| OCR/vision | `apps/agent/.pi/extensions/model-router/*` + `src/utils/http-vision.ts`, `telegram-files.ts` | `analyze_image` | — | vision-модель из конфига |
+| Report generation | `apps/agent/.pi/extensions/report-generator/*` + `src/utils/reports/report-schemas.ts`, `report-renderer.ts` | `generate_report`, `generate_presentation` | `~/.grish-ai/reports/` | фикс. шаблоны; Playwright/pptxgenjs |
+| OCR/vision | `apps/agent/.pi/extensions/model-router/*` + `src/utils/vision/http-vision.ts`, `telegram/telegram-files.ts` | `analyze_image` | — | vision-модель из конфига |
 | STT | `packages/stt/*` + `apps/api` | `POST /transcribe` | — | agent-tool НЕТ; Telegram-голос — заглушка |
 | Telegram | `apps/agent/.pi/extensions/telegram-bot/*` | long polling + изолированные сессии | `~/.grish-ai/telegram/<id>/sessions` | доставка файлов через `sendDocument` |
 | Skill registry | `packages/skills/src/*` | `discoverSkills`, `formatSkillsForPrompt` | `packages/skills/skills/*/SKILL.md` | frontmatter `name/description/tags/autoCreated` |

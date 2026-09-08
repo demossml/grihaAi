@@ -5,11 +5,11 @@ import {
   runAnalyzeImage,
   type AnalyzeImageParams,
   type VisionCaller,
-} from "../../../src/utils/image-analyzer.js";
-import { createHttpVisionCaller } from "../../../src/utils/http-vision.js";
-import { downloadTelegramFileAsBase64 } from "../../../src/utils/telegram-files.js";
-import { registerModelProvider } from "../../../src/utils/provider-bootstrap.js";
-import { ModelRouter } from "../../../src/utils/model-router.js";
+} from "../../../src/utils/vision/image-analyzer.js";
+import { createHttpVisionCaller } from "../../../src/utils/vision/http-vision.js";
+import { downloadTelegramFileAsBase64 } from "../../../src/utils/telegram/telegram-files.js";
+import { registerModelProvider } from "../../../src/utils/bootstrap/provider-bootstrap.js";
+import { ModelRouter } from "../../../src/utils/routing/model-router.js";
 
 /** Emulated vision caller kept for offline/time-free unit tests. */
 export const emulatedVision: VisionCaller = async (_vision, image, task, languageHint) =>

@@ -9,8 +9,8 @@ import {
   type MemorySearchParams,
   type SearchResult,
 } from "../../../src/types/index.js";
-import { createEmbeddingService } from "../../../src/utils/embeddings.js";
-import { detectSecret, secretReason } from "../../../src/utils/secret-filter.js";
+import { createEmbeddingService } from "../../../src/utils/memory/embeddings.js";
+import { detectSecret, secretReason } from "../../../src/utils/security/secret-filter.js";
 import { loadConfig } from "@griha/config";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");

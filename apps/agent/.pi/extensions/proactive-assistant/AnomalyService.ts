@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { Anomaly, AnomalyStatus } from "../../../src/types/index.js";
-import { toAnomaly, type AnomalyInput } from "../../../src/utils/anomaly-detect.js";
+import { toAnomaly, type AnomalyInput } from "../../../src/utils/finance/anomaly-detect.js";
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS anomalies (

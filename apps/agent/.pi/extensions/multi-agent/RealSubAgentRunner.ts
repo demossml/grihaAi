@@ -9,7 +9,7 @@ import {
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { getConfigDir, loadConfig } from "@griha/config";
-import { applyConfig } from "../../../src/utils/provider-bootstrap.js";
+import { applyConfig } from "../../../src/utils/bootstrap/provider-bootstrap.js";
 import coreAgent from "../core-agent/index.js";
 import modelRouter from "../model-router/index.js";
 import userRules from "../user-rules/index.js";

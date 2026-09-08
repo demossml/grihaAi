@@ -77,7 +77,7 @@ Persistence          → SQLite-сервисы (WAL)
 
 ## Learning guard
 
-`src/utils/skill-improver.ts` (`isProtectedSkillContent`) — авто-дообучение не
+`src/utils/learning/skill-improver.ts` (`isProtectedSkillContent`) — авто-дообучение не
 предлагает/не применяет изменения в domains: security, approval, permission,
 restriction, financial policy/limits. Protected skill names:
 `human-approval-gate`, `approval-thresholds`, `privacy-data-hygiene`, `delegation-triage`.

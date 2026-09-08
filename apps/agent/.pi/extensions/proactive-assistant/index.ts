@@ -20,8 +20,8 @@ import {
   type EventListParams,
   type MeetingPrepParams,
 } from "../../../src/types/index.js";
-import { buildBriefing, localDayKey } from "../../../src/utils/briefing.js";
-import { detectCommitmentOverdue } from "../../../src/utils/anomaly-detect.js";
+import { buildBriefing, localDayKey } from "../../../src/utils/briefing/briefing.js";
+import { detectCommitmentOverdue } from "../../../src/utils/finance/anomaly-detect.js";
 import { CalendarService } from "./CalendarService.js";
 import { AnomalyService } from "./AnomalyService.js";
 import { BriefingService } from "./BriefingService.js";

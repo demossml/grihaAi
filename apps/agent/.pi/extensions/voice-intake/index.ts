@@ -5,8 +5,8 @@ import { Type, type Static } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { transcribeVoice } from "@griha/stt";
 import { loadConfig } from "@griha/config";
-import { downloadTelegramFileToDisk } from "../../../src/utils/telegram-files.js";
-import { assessTranscriptConfidence } from "../../../src/utils/voice-intake.js";
+import { downloadTelegramFileToDisk } from "../../../src/utils/telegram/telegram-files.js";
+import { assessTranscriptConfidence } from "../../../src/utils/telegram/voice-intake.js";
 
 const TranscribeVoiceSchema = Type.Object({
   /** Local audio file path. */

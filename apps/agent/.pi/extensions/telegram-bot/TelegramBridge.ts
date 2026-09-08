@@ -3,7 +3,7 @@
  * the routing/authorisation logic is unit-testable.
  */
 
-import type { InlineButton } from "../../../src/utils/session-files.js";
+import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 
 export interface TgUser {
   id: number;

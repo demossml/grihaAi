@@ -17,7 +17,7 @@ import {
   addSessionInlineButtons,
   setSessionFile,
   type InlineButton,
-} from "../../src/utils/session-files.js";
+} from "../../src/utils/telegram/session-files.js";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "@griha/config";
 import type { GrishAiConfig } from "@griha/shared-types";

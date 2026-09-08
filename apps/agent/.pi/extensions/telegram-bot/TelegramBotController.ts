@@ -8,7 +8,7 @@ import {
   type TelegramRulesHandler,
   type TgUpdate,
 } from "./TelegramBridge.js";
-import type { InlineButton } from "../../../src/utils/session-files.js";
+import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {

@@ -7,14 +7,14 @@ import type { GrishAiConfig, GrishAiProvider, ModelConfig } from "@griha/shared-
 import {
   applyConfig,
   CUSTOM_BASE_URL_DEFAULT,
-} from "../../../src/utils/provider-bootstrap.js";
+} from "../../../src/utils/bootstrap/provider-bootstrap.js";
 import {
   configExists,
   getConfigPath,
   loadConfig,
   saveConfig,
 } from "@griha/config";
-import { getModelsForProvider } from "../../../src/utils/model-catalog.js";
+import { getModelsForProvider } from "../../../src/utils/routing/model-catalog.js";
 
 interface ProviderDef {
   id: GrishAiProvider;

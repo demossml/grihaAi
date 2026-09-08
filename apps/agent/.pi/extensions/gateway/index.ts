@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { evaluateToolCall } from "../../../src/utils/gateway-policy.js";
+import { evaluateToolCall } from "../../../src/utils/security/gateway-policy.js";
 import { getSessionTrust } from "../../../src/sandbox/gateway-context.js";
 
 /**

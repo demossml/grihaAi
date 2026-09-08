@@ -6,7 +6,7 @@ import { BotRegistry } from "./BotRegistry.js";
 import { SubAgentManager, type SubAgentRunner, type SubAgentResult } from "./SubAgentManager.js";
 import { createRealSubAgentRunner } from "./RealSubAgentRunner.js";
 import { SqliteRagMemoryService } from "../sqlite-rag-memory/MemoryService.js";
-import { createEmbeddingService } from "../../../src/utils/embeddings.js";
+import { createEmbeddingService } from "../../../src/utils/memory/embeddings.js";
 import { loadConfig } from "@griha/config";
 import type { SearchResult, SubAgentState, SubAgentTask } from "../../../src/types/index.js";
 

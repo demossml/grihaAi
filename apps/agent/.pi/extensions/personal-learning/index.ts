@@ -12,15 +12,15 @@ import {
   isExtractionEmpty,
   summarizeExtraction,
   type LearningLlm,
-} from "../../../src/utils/learning-extractor.js";
-import { createHttpLearningLlm } from "../../../src/utils/http-learning.js";
+} from "../../../src/utils/learning/learning-extractor.js";
+import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
 import {
   SkillProposalStore,
   applySkillProposal,
   proposeSkillImprovement,
   type SkillProposal,
-} from "../../../src/utils/skill-improver.js";
-import { formatPersonalContext } from "../../../src/utils/personal-context.js";
+} from "../../../src/utils/learning/skill-improver.js";
+import { formatPersonalContext } from "../../../src/utils/learning/personal-context.js";
 import type { ClientNote, UserProfile } from "../../../src/types/index.js";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");

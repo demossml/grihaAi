@@ -5,7 +5,7 @@
  */
 import Database from "better-sqlite3";
 import { SqliteRagMemoryService } from "../../apps/agent/.pi/extensions/sqlite-rag-memory/MemoryService.js";
-import { HashingEmbeddingService } from "../../apps/agent/src/utils/embeddings.js";
+import { HashingEmbeddingService } from "../../apps/agent/src/utils/memory/embeddings.js";
 import { buildDataset, type Dataset, type DatasetQuery } from "./dataset.js";
 import { computeMetrics, type RetrievalMetrics } from "./lib.js";
 

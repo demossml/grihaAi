@@ -69,7 +69,7 @@ connector-ready boundary (`src/utils/capabilities.ts`).
 ## 5. Где принимаются permission decisions
 
 - `gateway` — техническая граница (trust level).
-- `approval-gate` (`src/utils/approval-policy.ts`) — классификация действия +
+- `approval-gate` (`src/utils/finance/approval-policy.ts`) — классификация действия +
   финансовые пороги.
 - `user-rules` prefilter — hard-правила «отвечай только мне».
 

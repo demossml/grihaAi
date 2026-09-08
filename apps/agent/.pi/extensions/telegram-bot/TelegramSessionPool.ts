@@ -9,8 +9,8 @@ import {
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { getConfigDir, loadConfig } from "@griha/config";
-import { applyConfig } from "../../../src/utils/provider-bootstrap.js";
-import { takeSessionFileRecord, takeSessionInlineButtons, type InlineButton } from "../../../src/utils/session-files.js";
+import { applyConfig } from "../../../src/utils/bootstrap/provider-bootstrap.js";
+import { takeSessionFileRecord, takeSessionInlineButtons, type InlineButton } from "../../../src/utils/telegram/session-files.js";
 import coreAgent from "../core-agent/index.js";
 import multiAgent from "../multi-agent/index.js";
 import modelRouter from "../model-router/index.js";

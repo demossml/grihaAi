@@ -7,7 +7,7 @@ import fs from "node:fs";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { SqliteRagMemoryService } from "../../apps/agent/.pi/extensions/sqlite-rag-memory/MemoryService.js";
-import { HashingEmbeddingService } from "../../apps/agent/src/utils/embeddings.js";
+import { HashingEmbeddingService } from "../../apps/agent/src/utils/memory/embeddings.js";
 import { hrtMs, latencyStats, type LatencyStats } from "./lib.js";
 
 export interface LatencyResult {

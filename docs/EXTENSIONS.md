@@ -34,6 +34,10 @@
 
 ## `src/utils/` — чистые утилиты
 
+Утилиты сгруппированы по доменам (`src/utils/<домен>/<файл>.ts`). Файлы, не
+вписывающиеся ни в один домен (например `capabilities.ts`), лежат на верхнем
+уровне `src/utils/`.
+
 ### `src/utils/config.ts`
 
 Чтение/запись `~/.grish-ai/config.json`:
@@ -42,7 +46,7 @@
 - `getConfigDir()` — `GRISH_AI_HOME ?? HOME ?? cwd` + `.grish-ai`.
 - `configExists()`, `loadConfig()` (с минимальной валидацией), `saveConfig(cfg)` (создаёт каталог при необходимости).
 
-### `src/utils/provider-bootstrap.ts`
+### `src/utils/bootstrap/provider-bootstrap.ts`
 
 Общий bootstrap моделей (переиспользуется first-run-setup и telegram-bot):
 
@@ -63,109 +67,59 @@
 
 Старый `apps/agent/src/utils/skills.ts` удалён. Контент — в `packages/skills/skills/<name>/SKILL.md`.
 
-### `src/utils/model-catalog.ts`
+### `src/utils/finance/` — финансы
 
-Курируемый каталог моделей по провайдерам (`PROVIDER_MODELS`). `id` — точный идентификатор для API, `name` — для меню. У `custom` каталог пустой (пользователь вводит всё вручную). Функция `getModelsForProvider(provider)`.
+- `finance.ts`: `categorizeTransaction` (история → уточнение, без auto-apply на похожие), `summarizeExpenses`/`comparePeriods`, `parseExpenseFromOcr` (консервативно, не угадывает).
+- `approval-policy.ts`: `classifyAction(action)` (READ_ONLY / REVERSIBLE_LOW_RISK / SIDE_EFFECT / HIGH_RISK_IRREVERSIBLE), `requiresApproval(action, {amount, category, policy})` — финансовые пороги. Чистая, тестируется.
+- `anomaly-detect.ts`: `detectCommitmentOverdue`, `detectDuplicateInvoices`, `detectExpenseOutliers` (baseline × threshold + explanation). Чистые, без persistence.
 
-### `src/utils/model-router.ts`
+### `src/utils/memory/` — память
 
-`ModelRouter`:
+- `embeddings.ts`: интерфейс `EmbeddingService` (`embed`, опционально `embedBatch`); `HashingEmbeddingService(dim=384)` — детерминированный «hashing trick» (FNV-1a, бакет, знак, L2-норма). **Плейсхолдер** — точка замены на нейронную модель.
+- `http-embeddings.ts`: `HttpEmbeddingService` — OpenAI-совместимый `POST /embeddings`.
 
-- `getConfig("main" | "vision")` — для `main` фолбэк на legacy-поля верхнего уровня (`provider`/`model`); для `vision` — бросает, если не настроен.
-- `call(role, messages)` — вызывает инжектируемый `ModelCaller`.
+### `src/utils/learning/` — обучение
 
-### `src/utils/embeddings.ts`
+- `learning-extractor.ts`: `extractLearning(dialog, llmCall)` — JSON `{facts, preferences, notes}`; `applyLearning`, `isExtractionEmpty`, `summarizeExtraction`.
+- `http-learning.ts`: `createHttpLearningLlm` — OpenAI-совместимый `/chat/completions` для дообучения.
+- `skill-improver.ts`: предложение правки `core/SKILL.md` или нового skill (`autoCreated: true`) через LLM; review-gated — применяется только после `ctx.ui.confirm`, иначе `pending`.
+- `personal-context.ts`: `formatPersonalContext(profile, notes)` — компактный блок `## Профиль пользователя` / `## Заметки` для system-prompt.
 
-- Интерфейс `EmbeddingService` (`embed`, опционально `embedBatch`).
-- `HashingEmbeddingService(dim=384)` — детерминированный «hashing trick» (FNV-1a, бакет, знак, L2-норма). **Плейсхолдер** — точка замены на нейронную модель.
+### `src/utils/vision/` — vision
 
-### `src/utils/adaptive-router.ts`
+- `http-vision.ts`: `createHttpVisionCaller` — `/chat/completions` к `models.vision`.
+- `image-analyzer.ts`: `analyzeImage(params, vision, visionConfig)`, `runAnalyzeImage(config, params, vision)` — gate на наличие vision-конфига, возвращает `{ ok, text }`.
 
-- `classifyComplexity(message, llmCall?)` — эвристика: сигнальные слова («и », «сравни», «несколько»…), ≥3 предложений или длина >280 → `complex`, иначе `simple`.
-- `buildDelegationPlan(message, llmCall)` — для сложных задач просит оркестратор (LLM) разбить на 2–5 подзадач (валидный JSON); при любой ошибке — fallback на одну задачу.
+### `src/utils/reports/` — отчёты
 
-> Сейчас подключается только тестами; реальное делегирование идёт через инструмент `delegate_tasks` в multi-agent.
+- `report-schemas.ts`: TypeBox-схемы данных отчётов (`SalesReportSchema`, `ExpenseReportSchema`, `MeetingMinutesSchema`), `ReportTypeSchema`, `REPORT_SCHEMAS`. Валидация (`Check`/`Errors`) — **до** рендера.
+- `report-renderer.ts`: `renderHtml` (Handlebars), `renderPdfReport` (Playwright), `renderPresentation` (pptxgenjs). DI: `pdfRenderFn`/`pptxWriteFn` инжектируемы для тестов. Шаблоны — `../.pi/extensions/report-generator/templates/` относительно файла.
 
-### `src/utils/image-analyzer.ts`
+### `src/utils/telegram/` — Telegram-специфика
 
-- `analyzeImage(params, vision, visionConfig)` — разрешает источник картинки (`base64` → `url` → `fileId`) и вызывает vision.
-- `runAnalyzeImage(config, params, vision)` — gate на наличие vision-конфига, возвращает `{ ok, text }`.
+- `telegram-files.ts`: резолв `file_id` в base64 (`downloadTelegramFileAsBase64`) / на диск (`downloadTelegramFileToDisk`) через Bot API.
+- `voice-intake.ts`: `assessTranscriptConfidence(result)` — эвристический confidence-гейт.
+- `session-files.ts`: per-session outbox — `setSessionFile(sessionId, filePath, caption?)` / `takeSessionFileRecord`, `addSessionInlineButtons` / `takeSessionInlineButtons`. Связывает `report-generator`/`approval-gate` (кладут) и `TelegramSessionPool` (забирает на `agent_end`).
 
-### `src/utils/learning-extractor.ts`
+### `src/utils/routing/` — маршрутизация
 
-- `extractLearning(dialog, llmCall)` — просит LLM вернуть JSON `{facts, preferences, notes}`; парсит с `match(/\{[\s\S]*\}/)`, устойчиво к мусору.
-- `applyLearning(extraction, userId, profiles, notes)` — сохраняет предпочтения и заметки.
-- `isExtractionEmpty`, `summarizeExtraction`.
+- `adaptive-router.ts`: `classifyComplexity(message, llmCall?)` (эвристика: сигнальные слова, предложения, длина), `buildDelegationPlan(message, llmCall)` (JSON-оркестратор, fallback на одну задачу).
+- `model-router.ts`: `ModelRouter` — `getConfig("main"|"vision")` (legacy-фолбэк), `call(role, messages)` через инжектируемый `ModelCaller`.
+- `model-catalog.ts`: `PROVIDER_MODELS` — курируемый каталог по провайдерам; `getModelsForProvider(provider)`.
 
-### `src/utils/personal-context.ts`
+### `src/utils/security/` — безопасность
 
-- `formatPersonalContext(profile, notes)` — компактный блок `## Профиль пользователя` / `## Заметки` для system-prompt.
+- `gateway-policy.ts`: `evaluateToolCall(toolName, trust)` → `{ allow, reason? }` — allowlist-политика (untrusted: без `bash`/`edit`/`write`).
+- `secret-filter.ts`: `detectSecret(content)` — детерминированный фильтр секретов. `memory_add` отказывается хранить совпадения.
 
-### `src/utils/gateway-policy.ts`
+### `src/utils/briefing/` — брифинг и фокус
 
-Чистая allowlist-политика инструментов (без побочных эффектов):
+- `briefing.ts`: `buildBriefing(data)` — агрегация брифинга; `localDayKey`/`isSameLocalDay` — IANA timezone.
+- `focus-time.ts`: `analyzeDay` (плотность, фрагментация, focus-блоки), `suggestAlternative`, `minutesToClock`.
 
-- `evaluateToolCall(toolName, trust)` → `{ allow, reason? }`.
-- `trusted` — всё разрешено; `untrusted` (субагенты/cron) — запрещены `bash`/`powershell` и `edit`/`write`; read-only (`read`/`grep`/`find`/`ls`) и кастомные инструменты — разрешены.
-
-### `src/utils/report-schemas.ts`
-
-TypeBox-схемы данных отчётов (`SalesReportSchema`, `ExpenseReportSchema`, `MeetingMinutesSchema`), `ReportTypeSchema`, `REPORT_SCHEMAS`. Валидация (`Check`/`Errors` из `typebox/value`) — **до** рендера.
-
-### `src/utils/report-renderer.ts`
-
-- `renderHtml(type, data)` — Handlebars + подстановка (чистая, тестируется без браузера).
-- `renderPdfReport(type, data, options)` — HTML → PDF через Playwright (headless Chromium).
-- `renderPresentation(slides, options)` — PPTX через pptxgenjs.
-- DI: `pdfRenderFn`/`pptxWriteFn` инжектируемы для тестов.
-
-### `src/utils/session-files.ts`
-
-Per-session registry для доставки файлов: `setSessionFile(sessionId, filePath)` / `takeSessionFile(sessionId)` (get + delete). Связывает `report-generator` (кладёт путь) и `TelegramSessionPool` (забирает на `agent_end`).
-
-### `src/utils/telegram-files.ts`
-
-Резолв Telegram-фото `file_id` в base64 через Bot API (`getFile` + скачивание) — для `analyze_image`.
-
-### `src/utils/http-embeddings.ts` / `http-vision.ts` / `http-learning.ts`
-
-OpenAI-совместимые HTTP-вызовы: `HttpEmbeddingService` (`POST /embeddings`), `createHttpVisionCaller` (`/chat/completions` к `models.vision`), `createHttpLearningLlm` (`/chat/completions` для дообучения).
-
-### `src/utils/skill-improver.ts`
-
-Предложение правки `core/SKILL.md` или нового skill (`autoCreated: true`) через LLM на основе заметок; review-gated — применяется только после `ctx.ui.confirm`, иначе `pending`.
-
-### `src/utils/secret-filter.ts`
-
-`detectSecret(content)` — детерминированный фильтр секретов (API keys, password, токены, telegram bot token, платёжные карты, private key). `memory_add` отказывается хранить совпадения.
-
-### `src/utils/approval-policy.ts`
-
-`classifyAction(action)` (READ_ONLY / REVERSIBLE_LOW_RISK / SIDE_EFFECT / HIGH_RISK_IRREVERSIBLE), `requiresApproval(action, {amount, category, policy})` — финансовые пороги. Чистая, тестируется.
-
-### `src/utils/briefing.ts`
-
-`buildBriefing(data)` — агрегация брифинга (timezone, пустые секции опускаются, overdue/today/followup/approvals/anomalies/клиенты). `localDayKey`/`isSameLocalDay` — IANA timezone.
-
-### `src/utils/focus-time.ts`
-
-`analyzeDay` (плотность, фрагментация, focus-блоки), `suggestAlternative` (предложить слот), `minutesToClock`.
-
-### `src/utils/anomaly-detect.ts`
-
-Детекторы: `detectCommitmentOverdue`, `detectDuplicateInvoices`, `detectExpenseOutliers` (baseline × threshold + explanation). Чистые, без persistence.
-
-### `src/utils/capabilities.ts`
+### `src/utils/capabilities.ts` (верхний уровень)
 
 `ExternalCapability` contract + `capabilityAvailable` / `describeLimitation` / `capabilitiesReport` (machine-readable: capabilities, degraded skills, approval-required actions). Пока все внешние capabilities отсутствуют.
-
-### `src/utils/finance.ts`
-
-`categorizeTransaction` (история → уточнение, без auto-apply на похожие), `summarizeExpenses`/`comparePeriods`, `parseExpenseFromOcr` (консервативно, не угадывает).
-
-### `src/utils/voice-intake.ts`
-
-`assessTranscriptConfidence(result)` — эвристический confidence-гейт (пусто/коротко/мусор → uncertain, переспрос).
 
 ### `src/context/ContextBuilder.ts`
 
@@ -320,21 +274,21 @@ Allowlist capabilities для субагентов (untrusted): только `me
 
 - `emulatedVision` — заглушка vision (`[vision] ...`), оставлена для юнит-тестов.
 - **События**: `before_agent_start` — добавляет руководство «когда фото/скрин — используй `analyze_image`».
-- **Инструмент**: `analyze_image` (`imageUrl`/`imageBase64`/`fileId` + `task` ocr|describe|ocr_and_describe + `languageHint`). `fileId` (Telegram-фото) резолвится в base64 через Bot API (`src/utils/telegram-files.ts`), затем реальный вызов `createHttpVisionCaller` (`src/utils/http-vision.ts`) к `models.vision`; ключ провайдера регистрируется через `pi.registerProvider` (`registerModelProvider`).
+- **Инструмент**: `analyze_image` (`imageUrl`/`imageBase64`/`fileId` + `task` ocr|describe|ocr_and_describe + `languageHint`). `fileId` (Telegram-фото) резолвится в base64 через Bot API (`src/utils/telegram/telegram-files.ts`), затем реальный вызов `createHttpVisionCaller` (`src/utils/vision/http-vision.ts`) к `models.vision`; ключ провайдера регистрируется через `pi.registerProvider` (`registerModelProvider`).
 - **Команда**: `/models` — статус main + vision.
 
 ### `personal-learning/`
 
 Файлы: `index.ts`.
 
-- `OWNER_ID = "owner"`; `emulatedLlm` — заглушка (пустая выдача), оставлена для юнит-тестов; в проде — `getLlm()` → `createHttpLearningLlm` (`src/utils/http-learning.ts`, OpenAI-совместимый `/chat/completions`, модель из конфига).
+- `OWNER_ID = "owner"`; `emulatedLlm` — заглушка (пустая выдача), оставлена для юнит-тестов; в проде — `getLlm()` → `createHttpLearningLlm` (`src/utils/learning/http-learning.ts`, OpenAI-совместимый `/chat/completions`, модель из конфига).
 - **События**:
   - `session_start` → init профилей и заметок;
   - `before_agent_start` → `formatPersonalContext` в system-prompt;
   - `agent_settled` → `maybeAutoLearn` (собрать диалог из `ctx.sessionManager.getEntries()`, `extractLearning`, confirm в UI, `applyLearning`).
 - **Инструменты**: `get_user_profile`, `update_user_profile`, `add_client_note`, `list_client_notes`, `extract_learning`, `propose_skill_improvement`, `list_skill_proposals`.
 - **Команды**: `/profile`, `/notes`, `/learn`, `/skills-improve`, `/skills-proposals`, `/skills-approve <id>`, `/skills-reject <id>`.
-- **Auto skill improvement** (`src/utils/skill-improver.ts`): LLM-предложение правки `skills/core/SKILL.md` или нового skill (`autoCreated: true`) на основе заметок; review-gated — применяется только после `ctx.ui.confirm`, иначе остаётся `pending` в durable-очереди (`~/.grish-ai/skill-proposals/*.json`).
+- **Auto skill improvement** (`src/utils/learning/skill-improver.ts`): LLM-предложение правки `skills/core/SKILL.md` или нового skill (`autoCreated: true`) на основе заметок; review-gated — применяется только после `ctx.ui.confirm`, иначе остаётся `pending` в durable-очереди (`~/.grish-ai/skill-proposals/*.json`).
 
 ### `telegram-bot/`
 
@@ -365,7 +319,7 @@ Allowlist capabilities для субагентов (untrusted): только `me
 Файлы: `index.ts`, `templates/*.html` (sales-report, expense-report, meeting-minutes).
 
 - **Инструменты**: `generate_report(reportType, data)` (PDF) и `generate_presentation(slides)` (PPTX).
-- Валидация данных — `src/utils/report-schemas.ts`; рендер — `src/utils/report-renderer.ts`; путь файла регистрируется в `src/utils/session-files.ts` через `ctx.sessionManager.getSessionId()` (для Telegram-доставки).
+- Валидация данных — `src/utils/reports/report-schemas.ts`; рендер — `src/utils/reports/report-renderer.ts`; путь файла регистрируется в `src/utils/telegram/session-files.ts` через `ctx.sessionManager.getSessionId()` (для Telegram-доставки).
 - Вывод: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
 
 ### `approval-gate/`
@@ -375,7 +329,7 @@ Allowlist capabilities для субагентов (untrusted): только `me
 - `ApprovalService` — SQLite (`~/.grish-ai/approvals.sqlite`): политики (global/chat) + pending-запросы с TTL.
 - **Инструменты**: `approval_required`, `approval_status`, `approval_grant`, `approval_deny`, `policy_get`, `policy_set`.
 - **Команды**: `/approvals`, `/approve <id>`, `/deny <id>`.
-- Классификация и пороги — `src/utils/approval-policy.ts`; идентичность — из `user-rules/context.ts`.
+- Классификация и пороги — `src/utils/finance/approval-policy.ts`; идентичность — из `user-rules/context.ts`.
 
 ### `commitment-tracking/`
 
@@ -389,7 +343,7 @@ Allowlist capabilities для субагентов (untrusted): только `me
 Файлы: `index.ts`.
 
 - **Инструмент**: `transcribe_voice(filePath | fileId)` — обёртка над `@griha/stt` (`transcribeVoice` → faster-whisper) + `assessTranscriptConfidence` (переспрос при неоднозначности).
-- Telegram `fileId` скачивается через `src/utils/telegram-files.ts` (`downloadTelegramFileToDisk`).
+- Telegram `fileId` скачивается через `src/utils/telegram/telegram-files.ts` (`downloadTelegramFileToDisk`).
 
 ### `proactive-assistant/`
 

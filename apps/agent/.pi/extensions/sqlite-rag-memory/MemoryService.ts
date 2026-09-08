@@ -11,7 +11,7 @@ import type {
   SharedInsight,
 } from "../../../src/types/index.js";
 import type { MemoryService } from "./types.js";
-import type { EmbeddingService } from "../../../src/utils/embeddings.js";
+import type { EmbeddingService } from "../../../src/utils/memory/embeddings.js";
 
 interface FactRow {
   id: string;
