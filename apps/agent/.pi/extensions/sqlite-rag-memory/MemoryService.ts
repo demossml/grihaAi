@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import * as sqliteVec from "sqlite-vec";
 import { randomUUID } from "node:crypto";
 import type {
   MemoryFact,
@@ -202,6 +203,7 @@ function reciprocalRankFusion(
 
 export class SqliteRagMemoryService implements MemoryService {
   private db: Database.Database | null = null;
+  private vecLoaded = false;
 
   constructor(private readonly embeddingService?: EmbeddingService) {}
 
@@ -214,6 +216,12 @@ export class SqliteRagMemoryService implements MemoryService {
     if (this.db) this.db.close();
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
+    try {
+      sqliteVec.load(this.db);
+      this.vecLoaded = true;
+    } catch {
+      this.vecLoaded = false;
+    }
     this.db.exec(SCHEMA_SQL);
     this.migrate();
   }
@@ -360,6 +368,36 @@ export class SqliteRagMemoryService implements MemoryService {
       params.push(options.botId);
     }
 
+    if (this.vecLoaded) {
+      const query = Buffer.from(queryVec.buffer);
+      const rows = db
+        .prepare(
+          `SELECT id, content, category, project_id, bot_id, vec_distance_cosine(embedding, ?) AS distance
+           FROM facts WHERE ${filters.join(" AND ")}
+           ORDER BY distance ASC LIMIT ?`,
+        )
+        .all(query, ...params, limit) as Array<{
+        id: string;
+        content: string;
+        category: string;
+        project_id: string | null;
+        bot_id: string | null;
+        distance: number;
+      }>;
+      return rows.map((r) => ({
+        id: r.id,
+        content: r.content,
+        score: 1 - r.distance,
+        source: "vector" as const,
+        metadata: {
+          category: r.category,
+          projectId: r.project_id ?? undefined,
+          botId: r.bot_id ?? undefined,
+        },
+      }));
+    }
+
+    // Fallback: manual cosine when the sqlite-vec extension is unavailable.
     const rows = db
       .prepare(
         `SELECT id, content, category, project_id, bot_id, embedding FROM facts WHERE ${filters.join(" AND ")}`,

@@ -1,11 +1,13 @@
 /**
  * Embedding abstraction for hybrid memory search (Phase 4).
  *
- * `sqlite-ai` / `sqlite-rag` are not published on npm (404 as of 2026-09-07),
- * so this module provides a deterministic, dependency-free fallback plus a
- * clean `EmbeddingService` interface — the swap point for a real neural model
- * (e.g. sqlite-ai) later.
+ * Real backend: `HttpEmbeddingService` (OpenAI-compatible `/embeddings`),
+ * configured via `cfg.embedding`. Deterministic `HashingEmbeddingService`
+ * remains the offline fallback (used in tests without network).
  */
+
+import type { GrishAiConfig } from "@griha/shared-types";
+import { HttpEmbeddingService, OPENAI_EMBEDDINGS_BASE } from "./http-embeddings.js";
 
 export interface EmbeddingService {
   /** Generate an embedding for a single text. */
@@ -62,4 +64,21 @@ export class HashingEmbeddingService implements EmbeddingService {
   async embedBatch(texts: string[]): Promise<number[][]> {
     return Promise.all(texts.map((t) => this.embed(t)));
   }
+}
+
+/**
+ * Build the embedding service from config:
+ * - `cfg.embedding` (provider/model/apiKey) → real HTTP embeddings;
+ * - otherwise → deterministic hashing fallback (offline, test-friendly).
+ */
+export function createEmbeddingService(config?: GrishAiConfig | null): EmbeddingService {
+  const embedding = config?.embedding;
+  if (embedding?.model && embedding?.apiKey) {
+    return new HttpEmbeddingService({
+      baseUrl: embedding.baseUrl ?? OPENAI_EMBEDDINGS_BASE,
+      model: embedding.model,
+      apiKey: embedding.apiKey,
+    });
+  }
+  return new HashingEmbeddingService();
 }

@@ -27,6 +27,17 @@ export interface TelegramConfig {
   allowedUserIds?: number[];
 }
 
+/** Embedding provider for vector memory (used when the main provider has no embeddings endpoint). */
+export interface EmbeddingConfig {
+  /** Provider id, e.g. "openai". */
+  provider: string;
+  /** Embedding model id (verified against the provider's current catalog). */
+  model: string;
+  apiKey?: string;
+  /** OpenAI-compatible base URL. Defaults to https://api.openai.com/v1. */
+  baseUrl?: string;
+}
+
 export interface GrishAiConfig {
   version: 1;
   provider: GrishAiProvider;
@@ -42,6 +53,8 @@ export interface GrishAiConfig {
     main?: ModelConfig;
     vision?: ModelConfig;
   };
+  /** Embeddings for vector memory. Falls back to hashing embeddings when absent. */
+  embedding?: EmbeddingConfig;
 }
 
 // --- User Rules ---

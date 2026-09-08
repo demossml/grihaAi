@@ -214,7 +214,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 
 | Компонент | Что инжектируется | Реальная реализация | Эмуляция/заглушка |
 |---|---|---|---|
-| Память | `EmbeddingService` | (пока нет) | `HashingEmbeddingService` (детерминированный) |
+| Память | `EmbeddingService` | `HttpEmbeddingService` (OpenAI-совместимый `/embeddings`, из `cfg.embedding`) | `HashingEmbeddingService` (детерминированный fallback) |
 | Субагенты | `SubAgentRunner` | (пока нет) | `emulatedRunner` (возвращает шаблонный текст) |
 | Cron | `CronRunner`, `CronChangeDetector` | (пока нет) | `emulatedRunner` |
 | Vision | `VisionCaller` | (пока нет) | `emulatedVision` |
@@ -225,7 +225,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 
 **Правило**: `src/utils/*` — чистые функции без побочных эффектов; `*.pi/extensions/*` — тонкие обёртки, которые связывают чистые утилиты с `pi`/`ctx`. Сервисы (`SqliteRagMemoryService`, `CronService`, `UserProfileService`, `ClientNotesService`) — классы с `init()`/`close()` и ленивой инициализацией.
 
-Все «эмуляции» — это **осознанные заглушки** с комментарием «swap for a real … later». Они делают фазы рабочими end-to-end, пока не подключены реальные LLM-вызовы/нейронные эмбеддинги.
+Все «эмуляции» (кроме embeddings) — это **осознанные заглушки** с комментарием «swap for a real … later». Они делают фазы рабочими end-to-end, пока не подключены реальные LLM-вызовы.
 
 ---
 
@@ -239,7 +239,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 4. **SQLite синхронный, обёрнут в async.** `better-sqlite3` синхронный; все методы сервисов объявлены `async` ради единообразного интерфейса, но внутри всё выполняется синхронно (кроме `await embeddingService.embed(...)`).
 5. **FTS5 синхронизируется триггерами.** Для каждой таблицы (`facts`, `messages`, `insights`, `client_notes`) есть внешняя FTS5-таблица `*_fts` и триггеры `*_ai/_ad/_au`, которые держат индекс в актуальности. Удаление/обновление использует спец-запись `'delete'`.
 6. **Поиск: FTS → LIKE fallback.** `buildFtsQuery` разбивает запрос на токены (`"токен"*` через `AND`). Если FTS ничего не нашёл (или запрос пустой/ошибочный) — fallback на `LIKE` с экранированием `%_\\`.
-7. **Эмбеддинги — плейсхолдер.** `sqlite-ai`/`sqlite-rag` не опубликованы на npm (404 на 2026-09-07), поэтому написан `HashingEmbeddingService`: детерминированный «hashing trick» (FNV-1a → бакет → знак → L2-нормализация), dim=384. Это **не** нейронная модель — просто чтобы гибридный поиск работал end-to-end. Точка замены на реальную модель — интерфейс `EmbeddingService`.
+7. **Эмбеддинги.** Реальная реализация — `HttpEmbeddingService` (OpenAI-совместимый `POST /embeddings`), конфигурируется через `cfg.embedding = { provider, model, apiKey, baseUrl? }` (в `@griha/shared-types`). Если `cfg.embedding` не задан — fallback на `HashingEmbeddingService` (детерминированный «hashing trick», dim=384), который остаётся для тестов без сети. Векторное расстояние теперь считает расширение **`sqlite-vec`** (`vec_distance_cosine` по BLOB-колонке float32), а не самодельный JS-косинус; при неудачной загрузке расширения — fallback на старый JS-косинус. Название embedding-модели не зашивается жёстко — сверяйся с актуальным каталогом провайдера (на момент проверки у OpenAI актуальна `text-embedding-3-small`).
 8. **Гибридный поиск = RRF.** `reciprocalRankFusion` с `k=60` объединяет векторные и FTS-хиты; источник помечается `vector|fts|hybrid`.
 9. **`adaptive-router.ts` пока нигде не подключён к расширениям.** `classifyComplexity`/`buildDelegationPlan` протестированы, но делегирование реально запускается, когда агент сам вызывает инструмент `delegate_tasks` (multi-agent). Роутер — готовый помощник на будущее.
 10. **`tests/setup.ts` только создаёт папку, не удаляет.** Тесты идут параллельными процессами; общий `rm` гонялся и ломал чужие БД. Поэтому в `before()` только `mkdir`, а каждый тест использует уникальное имя БД (`getTestDbPath(name)`).

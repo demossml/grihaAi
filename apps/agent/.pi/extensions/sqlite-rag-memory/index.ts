@@ -9,17 +9,16 @@ import {
   type MemorySearchParams,
   type SearchResult,
 } from "../../../src/types/index.js";
-import { HashingEmbeddingService } from "../../../src/utils/embeddings.js";
+import { createEmbeddingService } from "../../../src/utils/embeddings.js";
+import { loadConfig } from "@griha/config";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
 
 let svc: SqliteRagMemoryService | null = null;
 
-const embeddingService = new HashingEmbeddingService();
-
 async function getService(): Promise<SqliteRagMemoryService> {
   if (!svc) {
-    svc = new SqliteRagMemoryService(embeddingService);
+    svc = new SqliteRagMemoryService(createEmbeddingService(loadConfig()));
     await svc.init(DB_PATH);
   }
   return svc;
