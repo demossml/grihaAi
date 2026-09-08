@@ -100,7 +100,7 @@
 - [x] packages/config (@griha/config: ~/.grish-ai helpers)
 - [x] packages/stt (@griha/stt: transcribeVoice → python3 bridge; backend — faster-whisper офлайн)
 - [x] apps/agent — все .pi/extensions + src + skills + tests перенесены
-- [x] apps/api — Hono skeleton (createApp + /health)
+- [x] apps/api — /health + /transcribe (STT-прокси) + /admin (status/telegram-sessions, auth через adminApiKey)
 - [x] apps/skills — stub package
 - [x] Импорты через @griha/* (без ../../../packages/...)
 - [x] turbo run typecheck и turbo run test зелёные (72 tests)

@@ -61,7 +61,7 @@ grihaAi/
 │   │   │                         #   model-router, personal-learning, telegram-bot, user-rules)
 │   │   ├── src/types, src/utils  # agent-only типы и утилиты
 │   │   └── scripts/stt_local.py  # голосовой STT (faster-whisper, офлайн) + requirements.txt
-│   └── api/                      # Hono HTTP-скелет (createApp + /health)
+│   └── api/                      # Hono: /health + /transcribe (STT) + /admin (auth через adminApiKey)
 ├── packages/
 │   ├── shared-types/             # общие доменные типы (@griha/shared-types)
 │   ├── config/                   # ~/.grish-ai config helpers (@griha/config)

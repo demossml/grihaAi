@@ -46,6 +46,8 @@ export interface GrishAiConfig {
   apiKey?: string;
   /** Required for custom endpoints. */
   baseUrl?: string;
+  /** API key for the admin/STT HTTP API (apps/api). Unset = protected endpoints deny. */
+  adminApiKey?: string;
   setupCompletedAt: string;
   telegram?: TelegramConfig;
   /** Multi-model routing (main + vision). */

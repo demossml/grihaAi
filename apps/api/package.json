@@ -6,10 +6,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
+    "@griha/config": "*",
+    "@griha/shared-types": "*",
+    "@griha/stt": "*",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
   }
 }

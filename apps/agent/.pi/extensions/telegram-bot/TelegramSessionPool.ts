@@ -110,6 +110,11 @@ export class TelegramSessionPool {
     return this.sessions.size;
   }
 
+  /** Telegram user ids with a currently pooled session (for admin status). */
+  listActiveUserIds(): number[] {
+    return [...this.sessions.keys()];
+  }
+
   /**
    * Reset the isolated session for a user (`/new`). The current AgentSession
    * is disposed (its session files stay on disk — nothing is deleted), and a
