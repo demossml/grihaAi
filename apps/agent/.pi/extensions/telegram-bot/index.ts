@@ -62,11 +62,15 @@ function getController(): TelegramBotController {
 
 function startBot(): boolean {
   const token = loadConfig()?.telegram?.botToken;
-  if (!token) return false;
+  if (!token) {
+    console.warn("[telegram-bot] startBot: no botToken configured");
+    return false;
+  }
   try {
     getController().start(token);
     return true;
-  } catch {
+  } catch (err: unknown) {
+    console.error("[telegram-bot] startBot error:", err);
     return false;
   }
 }

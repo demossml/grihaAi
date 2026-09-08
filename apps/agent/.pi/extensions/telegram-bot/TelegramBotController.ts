@@ -67,7 +67,12 @@ export class TelegramBotController {
     });
 
     this.running = true;
-    void bot.start().catch(() => {
+    void bot.start().catch((err: unknown) => {
+      const reason =
+        err instanceof Error
+          ? `${err.name}: ${err.message}${err.stack ? `\n${err.stack}` : ""}`
+          : String(err);
+      console.error("[telegram-bot] Failed to start long polling:", reason);
       this.running = false;
       this.bot = null;
     });
