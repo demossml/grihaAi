@@ -47,6 +47,11 @@ export interface TelegramRulesHandler {
   (args: string, ctx: { chatId: string; userId: string }): string;
 }
 
+/** Resets the isolated session for a user (`/new`). */
+export interface TelegramResetHandler {
+  (userId: number, chatId: string): Promise<void> | void;
+}
+
 export interface TelegramReplySender {
   (chatId: number, text: string): Promise<void>;
 }
@@ -64,6 +69,7 @@ export class TelegramBridge {
     private readonly options?: {
       prefilter?: RulePreFilter;
       rulesHandler?: TelegramRulesHandler;
+      resetHandler?: TelegramResetHandler;
     },
   ) {}
 
@@ -93,6 +99,9 @@ export class TelegramBridge {
       return { handled: true };
     }
     if (text === "/new") {
+      // Real session reset: dispose the current AgentSession and start a fresh
+      // one on the next message. Profile/memory/rules are not touched.
+      await this.options?.resetHandler?.(userId, String(chatId));
       await this.sender(chatId, "Новая сессия начата.");
       return { handled: true };
     }

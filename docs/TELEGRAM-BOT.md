@@ -31,7 +31,8 @@ TelegramBotController  — владеет ботом, переводит grammy 
      ▼
 TelegramBridge  — whitelist, команды, разбор типа сообщения
      │
-     ├─ /start, /status, /new   → canned-ответы
+     ├─ /start, /status         → canned-ответы
+     ├─ /new                    → resetHandler → TelegramSessionPool.reset(userId)
      ├─ voice                    → «голос получен (транскрипция пока нет)»
      ├─ photo / document         → текст-описание в агента (file_id)
      └─ text                     → в агента
@@ -199,7 +200,15 @@ await session.bindExtensions({ mode: "json" });
 | `/telegram-start` | Запустить long polling. |
 | `/telegram-stop` | Остановить long polling. |
 
-В самом Telegram пользователю доступны: `/start`, `/status`, `/new` (canned).
+В самом Telegram пользователю доступны: `/start`, `/status`, `/new`.
+
+`/new` — реальный сброс изолированной диалоговой сессии: `TelegramBridge` зовёт `resetHandler` → `TelegramSessionPool.reset(userId)`. Текущий `AgentSession` для `tg:<userId>` закрывается (`dispose()`), новый с чистым `sessionId` создаётся лениво на следующем сообщении.
+
+**Что сбрасывается, а что нет:**
+
+- **Сбрасывается** — только диалоговая сессия (история разговора/контекст этого `AgentSession`).
+- **Не сбрасывается** — личная память (personal-learning: профиль, заметки), user rules, shared insights и любые durable-данные — они лежат вне пула и переживают `/new`.
+- Файлы старой сессии на диске **не удаляются** (история остаётся доступной при необходимости).
 
 Авто-старт: на `session_start` бот стартует сам, если в конфиге есть `telegram.botToken`; если токена нет — просто не запускается (без ошибок).
 
@@ -207,7 +216,6 @@ await session.bindExtensions({ mode: "json" });
 
 ## 8. Известные ограничения
 
-- `/new` в Telegram не сбрасывает изолированную сессию (пока canned-ответ «Новая сессия начата»).
 - Голос — заглушка (транскрипция не реализована).
 - Фото/документ передаются агенту как `file_id` + подпись, но реальный vision-вызов в Telegram пока эмулирован (см. `model-router` `emulatedVision`).
 - Память в субсессиях не изолирована по пользователям (расширения памяти намеренно исключены).

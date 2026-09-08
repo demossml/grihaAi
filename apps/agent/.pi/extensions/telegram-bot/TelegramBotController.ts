@@ -2,6 +2,7 @@ import {
   TelegramBridge,
   type GrishaAgent,
   type RulePreFilter,
+  type TelegramResetHandler,
   type TelegramRulesHandler,
   type TgUpdate,
 } from "./TelegramBridge.js";
@@ -34,6 +35,7 @@ export class TelegramBotController {
     private readonly options?: {
       prefilter?: RulePreFilter;
       rulesHandler?: TelegramRulesHandler;
+      resetHandler?: TelegramResetHandler;
     },
   ) {}
 

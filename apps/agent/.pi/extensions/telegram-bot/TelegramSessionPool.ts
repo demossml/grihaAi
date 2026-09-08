@@ -110,6 +110,24 @@ export class TelegramSessionPool {
     return this.sessions.size;
   }
 
+  /**
+   * Reset the isolated session for a user (`/new`). The current AgentSession
+   * is disposed (its session files stay on disk — nothing is deleted), and a
+   * fresh one with a new sessionId is created lazily on the next message.
+   *
+   * Only the conversation session is reset; cross-session state (personal
+   * learning, user rules, memory) lives outside this pool and is untouched.
+   */
+  async reset(userId: number): Promise<void> {
+    const entry = this.sessions.get(userId);
+    if (!entry) return;
+    this.sessions.delete(userId);
+    const session = await entry.sessionPromise.catch(() => null);
+    if (session) {
+      session.dispose();
+    }
+  }
+
   /** Send a message to a user's isolated session and return Grisha's reply. */
   handleMessage(userId: number, chatId: string | undefined, message: string): Promise<string> {
     const entry = this.getOrCreate(userId);

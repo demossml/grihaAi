@@ -36,6 +36,7 @@ function getController(): TelegramBotController {
         prefilter: (input) =>
           shouldProcessMessage(getUserRulesService().getHardRules(input.chatId), input),
         rulesHandler: telegramRulesHandler,
+        resetHandler: (userId) => pool?.reset(userId),
       },
     );
   }
