@@ -1,0 +1,29 @@
+# Griha AI — headless agent (Telegram bot) systemd unit.
+# Устанавливается как user-unit: ~/.config/systemd/user/griha-ai.service
+#
+#   cp deploy/griha-ai.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user restart griha-ai.service
+#
+# Без TUI и без `script`/tmux: лог идёт в journal чистым текстом.
+# Процесс завершается с ненулевым кодом при ошибке старта → Restart=on-failure срабатывает.
+[Unit]
+Description=Griha AI agent (headless Telegram bot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admingimolost
+WorkingDirectory=/home/admingimolost/grihaAi/apps/agent
+ExecStart=/home/admingimolost/grihaAi/node_modules/.bin/tsx /home/admingimolost/grihaAi/apps/agent/src/bot.ts
+# Telegram из РФ доступен только через локальный прокси (hermes-proxy, порт 8089).
+Environment=HTTPS_PROXY=http://127.0.0.1:8089
+Environment=HTTP_PROXY=http://127.0.0.1:8089
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

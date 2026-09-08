@@ -185,18 +185,25 @@ class FakeBot implements TelegramBotLike {
   handler: ((ctx: unknown) => unknown) | null = null;
   sent: Array<{ chatId: number; text: string }> = [];
   docs: Array<{ chatId: number; filePath: string }> = [];
+  private stopResolve: (() => void) | null = null;
 
   on(_filter: "message", handler: (ctx: unknown) => unknown): void {
     this.handler = handler;
   }
 
   async start(): Promise<unknown> {
+    // Как настоящий grammy: start() резолвится только после stop().
     this.started++;
+    await new Promise<void>((resolve) => {
+      this.stopResolve = resolve;
+    });
     return undefined;
   }
 
   async stop(): Promise<unknown> {
     this.stopped++;
+    this.stopResolve?.();
+    this.stopResolve = null;
     return undefined;
   }
 

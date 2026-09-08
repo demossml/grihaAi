@@ -110,16 +110,24 @@ export async function applyConfig(
   }
 
   if (!model) {
+    console.error(
+      `[provider-bootstrap] model "${cfg.provider}/${cfg.model}" not found in registry`,
+    );
     ctx.ui.notify(`Model "${cfg.provider}/${cfg.model}" not found`, "error");
     return false;
   }
 
   const ok = await pi.setModel(model);
   if (!ok) {
+    console.error(
+      `[provider-bootstrap] setModel failed for ${cfg.provider}/${cfg.model} — API key configured?`,
+    );
     ctx.ui.notify(
       `Could not activate ${cfg.provider}/${cfg.model} — is the API key set?`,
       "error",
     );
+  } else {
+    console.log(`[provider-bootstrap] model activated: ${cfg.provider}/${cfg.model}`);
   }
   return ok;
 }

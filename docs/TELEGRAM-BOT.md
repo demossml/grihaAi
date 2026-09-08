@@ -227,4 +227,19 @@ await session.bindExtensions({ mode: "json" });
 - Голос — заглушка (транскрипция в Telegram не подключена; STT есть только как отдельный HTTP-эндпоинт `apps/api` `/transcribe`).
 - Фото/документ передаются агенту как `file_id` + подпись, но реальный vision-вызов в Telegram пока эмулирован (см. `model-router` `emulatedVision`).
 - Память в субсессиях не изолирована по пользователям (расширения памяти намеренно исключены).
-- Бот не логирует ошибки `bot.start()` (в catch сбрасывает состояние без вывода) — стоит добавить лог при диагностике.
+
+## 9. Запуск без TUI и устойчивость к сети
+
+- **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
+  расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
+  polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:
+  `deploy/griha-ai.service` (`Restart=on-failure`, процесс завершается с ненулевым кодом
+  при ошибке старта, лог — в journal).
+- **Модель**: `first-run-setup` (основная сессия) и `providerBootstrap` (субсессии)
+  применяют `~/.grish-ai/config.json` через `applyConfig`; результат и причина неудачи
+  логируются (`[provider-bootstrap] model activated: ...` / `setModel failed ...`).
+- **Сеть (РКН)**: при заданном `HTTPS_PROXY` grammy создаётся с `HttpsProxyAgent`
+  (`proxy.ts`). `pollLoop` пересоздаёт бота через 10с после сбоя long polling; отправка
+  ретраится до 5 раз с паузой 3с×попытка (grammy не ретраит HTTP 502 от прокси).
+- **Логируются**: входящее сообщение, результат отправки (успех/ошибка), ошибки
+  `bot.start()`/`bot.stop()`.

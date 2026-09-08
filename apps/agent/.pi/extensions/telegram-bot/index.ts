@@ -1,4 +1,5 @@
 import { Bot, InputFile } from "grammy";
+import { buildBotOptions, resolveProxyUrl } from "./proxy.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type GrishaAgent } from "./TelegramBridge.js";
 import {
@@ -17,7 +18,11 @@ import { telegramRulesHandler } from "../user-rules/index.js";
  * be treated as a remote file_id, not a local file).
  */
 const realBotFactory: TelegramBotFactory = (token) => {
-  const bot = new Bot(token);
+  // Telegram из РФ недоступен напрямую — ходим через прокси, если задан HTTPS_PROXY.
+  const proxyUrl = resolveProxyUrl();
+  if (proxyUrl) console.log("[telegram-bot] using HTTPS proxy for Telegram API");
+  const proxyOptions = buildBotOptions(proxyUrl);
+  const bot = proxyOptions ? new Bot(token, proxyOptions) : new Bot(token);
   return {
     on: (filter, handler) => {
       void bot.on(filter, handler as never);

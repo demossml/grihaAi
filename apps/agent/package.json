@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
+    "bot": "tsx src/bot.ts",
     "dev": "echo \"run pi from this directory: ../../node_modules/.bin/pi\""
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "better-sqlite3": "^13.0.3",
     "grammy": "^1.46.0",
     "handlebars": "^4.7.9",
+    "https-proxy-agent": "^7.0.6",
     "playwright": "^1.63.0",
     "pptxgenjs": "^4.0.1",
     "sqlite-vec": "^0.1.9",

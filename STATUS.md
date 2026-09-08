@@ -214,5 +214,13 @@
 - [x] Phase 7: `docs/DOMAIN-ARCHITECTURE.md`, обновлены README/ARCHITECTURE/EXTENSIONS/SECURITY, `TEST_REPORT.md`
 - [x] Tests: 240 agent + 5 skills — зелёные
 
+## Phase 23 — Telegram-бот: стабильность (ТЗ починки бота)
+
+- [x] Headless-запуск: `apps/agent/src/bot.ts` (AgentSession без TUI, long polling на session_start) + `deploy/griha-ai.service` (systemd без `script`)
+- [x] `TelegramBotController`: `pollLoop` с автопереподключением (10с) + `sendWithRetry` (5 попыток, пауза 3с×попытка) + логи входящих/исходящих
+- [x] Прокси: `proxy.ts` (`resolveProxyUrl`/`buildBotOptions`), grammy создаётся с `HttpsProxyAgent` при `HTTPS_PROXY`
+- [x] Авторизация модели: логирование результата `applyConfig` (успех/причина неудачи) в основной сессии и Telegram-субсессиях
+- [x] Tests: reconnect/retry (6), proxy (2), applyConfig (2) — 250 tests
+
 
 

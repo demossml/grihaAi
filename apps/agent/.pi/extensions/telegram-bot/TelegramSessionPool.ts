@@ -35,8 +35,15 @@ import { clearSessionContext, setSessionContext } from "../user-rules/context.js
 function providerBootstrap(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     const cfg = loadConfig();
-    if (cfg) {
-      await applyConfig(pi, ctx, cfg);
+    if (!cfg) {
+      console.warn("[telegram-bot] sub-session: no config found — model not configured");
+      return;
+    }
+    try {
+      const ok = await applyConfig(pi, ctx, cfg);
+      console.log(`[telegram-bot] sub-session model bootstrap: ${ok ? "ok" : "FAILED"}`);
+    } catch (err) {
+      console.error("[telegram-bot] sub-session model bootstrap error:", err);
     }
   });
 }
