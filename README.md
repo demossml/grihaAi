@@ -43,6 +43,9 @@ cd apps/agent
 | `model-router` | Маршрутизация main/vision + `analyze_image` |
 | `personal-learning` | Профиль пользователя, заметки, авто-дообучение |
 | `telegram-bot` | Telegram-бот (long polling) + изолированные сессии на пользователя |
+| `user-rules` | Правила (hard/soft) + pre-filter и инъекция в system-prompt |
+| `gateway` | Блокировка side-effect tool-calls для untrusted-сессий (defense-in-depth) |
+| `report-generator` | PDF/PPTX по фиксированным шаблонам (`generate_report`, `generate_presentation`) |
 
 Подробности: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) и [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 

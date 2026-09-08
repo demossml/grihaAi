@@ -126,3 +126,12 @@
 - [x] Субагенты/cron помечаются `untrusted` → без shell и мутации файлов
 - [x] Tests: gateway-policy + sandbox (dev/runsc-missing)
 
+## Phase 15 — Report generator (PDF/PPTX по фиксированным шаблонам)
+
+- [x] Расширение `report-generator` (generate_report / generate_presentation)
+- [x] Handlebars-шаблоны: sales-report, expense-report, meeting-minutes
+- [x] TypeBox-схемы (`src/utils/report-schemas.ts`) — валидация до рендера
+- [x] `src/utils/report-renderer.ts` — renderHtml / renderPdfReport (Playwright) / renderPresentation (pptxgenjs)
+- [x] DI: pdfRenderFn/pptxWriteFn инжектируемы; integration-тест с реальным Chromium — skip без браузера
+
+

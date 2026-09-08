@@ -59,7 +59,7 @@ grihaAi/
 │   ├── agent/                    # ГЛАВНОЕ приложение: pi extensions + src + tests
 │   │   ├── .pi/extensions/       # все расширения (core-agent, first-run-setup, sqlite-rag-memory,
 │   │   │                         #   multi-agent, cron, model-router, personal-learning,
-│   │   │                         #   telegram-bot, user-rules, gateway)
+│   │   │                         #   telegram-bot, user-rules, gateway, report-generator)
 │   │   ├── src/types, src/utils  # agent-only типы и утилиты
 │   │   └── scripts/stt_local.py  # голосовой STT (faster-whisper, офлайн) + requirements.txt
 │   └── api/                      # Hono: /health + /transcribe (STT) + /admin (auth через adminApiKey)
@@ -229,6 +229,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 | Telegram-бот | `TelegramBotFactory` (grammy `Bot`) | `new Bot(token)` | `FakeBot` в тестах |
 | Telegram-сессии | `TelegramSessionFactory` | `createAgentSession` | `FakeAgentSession` в тестах |
 | Роутер моделей | `ModelCaller` | — (не реализован, не используется в проде) | мок в тестах |
+| Документы | `pdfRenderFn`, `pptxWriteFn` | Playwright (headless Chromium), pptxgenjs | fake-функции в тестах |
 
 **`ModelCaller` — единственный незакрытый компонент таблицы.** Это интерфейс `ModelRouter.call(role, messages)` для прямого вызова текстовой модели (`models.main`/`models.vision`). В проде он **не реализован и не вызывается**: генерация текста идёт через `AgentSession` (цикл pi), а vision — через `createHttpVisionCaller` (обход `ModelRouter.call`; сам `ModelRouter` используется только как `getConfig("vision")`). Приоритет низкий: нужен лишь при появлении сценария прямого LLM-вызова вне агентского цикла — тогда достаточно реализовать `ModelCaller` через OpenAI-совместимый `/chat/completions` (по образцу `createHttpLearningLlm`).
 
@@ -255,6 +256,22 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 11. **Телеграм: `allowedUserIds: []` блокирует всех.** В `TelegramBridge.isAllowed` пустой список означает `false` для любого пользователя. При настройке обязательно добавить свой `user_id`.
 12. **Телеграм `/new` сбрасывает изолированную сессию.** `TelegramBridge` зовёт `resetHandler` → `TelegramSessionPool.reset(userId)`: текущий `AgentSession` закрывается (`dispose()`), новый с чистым `sessionId` создаётся лениво на следующем сообщении. Файлы старой сессии не удаляются; личная память/правила/профиль не затрагиваются (сброс диалога, не профиля).
 13. **Команда `git`/публикация**: репозиторий приватный, коммит без секретов (см. `README` → «Конфигурация и секреты»). `gh` на машине не был авторизован на момент подготовки.
+
+---
+
+## 9. Генерация документов (report-generator)
+
+Расширение `report-generator` генерирует PDF/PPTX по **фиксированным шаблонам** — LLM только подставляет данные в готовый макет и **не может** менять layout. Это принципиально: цифры попадают в одно и то же место в каждом отчёте.
+
+- **Шаблоны**: `.pi/extensions/report-generator/templates/*.html` (Handlebars `{{field}}`, `{{#each items}}`) — три типа: `sales-report` (период, итоговая выручка, таблица категорий, топ-сделки), `expense-report` (период, итоговая сумма, категории, построчный список трат), `meeting-minutes` (заголовок, дата, участники, повестка, решения с ответственными). Вёрстка фиксированная, спокойная деловая типографика, без внешних ресурсов (self-contained CSS).
+- **Схемы данных**: `src/utils/report-schemas.ts` (TypeBox) — строгая валидация **до** рендера через `typebox/value` (`Check`/`Errors`). Невалидные данные → понятная ошибка инструмента, а не кривой PDF с пропущенными полями.
+- **Рендер**: `src/utils/report-renderer.ts`:
+  - `renderHtml(type, data)` — компиляция Handlebars + подстановка (чистая, тестируется без браузера/сети);
+  - `renderPdfReport(type, data, options)` — HTML → PDF через **Playwright** (headless Chromium: `page.setContent(html)` + `page.pdf({ format: "A4", printBackground: true })`). Playwright — осознанно тяжёлая зависимость (Chromium) ради пиксель-точного рендера; браузер ставится один раз через `npx playwright install chromium`;
+  - `renderPresentation(slides, options)` — PPTX через **pptxgenjs**, один фиксированный slide-master (шапка-заголовок, единый шрифт/цвета); данные — просто массив `{ title, bullets[] }`.
+- **Инструменты**: `generate_report(reportType, data)` и `generate_presentation(slides)`. Параметра `style`/`layout` **нет намеренно** — это гарантия однотипности, а не случайное ограничение. Оба возвращают путь к файлу в `details`, файл никуда не отправляется (доставка — отдельным промптом).
+- **DI**: `pdfRenderFn`/`pptxWriteFn` инжектируемы (тот же паттерн, что у `HttpEmbeddingService`/`fetchFn`) — unit-тесты подменяют Playwright/pptxgenjs; integration-тест с реальным Chromium скипается, если браузер не установлен.
+- **Путь вывода**: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
 
 ---
 
