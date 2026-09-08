@@ -19,7 +19,7 @@
 ```bash
 npm install               # workspace-зависимости
 npm run typecheck         # turbo: typecheck всех пакетов (собирает @griha/*)
-npm test                  # turbo: тесты агента (133 unit)
+npm test                  # turbo: тесты агента (208 unit)
 npm run build             # turbo: сборка пакетов в dist/
 
 # Запуск агента — из apps/agent (pi читает .pi/ и skills/ оттуда):
@@ -46,6 +46,14 @@ cd apps/agent
 | `user-rules` | Правила (hard/soft) + pre-filter и инъекция в system-prompt |
 | `gateway` | Блокировка side-effect tool-calls для untrusted-сессий (defense-in-depth) |
 | `report-generator` | PDF/PPTX по фиксированным шаблонам (`generate_report`, `generate_presentation`) |
+| `approval-gate` | Подтверждение side-effect/high-risk действий (`approval_required`) + финансовые пороги |
+| `commitment-tracking` | Обязательства (`commitment_*`), статусы due_soon/overdue из dueDate |
+| `voice-intake` | Транскрипция голоса (`transcribe_voice`) + confidence-гейт |
+| `proactive-assistant` | Брифинг (`briefing_generate`), календарь (`event_*`), аномалии, meeting_prep |
+| `finance` | Расходы/счета/категоризация/сводка (`expense_*`, `invoice_*`, `finance_summary`) |
+| `crm` | Контакты (`contact_*`) + client notes |
+| `travel` | Поездки (`travel_*`), маршрут, upcoming |
+| `connector` | Capability report (`capabilities_list`) — connector-ready boundary |
 
 Подробности: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) и [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
@@ -128,4 +136,7 @@ npm test          # tsx --test tests/**/*.test.ts
 2. [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
 3. [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — бот и изоляция сессий.
 4. [docs/SECURITY.md](docs/SECURITY.md) — периметр, модель доверия, gateway и sandbox-слои.
-5. [STATUS.md](STATUS.md) — прогресс по фазам.
+5. [docs/GRISHA_SKILLS.md](docs/GRISHA_SKILLS.md) — канонический каталог 25 skills + workflow graphs.
+6. [docs/GRISHA_SKILL_CAPABILITY_MATRIX.md](docs/GRISHA_SKILL_CAPABILITY_MATRIX.md) — аудит и gap-классификация.
+7. [docs/GRISHA_SKILLS_FINAL_REPORT.md](docs/GRISHA_SKILLS_FINAL_REPORT.md) — финальный QA-отчёт.
+8. [STATUS.md](STATUS.md) — прогресс по фазам.

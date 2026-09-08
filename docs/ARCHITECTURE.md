@@ -59,7 +59,9 @@ grihaAi/
 │   ├── agent/                    # ГЛАВНОЕ приложение: pi extensions + src + tests
 │   │   ├── .pi/extensions/       # все расширения (core-agent, first-run-setup, sqlite-rag-memory,
 │   │   │                         #   multi-agent, cron, model-router, personal-learning,
-│   │   │                         #   telegram-bot, user-rules, gateway, report-generator)
+│   │   │                         #   telegram-bot, user-rules, gateway, report-generator,
+│   │   │                         #   approval-gate, commitment-tracking, voice-intake,
+│   │   │                         #   proactive-assistant, finance, crm, travel, connector)
 │   │   ├── src/types, src/utils  # agent-only типы и утилиты
 │   │   └── scripts/stt_local.py  # голосовой STT (faster-whisper, офлайн) + requirements.txt
 │   └── api/                      # Hono: /health + /transcribe (STT) + /admin (auth через adminApiKey)
@@ -286,4 +288,7 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 - [docs/EXTENSIONS.md](EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
 - [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md) — глубокий разбор Telegram-бота и пула изолированных сессий.
 - [docs/SECURITY.md](SECURITY.md) — периметр, модель доверия, gateway и sandbox-слои.
+- [docs/GRISHA_SKILLS.md](GRISHA_SKILLS.md) — канонический каталог skills + workflow graphs.
+- [docs/GRISHA_SKILL_CAPABILITY_MATRIX.md](GRISHA_SKILL_CAPABILITY_MATRIX.md) — аудит и gap-классификация.
+- [docs/GRISHA_SKILLS_FINAL_REPORT.md](GRISHA_SKILLS_FINAL_REPORT.md) — финальный QA-отчёт.
 - [STATUS.md](../STATUS.md) — прогресс по фазам.

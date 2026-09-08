@@ -135,6 +135,38 @@ OpenAI-совместимые HTTP-вызовы: `HttpEmbeddingService` (`POST /
 
 Предложение правки `core/SKILL.md` или нового skill (`autoCreated: true`) через LLM на основе заметок; review-gated — применяется только после `ctx.ui.confirm`, иначе `pending`.
 
+### `src/utils/secret-filter.ts`
+
+`detectSecret(content)` — детерминированный фильтр секретов (API keys, password, токены, telegram bot token, платёжные карты, private key). `memory_add` отказывается хранить совпадения.
+
+### `src/utils/approval-policy.ts`
+
+`classifyAction(action)` (READ_ONLY / REVERSIBLE_LOW_RISK / SIDE_EFFECT / HIGH_RISK_IRREVERSIBLE), `requiresApproval(action, {amount, category, policy})` — финансовые пороги. Чистая, тестируется.
+
+### `src/utils/briefing.ts`
+
+`buildBriefing(data)` — агрегация брифинга (timezone, пустые секции опускаются, overdue/today/followup/approvals/anomalies/клиенты). `localDayKey`/`isSameLocalDay` — IANA timezone.
+
+### `src/utils/focus-time.ts`
+
+`analyzeDay` (плотность, фрагментация, focus-блоки), `suggestAlternative` (предложить слот), `minutesToClock`.
+
+### `src/utils/anomaly-detect.ts`
+
+Детекторы: `detectCommitmentOverdue`, `detectDuplicateInvoices`, `detectExpenseOutliers` (baseline × threshold + explanation). Чистые, без persistence.
+
+### `src/utils/capabilities.ts`
+
+`ExternalCapability` contract + `capabilityAvailable` / `describeLimitation` / `capabilitiesReport` (machine-readable: capabilities, degraded skills, approval-required actions). Пока все внешние capabilities отсутствуют.
+
+### `src/utils/finance.ts`
+
+`categorizeTransaction` (история → уточнение, без auto-apply на похожие), `summarizeExpenses`/`comparePeriods`, `parseExpenseFromOcr` (консервативно, не угадывает).
+
+### `src/utils/voice-intake.ts`
+
+`assessTranscriptConfidence(result)` — эвристический confidence-гейт (пусто/коротко/мусор → uncertain, переспрос).
+
 ---
 
 ## Расширения (`.pi/extensions/`)
@@ -308,6 +340,66 @@ OpenAI-совместимые HTTP-вызовы: `HttpEmbeddingService` (`POST /
 - **Инструменты**: `generate_report(reportType, data)` (PDF) и `generate_presentation(slides)` (PPTX).
 - Валидация данных — `src/utils/report-schemas.ts`; рендер — `src/utils/report-renderer.ts`; путь файла регистрируется в `src/utils/session-files.ts` через `ctx.sessionManager.getSessionId()` (для Telegram-доставки).
 - Вывод: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
+
+### `approval-gate/`
+
+Файлы: `index.ts`, `ApprovalService.ts`.
+
+- `ApprovalService` — SQLite (`~/.grish-ai/approvals.sqlite`): политики (global/chat) + pending-запросы с TTL.
+- **Инструменты**: `approval_required`, `approval_status`, `approval_grant`, `approval_deny`, `policy_get`, `policy_set`.
+- **Команды**: `/approvals`, `/approve <id>`, `/deny <id>`.
+- Классификация и пороги — `src/utils/approval-policy.ts`; идентичность — из `user-rules/context.ts`.
+
+### `commitment-tracking/`
+
+Файлы: `index.ts`, `CommitmentService.ts`.
+
+- `CommitmentService` — SQLite (`~/.grish-ai/commitments.sqlite`); статусы `open|due_soon|overdue|completed|cancelled`, due_soon/overdue выводятся из `dueDate` (`deriveStatus`, `refreshStatuses`).
+- **Инструменты**: `commitment_add`, `commitment_list`, `commitment_update`, `commitment_complete`, `commitment_cancel`.
+
+### `voice-intake/`
+
+Файлы: `index.ts`.
+
+- **Инструмент**: `transcribe_voice(filePath | fileId)` — обёртка над `@griha/stt` (`transcribeVoice` → faster-whisper) + `assessTranscriptConfidence` (переспрос при неоднозначности).
+- Telegram `fileId` скачивается через `src/utils/telegram-files.ts` (`downloadTelegramFileToDisk`).
+
+### `proactive-assistant/`
+
+Файлы: `index.ts`, `CalendarService.ts`, `AnomalyService.ts`, `BriefingService.ts`.
+
+- `CalendarService` — события (connector-ready, внутренний календарь).
+- `AnomalyService` — аномалии (запись дедуплицируется по type+explanation).
+- `BriefingService` — подавление дублей брифинга (unique `user_id + day_key`).
+- **Инструменты**: `event_add/list/cancel`, `briefing_generate`, `anomaly_list/ack`, `meeting_prep`, `contact_briefing`.
+
+### `finance/`
+
+Файлы: `index.ts`, `FinanceService.ts`.
+
+- `FinanceService` — SQLite (`~/.grish-ai/finance.sqlite`): расходы + счета; статусы счетов выводятся из dueDate; `paid` — через approval policy.
+- **Инструменты**: `expense_add/list`, `transaction_categorize`, `invoice_add/list/set_status`, `finance_summary` (детерминированная агрегация + сравнение периодов).
+- Anomaly-скан счетов (duplicate + overdue) пишет в `AnomalyService`.
+
+### `crm/`
+
+Файлы: `index.ts`, `ContactService.ts`.
+
+- `ContactService` — SQLite (`~/.grish-ai/contacts.sqlite`): identity, tags, last interaction, provenance; Unicode-безопасный dedupe.
+- **Инструменты**: `contact_upsert`, `contact_list`, `contact_touch`.
+
+### `travel/`
+
+Файлы: `index.ts`, `TravelService.ts`.
+
+- `TravelService` — SQLite (`~/.grish-ai/travel.sqlite`): itinerary items (flight/hotel/transfer).
+- **Инструменты**: `travel_item_add`, `travel_list` (по tripId или upcoming N дней), `travel_itinerary`. Бронирование НЕ реализовано.
+
+### `connector/`
+
+Файлы: `index.ts`.
+
+- **Инструмент**: `capabilities_list` — machine-readable отчёт (capabilities, degraded skills, approval-required actions) из `src/utils/capabilities.ts`.
 
 ## `src/sandbox/` — изоляция выполнения
 

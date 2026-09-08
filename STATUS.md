@@ -195,5 +195,14 @@
 - [x] `docs/GRISHA_SKILLS.md` — полный каталог (статусы/инструменты/storage/connector/approval) + workflow graphs (Meeting/Finance/Executive lifecycle)
 - [x] Tests: skill-catalog (наличие всех, без дублей, порядок, описания) — 208 tests
 
+## Phase 21 — Final QA / Acceptance (этап 7)
+
+- [x] Build gate: `npm install` + `typecheck` + `test` + `build` — зелёные (208 agent tests + 5 skills tests)
+- [x] Static verification: нет секретов/`.env`/hardcoded keys, нет TODO вместо логики, нет duplicate services/registries
+- [x] Safety scenarios S1–S10 проверены (draft/approval/commitment/due/briefing/anomaly/voice/connector/OCR/followup)
+- [x] Data isolation: commitments/expenses/invoices/contacts/policies — scoped по userId (память в субсессиях — задокументированное ограничение)
+- [x] Cron safety: dedupe брифингов, timezone, дедупликация аномалий, monitorMode
+- [x] `docs/GRISHA_SKILLS_FINAL_REPORT.md` + обновлены README/ARCHITECTURE/EXTENSIONS
+
 
 
