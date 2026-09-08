@@ -1,20 +1,41 @@
 import {
   TelegramBridge,
+  formatTelegramHtml,
   type GrishaAgent,
   type RulePreFilter,
+  type TelegramApprovalHandler,
   type TelegramResetHandler,
   type TelegramRulesHandler,
   type TgUpdate,
 } from "./TelegramBridge.js";
+import type { InlineButton } from "../../../src/utils/session-files.js";
+
+/** Minimal callback-query context surface (grammy `callback_query:data`). */
+export interface TelegramCallbackQueryContext {
+  from?: { id?: number };
+  data?: string;
+  message?: { chat?: { id?: number }; message_id?: number; text?: string };
+  answerCallbackQuery(text?: string): Promise<unknown>;
+  editMessageText(text: string, extra?: { removeKeyboard?: boolean }): Promise<unknown>;
+}
 
 /** Minimal surface of a grammy Bot needed for long polling. */
 export interface TelegramBotLike {
-  on(filter: "message", handler: (ctx: unknown) => unknown): void;
+  on(
+    filter: "message" | "callback_query:data",
+    handler: ((ctx: unknown) => unknown) | ((ctx: TelegramCallbackQueryContext) => unknown),
+  ): void;
   start(): Promise<unknown>;
   stop(): Promise<unknown>;
   api: {
-    sendMessage(chatId: number, text: string): Promise<unknown>;
-    sendDocument(chatId: number, filePath: string): Promise<unknown>;
+    sendMessage(
+      chatId: number,
+      text: string,
+      extra?: { parseMode?: "HTML"; inlineButtons?: InlineButton[][] },
+    ): Promise<unknown>;
+    sendDocument(chatId: number, filePath: string, extra?: { caption?: string }): Promise<unknown>;
+    sendChatAction(chatId: number, action: "typing" | "upload_document"): Promise<unknown>;
+    setMyCommands(commands: Array<{ command: string; description: string }>): Promise<unknown>;
   };
 }
 
@@ -22,10 +43,24 @@ export interface TelegramBotFactory {
   (token: string): TelegramBotLike;
 }
 
+/** Commands advertised to Telegram via setMyCommands — only real bridge commands. */
+export const DEFAULT_TELEGRAM_COMMANDS: Array<{ command: string; description: string }> = [
+  { command: "start", description: "Приветствие" },
+  { command: "new", description: "Начать новую сессию" },
+  { command: "status", description: "Статус бота" },
+  { command: "rules", description: "Управление правилами пользователя" },
+  { command: "approve", description: "Одобрить запрос: /approve <id>" },
+  { command: "deny", description: "Отклонить запрос: /deny <id>" },
+];
+
 export interface TelegramBotControllerOptions {
   prefilter?: RulePreFilter;
   rulesHandler?: TelegramRulesHandler;
   resetHandler?: TelegramResetHandler;
+  /** Shared approve/deny logic (approval-gate) — used by both /approve|/deny text and callback buttons. */
+  approvalHandler?: TelegramApprovalHandler;
+  /** Advertised bot commands (defaults to DEFAULT_TELEGRAM_COMMANDS). */
+  commands?: Array<{ command: string; description: string }>;
   /** Send retry policy (injectable for tests). */
   sendRetry?: {
     maxAttempts?: number;
@@ -89,15 +124,26 @@ export class TelegramBotController {
       const bridge = new TelegramBridge(
         this.allowedUserIds,
         this.agent,
-        async (chatId, text, filePath) => {
+        async (chatId, text, filePath, extra) => {
+          // Всё, что уходит пользователю, форматируется как HTML (escape + простой
+          // markdown-конвертер), чтобы **bold**/`code` отображались, а <&> — нет.
+          const html = formatTelegramHtml(text);
           const textOk = await this.sendWithRetry(
-            () => bot.api.sendMessage(chatId, text),
+            () =>
+              bot.api.sendMessage(chatId, html, {
+                parseMode: "HTML",
+                inlineButtons: extra?.inlineButtons,
+              }),
             "sendMessage",
           );
           let docOk = true;
           if (filePath) {
+            // Индикатор загрузки документа перед отправкой файла.
+            void bot.api
+              .sendChatAction(chatId, "upload_document")
+              .catch((err: unknown) => console.error("[telegram-bot] sendChatAction failed:", err));
             docOk = await this.sendWithRetry(
-              () => bot.api.sendDocument(chatId, filePath),
+              () => bot.api.sendDocument(chatId, filePath, { caption: extra?.documentCaption }),
               "sendDocument",
             );
           }
@@ -113,10 +159,17 @@ export class TelegramBotController {
           prefilter: this.options?.prefilter,
           rulesHandler: this.options?.rulesHandler,
           resetHandler: this.options?.resetHandler,
+          approvalHandler: this.options?.approvalHandler,
+          // Индикатор «печатает…» перед тем, как агент начнёт отвечать.
+          beforeAgent: (chatId) => {
+            void bot.api
+              .sendChatAction(chatId, "typing")
+              .catch((err: unknown) => console.error("[telegram-bot] sendChatAction failed:", err));
+          },
         },
       );
 
-      bot.on("message", (ctx) => {
+      bot.on("message", (ctx: unknown) => {
         const update = this.toTgUpdate(ctx);
         if (!update) return;
         const msg = update.message;
@@ -131,6 +184,28 @@ export class TelegramBotController {
           );
         });
       });
+
+      bot.on("callback_query:data", (ctx: TelegramCallbackQueryContext) => {
+        void this
+          .handleCallbackQuery(ctx)
+          .catch((err: unknown) => {
+            console.error(
+              "[telegram-bot] callback_query handling failed:",
+              err instanceof Error ? err.message : err,
+            );
+          });
+      });
+
+      // Рекламируем реально существующие команды (меню в поле ввода Telegram).
+      // Fire-and-forget: не задерживаем bot.start() (контракт start() синхронный).
+      void bot.api
+        .setMyCommands(this.options?.commands ?? DEFAULT_TELEGRAM_COMMANDS)
+        .catch((err: unknown) => {
+          console.error(
+            "[telegram-bot] setMyCommands failed:",
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       try {
         console.log("[telegram-bot] long polling started");
@@ -152,6 +227,30 @@ export class TelegramBotController {
         await this.sleep(delay);
       }
     }
+  }
+
+  /**
+   * Inline-кнопка «Одобрить/Отклонить»: разбор callbackData "approve:<id>"/"deny:<id>",
+   * та же общая функция, что и у текстовых команд /approve//deny, затем
+   * answerCallbackQuery + снятие клавиатуры с исходного сообщения.
+   */
+  private async handleCallbackQuery(ctx: TelegramCallbackQueryContext): Promise<void> {
+    const userId = ctx.from?.id;
+    if (userId === undefined || !this.allowedUserIds.includes(userId)) {
+      await ctx.answerCallbackQuery("Недоступно.").catch(() => undefined);
+      return;
+    }
+    const match = /^(approve|deny):(.+)$/.exec(ctx.data ?? "");
+    if (!match || !this.options?.approvalHandler) {
+      await ctx.answerCallbackQuery("Неизвестное действие.").catch(() => undefined);
+      return;
+    }
+    const message = this.options.approvalHandler(match[1] as "approve" | "deny", match[2]);
+    await ctx.answerCallbackQuery(message).catch(() => undefined);
+    const original = ctx.message?.text?.trim() ?? "";
+    await ctx
+      .editMessageText(original ? `${original}\n\n${message}` : message, { removeKeyboard: true })
+      .catch(() => undefined);
   }
 
   async stop(): Promise<void> {

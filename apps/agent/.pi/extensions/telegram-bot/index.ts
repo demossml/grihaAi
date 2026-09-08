@@ -11,6 +11,7 @@ import { loadConfig, saveConfig } from "@griha/config";
 import { shouldProcessMessage } from "../user-rules/prefilter.js";
 import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { telegramRulesHandler } from "../user-rules/index.js";
+import { applyApprovalDecision } from "../approval-gate/index.js";
 
 /**
  * Adapts the real grammy Bot to the framework-free `TelegramBotLike` surface.
@@ -25,14 +26,58 @@ const realBotFactory: TelegramBotFactory = (token) => {
   const bot = proxyOptions ? new Bot(token, proxyOptions) : new Bot(token);
   return {
     on: (filter, handler) => {
+      if (filter === "callback_query:data") {
+        void bot.on("callback_query:data", (gctx) => {
+          const cbq = gctx.callbackQuery;
+          void handler({
+            from: cbq?.from?.id != null ? { id: cbq.from.id } : undefined,
+            data: cbq?.data,
+            message: cbq?.message
+              ? {
+                  chat: cbq.message.chat?.id != null ? { id: cbq.message.chat.id } : undefined,
+                  message_id: cbq.message.message_id,
+                  text: cbq.message.text,
+                }
+              : undefined,
+            answerCallbackQuery: (text) =>
+              gctx.answerCallbackQuery(text !== undefined ? { text } : {}),
+            editMessageText: (text, extra) =>
+              gctx.editMessageText(text, {
+                // Исходное сообщение отправлялось как HTML — редактируем в том же режиме.
+                parse_mode: "HTML",
+                ...(extra?.removeKeyboard ? { reply_markup: { inline_keyboard: [] } } : {}),
+              }),
+          });
+        });
+        return;
+      }
       void bot.on(filter, handler as never);
     },
     start: () => bot.start(),
     stop: () => bot.stop(),
     api: {
-      sendMessage: (chatId, text) => bot.api.sendMessage(chatId, text),
-      sendDocument: (chatId, filePath) =>
-        bot.api.sendDocument(chatId, new InputFile(filePath)),
+      sendMessage: (chatId, text, extra) =>
+        bot.api.sendMessage(chatId, text, {
+          ...(extra?.parseMode ? { parse_mode: extra.parseMode } : {}),
+          ...(extra?.inlineButtons
+            ? {
+                reply_markup: {
+                  inline_keyboard: extra.inlineButtons.map((row) =>
+                    row.map((button) => ({
+                      text: button.text,
+                      callback_data: button.callbackData,
+                    })),
+                  ),
+                },
+              }
+            : {}),
+        }),
+      sendDocument: (chatId, filePath, extra) =>
+        bot.api.sendDocument(chatId, new InputFile(filePath), {
+          ...(extra?.caption ? { caption: extra.caption } : {}),
+        }),
+      sendChatAction: (chatId, action) => bot.api.sendChatAction(chatId, action),
+      setMyCommands: (commands) => bot.api.setMyCommands(commands),
     },
   };
 };
@@ -59,6 +104,7 @@ function getController(): TelegramBotController {
           shouldProcessMessage(getUserRulesService().getHardRules(input.chatId), input),
         rulesHandler: telegramRulesHandler,
         resetHandler: (userId) => pool?.reset(userId),
+        approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
       },
     );
   }

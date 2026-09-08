@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { getConfigDir, loadConfig } from "@griha/config";
 import { applyConfig } from "../../../src/utils/provider-bootstrap.js";
-import { takeSessionFile } from "../../../src/utils/session-files.js";
+import { takeSessionFileRecord, takeSessionInlineButtons, type InlineButton } from "../../../src/utils/session-files.js";
 import coreAgent from "../core-agent/index.js";
 import multiAgent from "../multi-agent/index.js";
 import modelRouter from "../model-router/index.js";
@@ -86,10 +86,14 @@ interface SessionEntry {
   queue: Promise<TelegramReply>;
 }
 
-/** Agent reply: text plus an optional generated file to send as a document. */
+/** Agent reply: text plus an optional generated file and inline keyboard. */
 export interface TelegramReply {
   text: string;
   filePath?: string;
+  /** Telegram caption for the generated document. */
+  documentCaption?: string;
+  /** Inline keyboard rows (e.g. approval buttons queued by tools this turn). */
+  inlineButtons?: InlineButton[][];
 }
 
 /**
@@ -204,9 +208,16 @@ export class TelegramSessionPool {
       unsubscribe();
       clearSessionContext(sessionId);
       const text = session.getLastAssistantText();
-      // Pick up any file a tool registered for this session (report-generator).
-      const filePath = takeSessionFile(sessionId);
-      finish({ text: text && text.trim() ? text : "Гриша не ответил.", filePath });
+      // Pick up any file a tool registered for this session (report-generator)
+      // plus inline buttons (approval-gate) queued during the turn.
+      const file = takeSessionFileRecord(sessionId);
+      const inlineButtons = takeSessionInlineButtons(sessionId);
+      finish({
+        text: text && text.trim() ? text : "Гриша не ответил.",
+        filePath: file?.filePath,
+        documentCaption: file?.caption,
+        inlineButtons,
+      });
     });
 
     try {

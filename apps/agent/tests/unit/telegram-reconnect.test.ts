@@ -8,6 +8,7 @@ import {
 
 class FakeBot implements TelegramBotLike {
   handler: ((ctx: unknown) => unknown) | null = null;
+  callbackHandler: ((ctx: unknown) => unknown) | null = null;
   started = 0;
   stopped = 0;
   /** Сколько раз start() падает, прежде чем «подняться» (заблокироваться до stop()). */
@@ -18,8 +19,12 @@ class FakeBot implements TelegramBotLike {
   sent: Array<{ chatId: number; text: string }> = [];
   private stopResolve: (() => void) | null = null;
 
-  on(_filter: "message", handler: (ctx: unknown) => unknown): void {
-    this.handler = handler;
+  on(
+    filter: "message" | "callback_query:data",
+    handler: (ctx: unknown) => unknown,
+  ): void {
+    if (filter === "message") this.handler = handler;
+    else this.callbackHandler = handler;
   }
 
   async start(): Promise<unknown> {
@@ -42,7 +47,11 @@ class FakeBot implements TelegramBotLike {
   }
 
   api = {
-    sendMessage: async (chatId: number, text: string): Promise<unknown> => {
+    sendMessage: async (
+      chatId: number,
+      text: string,
+      _extra?: { parseMode?: "HTML"; inlineButtons?: unknown },
+    ): Promise<unknown> => {
       this.sendCalls++;
       if (this.sendFailures > 0) {
         this.sendFailures--;
@@ -51,7 +60,16 @@ class FakeBot implements TelegramBotLike {
       this.sent.push({ chatId, text });
       return undefined;
     },
-    sendDocument: async (_chatId: number, _filePath: string): Promise<unknown> => undefined,
+    sendDocument: async (
+      _chatId: number,
+      _filePath: string,
+      _extra?: { caption?: string },
+    ): Promise<unknown> => undefined,
+    sendChatAction: async (_chatId: number, _action: "typing" | "upload_document"): Promise<unknown> =>
+      undefined,
+    setMyCommands: async (
+      _commands: Array<{ command: string; description: string }>,
+    ): Promise<unknown> => undefined,
   };
 }
 

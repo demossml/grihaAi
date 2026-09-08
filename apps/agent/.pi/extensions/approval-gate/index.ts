@@ -15,6 +15,7 @@ import {
 import { requiresApproval } from "../../../src/utils/approval-policy.js";
 import { ApprovalService } from "./ApprovalService.js";
 import { getSessionContext } from "../user-rules/context.js";
+import { addSessionInlineButtons } from "../../../src/utils/session-files.js";
 
 const DB_PATH = path.join(getConfigDir(), "approvals.sqlite");
 
@@ -41,6 +42,27 @@ function resolveIdentity(ctx: ExtensionContext): { userId: string; chatId?: stri
 function formatRequest(r: ApprovalRequestRecord): string {
   const target = r.target ? ` (target: ${r.target})` : "";
   return `[${r.id.slice(0, 8)}] ${r.action}${target} — ${r.actionClass} — ${r.status}`;
+}
+
+/**
+ * Единственная точка вызова grant/deny для approval-решений. Используется и
+ * текстовыми командами /approve//deny, и Telegram inline-кнопками
+ * (callback_query "approve:<id>"/"deny:<id>") — бизнес-логика не дублируется.
+ */
+export function applyApprovalDecision(
+  action: "approve" | "deny",
+  id: string,
+): { ok: boolean; message: string } {
+  const service = getService();
+  const ok = action === "approve" ? service.grant(id) : service.deny(id);
+  return {
+    ok,
+    message: ok
+      ? action === "approve"
+        ? "Одобрено."
+        : "Отклонено."
+      : "Запрос не найден или уже решён.",
+  };
 }
 
 export default function approvalGate(pi: ExtensionAPI): void {
@@ -106,11 +128,22 @@ export default function approvalGate(pi: ExtensionAPI): void {
         expiresAt: new Date(Date.now() + APPROVAL_TTL_MS).toISOString(),
       });
 
+      // В Telegram-контексте кнопки «Одобрить/Отклонить» прикрепятся к ответу
+      // агента автоматически (подхватываются TelegramSessionPool после agent_end).
+      if (chatId) {
+        addSessionInlineButtons(ctx.sessionManager.getSessionId(), [
+          [
+            { text: "✅ Одобрить", callbackData: `approve:${request.id}` },
+            { text: "❌ Отклонить", callbackData: `deny:${request.id}` },
+          ],
+        ]);
+      }
+
       return {
         content: [
           {
             type: "text",
-            text: `Approval required for "${params.action}" (${decision.actionClass}, scope=${request.scope}).\nReason: ${decision.reason}\nRequest id: ${request.id}\nAsk the user to approve with /approve ${request.id.slice(0, 8)} or deny with /deny ${request.id.slice(0, 8)}. Do NOT perform the action until approval_status says approved.`,
+            text: `Approval required for "${params.action}" (${decision.actionClass}, scope=${request.scope}).\nReason: ${decision.reason}\nRequest id: ${request.id}\nAsk the user to approve or deny this request (Telegram shows inline buttons; CLI fallback: /approve ${request.id.slice(0, 8)} or /deny ${request.id.slice(0, 8)}). Do NOT perform the action until approval_status says approved.`,
           },
         ],
         details: {
@@ -273,10 +306,10 @@ export default function approvalGate(pi: ExtensionAPI): void {
         pi.sendMessage({ customType: "approve", content: [{ type: "text", text: "Укажите id: /approve <id>" }], display: true });
         return;
       }
-      const ok = getService().grant(id);
+      const { message } = applyApprovalDecision("approve", id);
       pi.sendMessage({
         customType: "approve",
-        content: [{ type: "text", text: ok ? "Одобрено." : "Запрос не найден или уже решён." }],
+        content: [{ type: "text", text: message }],
         display: true,
       });
     },
@@ -290,10 +323,10 @@ export default function approvalGate(pi: ExtensionAPI): void {
         pi.sendMessage({ customType: "deny", content: [{ type: "text", text: "Укажите id: /deny <id>" }], display: true });
         return;
       }
-      const ok = getService().deny(id);
+      const { message } = applyApprovalDecision("deny", id);
       pi.sendMessage({
         customType: "deny",
-        content: [{ type: "text", text: ok ? "Отклонено." : "Запрос не найден или уже решён." }],
+        content: [{ type: "text", text: message }],
         display: true,
       });
     },

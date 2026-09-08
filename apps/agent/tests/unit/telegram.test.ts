@@ -3,13 +3,21 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { TelegramBridge } from "../../.pi/extensions/telegram-bot/TelegramBridge.js";
+import {
+  TelegramBridge,
+  formatTelegramHtml,
+} from "../../.pi/extensions/telegram-bot/TelegramBridge.js";
 import {
   TelegramBotController,
   type TelegramBotLike,
+  type TelegramCallbackQueryContext,
 } from "../../.pi/extensions/telegram-bot/TelegramBotController.js";
 import { TelegramSessionPool } from "../../.pi/extensions/telegram-bot/TelegramSessionPool.js";
-import { setSessionFile } from "../../src/utils/session-files.js";
+import {
+  addSessionInlineButtons,
+  setSessionFile,
+  type InlineButton,
+} from "../../src/utils/session-files.js";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "@griha/config";
 import type { GrishAiConfig } from "@griha/shared-types";
@@ -183,12 +191,19 @@ class FakeBot implements TelegramBotLike {
   started = 0;
   stopped = 0;
   handler: ((ctx: unknown) => unknown) | null = null;
-  sent: Array<{ chatId: number; text: string }> = [];
-  docs: Array<{ chatId: number; filePath: string }> = [];
+  callbackHandler: ((ctx: TelegramCallbackQueryContext) => unknown) | null = null;
+  sent: Array<{ chatId: number; text: string; parseMode?: string; buttons?: InlineButton[][] }> = [];
+  docs: Array<{ chatId: number; filePath: string; caption?: string }> = [];
+  chatActions: Array<{ chatId: number; action: string }> = [];
+  commands: Array<{ command: string; description: string }> | null = null;
   private stopResolve: (() => void) | null = null;
 
-  on(_filter: "message", handler: (ctx: unknown) => unknown): void {
-    this.handler = handler;
+  on(
+    filter: "message" | "callback_query:data",
+    handler: ((ctx: unknown) => unknown) | ((ctx: TelegramCallbackQueryContext) => unknown),
+  ): void {
+    if (filter === "message") this.handler = handler as (ctx: unknown) => unknown;
+    else this.callbackHandler = handler as (ctx: TelegramCallbackQueryContext) => unknown;
   }
 
   async start(): Promise<unknown> {
@@ -208,12 +223,35 @@ class FakeBot implements TelegramBotLike {
   }
 
   api = {
-    sendMessage: async (chatId: number, text: string): Promise<unknown> => {
-      this.sent.push({ chatId, text });
+    sendMessage: async (
+      chatId: number,
+      text: string,
+      extra?: { parseMode?: "HTML"; inlineButtons?: InlineButton[][] },
+    ): Promise<unknown> => {
+      this.sent.push({
+        chatId,
+        text,
+        parseMode: extra?.parseMode,
+        buttons: extra?.inlineButtons,
+      });
       return undefined;
     },
-    sendDocument: async (chatId: number, filePath: string): Promise<unknown> => {
-      this.docs.push({ chatId, filePath });
+    sendDocument: async (
+      chatId: number,
+      filePath: string,
+      extra?: { caption?: string },
+    ): Promise<unknown> => {
+      this.docs.push({ chatId, filePath, caption: extra?.caption });
+      return undefined;
+    },
+    sendChatAction: async (chatId: number, action: "typing" | "upload_document"): Promise<unknown> => {
+      this.chatActions.push({ chatId, action });
+      return undefined;
+    },
+    setMyCommands: async (
+      commands: Array<{ command: string; description: string }>,
+    ): Promise<unknown> => {
+      this.commands = commands;
       return undefined;
     },
   };
@@ -258,8 +296,13 @@ describe("telegram bot controller", () => {
     // Let the async bridge/sender chain settle (FakeBot pushes synchronously).
     await new Promise((r) => setTimeout(r, 0));
 
-    assert.deepEqual(fake.sent, [{ chatId: 999, text: "Готово" }]);
-    assert.deepEqual(fake.docs, [{ chatId: 999, filePath: "/tmp/report.pdf" }]);
+    assert.equal(fake.sent.length, 1);
+    assert.equal(fake.sent[0].chatId, 999);
+    assert.equal(fake.sent[0].text, "Готово");
+    assert.equal(fake.sent[0].parseMode, "HTML");
+    assert.equal(fake.docs.length, 1);
+    assert.equal(fake.docs[0].chatId, 999);
+    assert.equal(fake.docs[0].filePath, "/tmp/report.pdf");
   });
 });
 
@@ -271,6 +314,10 @@ class FakeAgentSession {
   disposed = false;
   /** When set, the session registers this file path before ending the turn. */
   pendingFile?: string;
+  /** When set, the session queues these inline buttons before ending the turn. */
+  pendingButtons?: InlineButton[][];
+  /** When set, the session registers this caption for the pending file. */
+  pendingCaption?: string;
 
   subscribe(listener: (event: unknown) => void): () => void {
     this.listeners.push(listener);
@@ -282,7 +329,17 @@ class FakeAgentSession {
 
   async prompt(message: string): Promise<void> {
     this.prompts.push(message);
-    if (this.pendingFile) setSessionFile(this.sessionId, this.pendingFile);
+    // Регистрация одноразовая: как реальный tool, который регистрирует файл
+    // только в том ходу, в котором его вызвали.
+    if (this.pendingFile) {
+      setSessionFile(this.sessionId, this.pendingFile, this.pendingCaption);
+      this.pendingFile = undefined;
+      this.pendingCaption = undefined;
+    }
+    if (this.pendingButtons) {
+      addSessionInlineButtons(this.sessionId, this.pendingButtons);
+      this.pendingButtons = undefined;
+    }
     this.lastText = `ответ на: ${message}`;
     for (const l of [...this.listeners]) l({ type: "agent_end", messages: [] });
   }
@@ -360,5 +417,304 @@ describe("telegram session pool", () => {
     const { pool } = makePool();
     const reply = await pool.handleMessage(1, undefined, "привет");
     assert.equal(reply.filePath, undefined);
+  });
+
+  it("picks up the document caption and inline buttons queued during the turn", async () => {
+    const buttons: InlineButton[][] = [
+      [
+        { text: "✅ Одобрить", callbackData: "approve:abc" },
+        { text: "❌ Отклонить", callbackData: "deny:abc" },
+      ],
+    ];
+    const pool = new TelegramSessionPool({
+      sessionFactory: async () => {
+        const s = new FakeAgentSession();
+        s.pendingFile = "/tmp/report.pdf";
+        s.pendingCaption = "Отчёт по продажам за март";
+        s.pendingButtons = buttons;
+        return s as unknown as AgentSession;
+      },
+    });
+    const reply = await pool.handleMessage(1, undefined, "отчёт");
+    assert.equal(reply.filePath, "/tmp/report.pdf");
+    assert.equal(reply.documentCaption, "Отчёт по продажам за март");
+    assert.deepEqual(reply.inlineButtons, buttons);
+  });
+
+  it("does not leak buttons into the next turn", async () => {
+    const pool = new TelegramSessionPool({
+      sessionFactory: async () => {
+        const s = new FakeAgentSession();
+        s.pendingButtons = [[{ text: "x", callbackData: "y" }]];
+        return s as unknown as AgentSession;
+      },
+    });
+    const first = await pool.handleMessage(1, undefined, "нужно подтверждение");
+    assert.equal(first.inlineButtons?.length, 1);
+    const second = await pool.handleMessage(1, undefined, "спасибо");
+    assert.equal(second.inlineButtons, undefined);
+  });
+});
+
+describe("telegram bridge approval fallback and extras", () => {
+  it("passes inlineButtons and documentCaption to the sender", async () => {
+    const buttons: InlineButton[][] = [
+      [{ text: "✅ Одобрить", callbackData: "approve:xyz" }],
+    ];
+    const sent: Array<{
+      text: string;
+      buttons?: InlineButton[][];
+      caption?: string;
+    }> = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => ({ text: "нужно подтверждение", inlineButtons: buttons, documentCaption: "файл" }),
+      async (_chatId, _text, _filePath, extra) => {
+        sent.push({ text: _text, buttons: extra?.inlineButtons, caption: extra?.documentCaption });
+      },
+    );
+    await bridge.handleUpdate({
+      updateId: 1,
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "действие" },
+    });
+    assert.equal(sent[0].text, "нужно подтверждение");
+    assert.deepEqual(sent[0].buttons, buttons);
+    assert.equal(sent[0].caption, "файл");
+  });
+
+  it("/approve text fallback calls the shared approval handler", async () => {
+    const decisions: Array<{ action: string; id: string }> = [];
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => ({ text: "x" }),
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+      {
+        approvalHandler: (action, id) => {
+          decisions.push({ action, id });
+          return "Одобрено.";
+        },
+      },
+    );
+    await bridge.handleUpdate({
+      updateId: 1,
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "/approve 1234abcd" },
+    });
+    assert.deepEqual(decisions, [{ action: "approve", id: "1234abcd" }]);
+    assert.equal(sent[0], "Одобрено.");
+  });
+
+  it("/deny without id asks for the id", async () => {
+    let called = 0;
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => ({ text: "x" }),
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+      {
+        approvalHandler: () => {
+          called++;
+          return "x";
+        },
+      },
+    );
+    await bridge.handleUpdate({
+      updateId: 1,
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "/deny" },
+    });
+    assert.equal(called, 0);
+    assert.equal(sent[0], "Укажите id: /deny <id>");
+  });
+});
+
+describe("formatTelegramHtml", () => {
+  it("escapes < > & before any tag conversion", () => {
+    assert.equal(formatTelegramHtml("a < b & c > d"), "a &lt; b &amp; c &gt; d");
+  });
+
+  it("converts **bold** and `code` markdown", () => {
+    assert.equal(formatTelegramHtml("это **жирно** и `код`"), "это <b>жирно</b> и <code>код</code>");
+  });
+
+  it("leaves unbalanced markers untouched", () => {
+    assert.equal(formatTelegramHtml("a ** b * c"), "a ** b * c");
+  });
+});
+
+describe("telegram callback_query inline buttons", () => {
+  function fakeCallbackContext(data: string, userId = 123): TelegramCallbackQueryContext & {
+    answered?: string;
+    edited?: { text: string; removeKeyboard?: boolean };
+  } {
+    const ctx: TelegramCallbackQueryContext & {
+      answered?: string;
+      edited?: { text: string; removeKeyboard?: boolean };
+    } = {
+      from: { id: userId },
+      data,
+      message: { chat: { id: 999 }, message_id: 7, text: "нужно подтверждение" },
+      answerCallbackQuery: async (text) => {
+        ctx.answered = text;
+      },
+      editMessageText: async (text, extra) => {
+        ctx.edited = { text, removeKeyboard: extra?.removeKeyboard };
+      },
+    };
+    return ctx;
+  }
+
+  it("calls the shared approval handler via grant path and removes the keyboard", async () => {
+    const fake = new FakeBot();
+    const decisions: Array<{ action: string; id: string }> = [];
+    const controller = new TelegramBotController(
+      async () => ({ text: "x" }),
+      [123],
+      () => fake,
+      {
+        approvalHandler: (action, id) => {
+          decisions.push({ action, id });
+          return "Одобрено.";
+        },
+      },
+    );
+    controller.start("token");
+    assert.ok(fake.callbackHandler, "callback handler should be wired");
+
+    const ctx = fakeCallbackContext("approve:req-123");
+    await fake.callbackHandler!(ctx);
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(decisions, [{ action: "approve", id: "req-123" }]);
+    assert.equal(ctx.answered, "Одобрено.");
+    assert.deepEqual(ctx.edited, {
+      text: "нужно подтверждение\n\nОдобрено.",
+      removeKeyboard: true,
+    });
+    await controller.stop();
+  });
+
+  it("routes deny callback_data to deny", async () => {
+    const fake = new FakeBot();
+    const decisions: Array<{ action: string; id: string }> = [];
+    const controller = new TelegramBotController(
+      async () => ({ text: "x" }),
+      [123],
+      () => fake,
+      {
+        approvalHandler: (action, id) => {
+          decisions.push({ action, id });
+          return "Отклонено.";
+        },
+      },
+    );
+    controller.start("token");
+    const ctx = fakeCallbackContext("deny:req-456");
+    await fake.callbackHandler!(ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(decisions, [{ action: "deny", id: "req-456" }]);
+    assert.equal(ctx.answered, "Отклонено.");
+    assert.equal(ctx.edited?.removeKeyboard, true);
+    await controller.stop();
+  });
+
+  it("ignores callback queries from non-allowed users", async () => {
+    const fake = new FakeBot();
+    let called = 0;
+    const controller = new TelegramBotController(
+      async () => ({ text: "x" }),
+      [123],
+      () => fake,
+      {
+        approvalHandler: () => {
+          called++;
+          return "x";
+        },
+      },
+    );
+    controller.start("token");
+    const ctx = fakeCallbackContext("approve:req-1", 999);
+    await fake.callbackHandler!(ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(called, 0);
+    assert.equal(ctx.answered, "Недоступно.");
+    assert.equal(ctx.edited, undefined);
+    await controller.stop();
+  });
+});
+
+describe("telegram bot startup extras", () => {
+  it("advertises real commands via setMyCommands", async () => {
+    const fake = new FakeBot();
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake);
+    controller.start("token");
+    // setMyCommands уходит fire-and-forget — даём микрозадаче выполниться.
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(fake.commands, "setMyCommands should be called at startup");
+    const names = fake.commands.map((c) => c.command);
+    for (const expected of ["start", "new", "status", "rules", "approve", "deny"]) {
+      assert.ok(names.includes(expected), `expected command ${expected}`);
+    }
+    await controller.stop();
+  });
+
+  it("sends typing chat action before the agent replies", async () => {
+    const fake = new FakeBot();
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake);
+    controller.start("token");
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "привет" },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(
+      fake.chatActions.some((a) => a.chatId === 999 && a.action === "typing"),
+      "typing action expected before reply",
+    );
+    await controller.stop();
+  });
+
+  it("sends upload_document chat action before sending a document", async () => {
+    const fake = new FakeBot();
+    const controller = new TelegramBotController(
+      async () => ({ text: "Готово", filePath: "/tmp/report.pdf", documentCaption: "Отчёт по продажам за март" }),
+      [123],
+      () => fake,
+    );
+    controller.start("token");
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "отчёт" },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(
+      fake.chatActions.some((a) => a.chatId === 999 && a.action === "upload_document"),
+      "upload_document action expected before document",
+    );
+    assert.equal(fake.docs[0].caption, "Отчёт по продажам за март");
+    await controller.stop();
+  });
+
+  it("attaches inline keyboard to sendMessage when the reply carries buttons", async () => {
+    const fake = new FakeBot();
+    const buttons: InlineButton[][] = [
+      [{ text: "✅ Одобрить", callbackData: "approve:q" }],
+    ];
+    const controller = new TelegramBotController(
+      async () => ({ text: "нужно подтверждение", inlineButtons: buttons }),
+      [123],
+      () => fake,
+    );
+    controller.start("token");
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "действие" },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(fake.sent[0].buttons, buttons);
+    await controller.stop();
   });
 });

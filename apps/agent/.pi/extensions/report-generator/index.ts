@@ -32,6 +32,27 @@ const GeneratePresentationSchema = Type.Object({
 });
 type GeneratePresentationParams = Static<typeof GeneratePresentationSchema>;
 
+/** Человекочитаемая подпись Telegram-документа для отчёта. */
+function buildReportCaption(reportType: GenerateReportParams["reportType"], data: GenerateReportParams["data"]): string {
+  const period = typeof data.period === "string" ? data.period : undefined;
+  switch (reportType) {
+    case "sales-report":
+      return period ? `Отчёт по продажам за ${period}` : "Отчёт по продажам";
+    case "expense-report":
+      return period ? `Отчёт по расходам за ${period}` : "Отчёт по расходам";
+    case "meeting-minutes": {
+      const title = typeof data.title === "string" ? data.title : undefined;
+      return title ? `Протокол встречи: ${title}` : "Протокол встречи";
+    }
+  }
+}
+
+/** Человекочитаемая подпись Telegram-документа для презентации. */
+function buildPresentationCaption(slides: GeneratePresentationParams["slides"]): string {
+  const first = slides[0]?.title?.trim();
+  return first ? `Презентация: ${first}` : `Презентация (${slides.length} слайдов)`;
+}
+
 export default function reportGenerator(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "generate_report",
@@ -59,7 +80,7 @@ export default function reportGenerator(pi: ExtensionAPI): void {
         const filePath = await renderPdfReport(params.reportType, params.data);
         // Register the file for the session so the Telegram layer can attach it
         // to the reply as a document (same per-session form as file_id handling).
-        setSessionFile(ctx.sessionManager.getSessionId(), filePath);
+        setSessionFile(ctx.sessionManager.getSessionId(), filePath, buildReportCaption(params.reportType, params.data));
         return {
           content: [{ type: "text", text: `Report generated: ${filePath}` }],
           details: { path: filePath },
@@ -91,7 +112,7 @@ export default function reportGenerator(pi: ExtensionAPI): void {
         const filePath = await renderPresentation(params.slides);
         // Register the file for the session so the Telegram layer can attach it
         // to the reply as a document.
-        setSessionFile(ctx.sessionManager.getSessionId(), filePath);
+        setSessionFile(ctx.sessionManager.getSessionId(), filePath, buildPresentationCaption(params.slides));
         return {
           content: [{ type: "text", text: `Presentation generated: ${filePath}` }],
           details: { path: filePath },
