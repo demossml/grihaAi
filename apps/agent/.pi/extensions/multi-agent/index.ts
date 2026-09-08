@@ -6,7 +6,8 @@ import { BotRegistry } from "./BotRegistry.js";
 import { SubAgentManager, type SubAgentRunner, type SubAgentResult } from "./SubAgentManager.js";
 import { createRealSubAgentRunner } from "./RealSubAgentRunner.js";
 import { SqliteRagMemoryService } from "../sqlite-rag-memory/MemoryService.js";
-import { HashingEmbeddingService } from "../../../src/utils/embeddings.js";
+import { createEmbeddingService } from "../../../src/utils/embeddings.js";
+import { loadConfig } from "@griha/config";
 import type { SearchResult, SubAgentState, SubAgentTask } from "../../../src/types/index.js";
 
 const BOTS_DIR = path.join(process.cwd(), ".grish-ai", "bots");
@@ -24,7 +25,9 @@ let manager: SubAgentManager | null = null;
 
 async function getMemory(): Promise<SqliteRagMemoryService> {
   if (!memory) {
-    memory = new SqliteRagMemoryService(new HashingEmbeddingService());
+    // Same embedding config as the sqlite-rag-memory extension — real HTTP
+    // embeddings when cfg.embedding is set, hashing fallback otherwise.
+    memory = new SqliteRagMemoryService(createEmbeddingService(loadConfig()));
     await memory.init(MEMORY_DB_PATH);
   }
   return memory;

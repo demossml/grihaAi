@@ -4,7 +4,7 @@
 - [x] Test harness green
 - [x] Hybrid FTS5 memory (facts + session search + listRecentFacts)
 - [x] `memory_add` / `memory_search` tools via pi extension
-- [x] Skills discovery + `autoCreated` + prompt formatting (`src/utils/skills.ts`)
+- [x] Skills discovery + `autoCreated` + prompt formatting (позже перенесено в `@griha/skills`)
 - [x] `skills/core/SKILL.md` (manager/secretary/accountant + memory policy)
 - [x] `core-agent` extension (skills injection + closed loop + `/skills`)
 - [x] README + .gitignore
@@ -26,7 +26,7 @@
 - [x] Custom model name is always possible
 
 ## Phase 4 — Vector Memory
-- [x] EmbeddingService (pluggable; deterministic fallback — sqlite-ai/sqlite-rag not on npm)
+- [x] EmbeddingService: реальный HTTP-backend (`createEmbeddingService`, OpenAI-совместимый `/embeddings` из `cfg.embedding`) + `HashingEmbeddingService` как offline-fallback; векторный поиск через sqlite-vec (`vec_distance_cosine`) с fallback на JS-косинус
 - [x] Vectors stored for every new fact
 - [x] Hybrid search (vector + FTS5 + RRF)
 - [x] memory_search now understands meaning

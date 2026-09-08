@@ -57,8 +57,9 @@ pi.dev — рантайм для кодинг-агентов. Установле
 grihaAi/
 ├── apps/
 │   ├── agent/                    # ГЛАВНОЕ приложение: pi extensions + src + tests
-│   │   ├── .pi/extensions/       # все расширения (core-agent, memory, multi-agent, cron,
-│   │   │                         #   model-router, personal-learning, telegram-bot, user-rules)
+│   │   ├── .pi/extensions/       # все расширения (core-agent, first-run-setup, sqlite-rag-memory,
+│   │   │                         #   multi-agent, cron, model-router, personal-learning,
+│   │   │                         #   telegram-bot, user-rules, gateway)
 │   │   ├── src/types, src/utils  # agent-only типы и утилиты
 │   │   └── scripts/stt_local.py  # голосовой STT (faster-whisper, офлайн) + requirements.txt
 │   └── api/                      # Hono: /health + /transcribe (STT) + /admin (auth через adminApiKey)
@@ -159,14 +160,14 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 - Базовая директория по умолчанию — `~/.grish-ai`.
 - Переменная `GRISH_AI_HOME` переопределяет базу (используется в тестах).
 
-Пути считаются в `src/utils/config.ts`:
+Пути считаются в `@griha/config` (`packages/config/src/index.ts`):
 
 - `getConfigDir()` — `GRISH_AI_HOME ?? HOME ?? cwd`, плюс `.grish-ai`;
 - `getConfigPath()` — `.../config.json`;
 - `loadConfig()` — читает и валидирует (минимально: `version === 1`, `provider`, `model`);
 - `saveConfig()` — пишет с отступами.
 
-### Схема `GrishAiConfig` (`src/types/config.ts`)
+### Схема `GrishAiConfig` (`@griha/shared-types`, `packages/shared-types/src/index.ts`)
 
 ```ts
 {
@@ -175,9 +176,11 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
   model: string,
   apiKey?: string,             // можно не хранить, если ключ из env
   baseUrl?: string,            // обязательно для custom
+  adminApiKey?: string,        // ключ для admin/STT HTTP API (apps/api)
   setupCompletedAt: string,    // ISO-дата
   telegram?: { botToken: string; allowedUserIds?: number[] },
-  models?: { main?: ModelConfig; vision?: ModelConfig }   // Phase 10
+  models?: { main?: ModelConfig; vision?: ModelConfig },   // Phase 10
+  embedding?: EmbeddingConfig  // { provider, model, apiKey?, baseUrl? } — реальные эмбеддинги
 }
 ```
 
@@ -191,10 +194,12 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 
 ## 6. Провайдеры, модели и bootstrap
 
-Логика «включить модель и провайдера» вынесена в `src/utils/provider-bootstrap.ts` и переиспользуется двумя местами:
+Логика «включить модель и провайдера» вынесена в `src/utils/provider-bootstrap.ts` и переиспользуется:
 
-1. `first-run-setup` — для основной сессии;
-2. `telegram-bot` — для изолированных субсессий.
+- `first-run-setup` — основная сессия (`applyConfig`);
+- `telegram-bot` и `multi-agent` (субагенты) — изолированные субсессии (инлайн `providerBootstrap` → `applyConfig`);
+- `model-router` — регистрация ключа `models.vision` (`registerModelProvider`);
+- `http-vision` / `http-learning` — резолв OpenAI-совместимого base URL (`resolveModelBaseUrl`).
 
 Функция `applyConfig(pi, ctx, cfg)`:
 
@@ -205,6 +210,8 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 5. `pi.setModel(model)` — активирует модель (возвращает `false`, если нет авторизации).
 
 **Мелочь (критично)**: просто записать `process.env.DEEPSEEK_API_KEY = ...` **недостаточно** — pi перечитывает env только при старте. Поэтому ключ передаётся через `pi.registerProvider(name, { apiKey })`, что помечает провайдера как «авторизованного».
+
+Дополнительно `provider-bootstrap.ts` экспортирует `registerModelProvider(pi, cfg)` (регистрация ключа `models.vision`) и `resolveModelBaseUrl(cfg)` (base URL с дефолтами deepseek/custom) — их используют vision/learning HTTP-вызовы.
 
 ---
 
@@ -221,7 +228,9 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 | Обучение | `LearningLlm` | `createHttpLearningLlm` (OpenAI-совместимый `/chat/completions`, модель из конфига) | `emulatedLlm` (для юнит-тестов) |
 | Telegram-бот | `TelegramBotFactory` (grammy `Bot`) | `new Bot(token)` | `FakeBot` в тестах |
 | Telegram-сессии | `TelegramSessionFactory` | `createAgentSession` | `FakeAgentSession` в тестах |
-| Роутер моделей | `ModelCaller` | (пока нет) | мок в тестах |
+| Роутер моделей | `ModelCaller` | — (не реализован, не используется в проде) | мок в тестах |
+
+**`ModelCaller` — единственный незакрытый компонент таблицы.** Это интерфейс `ModelRouter.call(role, messages)` для прямого вызова текстовой модели (`models.main`/`models.vision`). В проде он **не реализован и не вызывается**: генерация текста идёт через `AgentSession` (цикл pi), а vision — через `createHttpVisionCaller` (обход `ModelRouter.call`; сам `ModelRouter` используется только как `getConfig("vision")`). Приоритет низкий: нужен лишь при появлении сценария прямого LLM-вызова вне агентского цикла — тогда достаточно реализовать `ModelCaller` через OpenAI-совместимый `/chat/completions` (по образцу `createHttpLearningLlm`).
 
 **Правило**: `src/utils/*` — чистые функции без побочных эффектов; `*.pi/extensions/*` — тонкие обёртки, которые связывают чистые утилиты с `pi`/`ctx`. Сервисы (`SqliteRagMemoryService`, `CronService`, `UserProfileService`, `ClientNotesService`) — классы с `init()`/`close()` и ленивой инициализацией.
 
