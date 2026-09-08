@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
+import { computeCronStateSnapshot } from "./real-cron.js";
 
 export interface CronJobInput {
   name: string;
@@ -33,6 +34,7 @@ interface CronJobRow {
   last_run_at: string | null;
   last_result: string | null;
   notepad: string | null;
+  state_snapshot: string | null;
   project_id: string | null;
   created_at: string;
   updated_at: string;
@@ -59,6 +61,7 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
   monitor_mode INTEGER NOT NULL DEFAULT 0,
   last_run_at TEXT,
   last_result TEXT,
+  state_snapshot TEXT,
   notepad TEXT,
   project_id TEXT,
   created_at TEXT NOT NULL,
@@ -98,6 +101,7 @@ export class CronService {
     private readonly dbPath: string,
     private readonly runner?: CronRunner,
     private readonly changeDetector?: CronChangeDetector,
+    private readonly clock: () => Date = () => new Date(),
   ) {}
 
   private requireDb(): Database.Database {
@@ -110,6 +114,11 @@ export class CronService {
     this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
+    // Migration: pre-Phase-7 databases lack the monitorMode snapshot column.
+    const cols = this.db.prepare(`PRAGMA table_info(cron_jobs)`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "state_snapshot")) {
+      this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN state_snapshot TEXT`);
+    }
   }
 
   async close(): Promise<void> {
@@ -134,13 +143,14 @@ export class CronService {
       last_run_at: null,
       last_result: null,
       notepad: null,
+      state_snapshot: null,
       project_id: input.projectId ?? null,
       created_at: now,
       updated_at: now,
     };
     db.prepare(
-      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, project_id, created_at, updated_at)
-       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @project_id, @created_at, @updated_at)`,
+      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, state_snapshot, project_id, created_at, updated_at)
+       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @state_snapshot, @project_id, @created_at, @updated_at)`,
     ).run(row);
     return this.rowToJob(row);
   }
@@ -178,7 +188,7 @@ export class CronService {
   }
 
   async tick(): Promise<CronRunRecord[]> {
-    const now = new Date();
+    const now = this.clock();
     const due = (await this.listJobs()).filter((j) => isDue(j, now));
     const records: CronRunRecord[] = [];
     for (const job of due) {
@@ -200,9 +210,18 @@ export class CronService {
     return rows.map((r) => this.rowToRun(r));
   }
 
+  /** Stored monitorMode snapshot for a job, or null before the first run. */
+  async getStateSnapshot(jobId: string): Promise<string | null> {
+    const db = this.requireDb();
+    const row = db.prepare(`SELECT state_snapshot FROM cron_jobs WHERE id = ?`).get(jobId) as
+      | { state_snapshot: string | null }
+      | undefined;
+    return row?.state_snapshot ?? null;
+  }
+
   private async run(job: CronJob): Promise<CronRunRecord> {
     const runId = randomUUID();
-    const startedAt = new Date().toISOString();
+    const startedAt = this.clock().toISOString();
 
     if (job.monitorMode && this.changeDetector) {
       const changed = await this.changeDetector(job);
@@ -211,7 +230,7 @@ export class CronService {
           id: runId,
           jobId: job.id,
           startedAt,
-          finishedAt: new Date().toISOString(),
+          finishedAt: this.clock().toISOString(),
           status: "skipped",
           usedLlm: false,
         });
@@ -238,10 +257,18 @@ export class CronService {
         usedLlm = false;
       }
 
-      const finishedAt = new Date().toISOString();
+      const finishedAt = this.clock().toISOString();
       this.requireDb()
         .prepare(`UPDATE cron_jobs SET last_run_at = ?, last_result = ?, updated_at = ? WHERE id = ?`)
         .run(finishedAt, result, finishedAt, job.id);
+
+      // Persist the monitorable state so monitorMode can diff against it on
+      // the next tick. Stored only on success — a failed run retries next tick.
+      if (job.monitorMode) {
+        this.requireDb()
+          .prepare(`UPDATE cron_jobs SET state_snapshot = ? WHERE id = ?`)
+          .run(computeCronStateSnapshot(job), job.id);
+      }
 
       return this.insertRun({
         id: runId,
@@ -257,7 +284,7 @@ export class CronService {
         id: runId,
         jobId: job.id,
         startedAt,
-        finishedAt: new Date().toISOString(),
+        finishedAt: this.clock().toISOString(),
         status: "failed",
         result: error instanceof Error ? error.message : String(error),
         usedLlm: false,
@@ -294,6 +321,7 @@ export class CronService {
       lastRunAt: row.last_run_at ?? undefined,
       lastResult: row.last_result ?? undefined,
       notepad: row.notepad ?? undefined,
+      stateSnapshot: row.state_snapshot ?? undefined,
       projectId: row.project_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

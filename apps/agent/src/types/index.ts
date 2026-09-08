@@ -172,6 +172,8 @@ export interface CronJob {
   lastResult?: string;
   /** Durable scratchpad. */
   notepad?: string;
+  /** Snapshot of the monitorable state captured at the last successful run (monitorMode). */
+  stateSnapshot?: string;
   projectId?: string;
   createdAt: string;
   updatedAt: string;

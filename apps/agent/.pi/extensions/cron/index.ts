@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { CronService, type CronRunner } from "./CronService.js";
+import { createRealCronChangeDetector, createRealCronRunner } from "./real-cron.js";
+import { createRealSubAgentRunner } from "../multi-agent/RealSubAgentRunner.js";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
@@ -10,7 +12,7 @@ const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
 let service: CronService | null = null;
 let ticker: ReturnType<typeof setInterval> | null = null;
 
-/** Emulated runner — swap for a real LLM runner later. */
+/** Emulated runner kept for offline/time-free unit tests. */
 const emulatedRunner: CronRunner = async (job, prompt) => ({
   result: `[cron] ${job.name} — выполнение эмулировано (${prompt.slice(0, 120)})`,
   usedLlm: false,
@@ -18,8 +20,13 @@ const emulatedRunner: CronRunner = async (job, prompt) => ({
 
 async function getService(): Promise<CronService> {
   if (!service) {
-    service = new CronService(DB_PATH, emulatedRunner);
-    await service.init();
+    const svc = new CronService(
+      DB_PATH,
+      createRealCronRunner(createRealSubAgentRunner()),
+      createRealCronChangeDetector((jobId) => svc.getStateSnapshot(jobId)),
+    );
+    await svc.init();
+    service = svc;
   }
   return service;
 }

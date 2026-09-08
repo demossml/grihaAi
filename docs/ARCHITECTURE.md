@@ -216,7 +216,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 |---|---|---|---|
 | Память | `EmbeddingService` | `HttpEmbeddingService` (OpenAI-совместимый `/embeddings`, из `cfg.embedding`) | `HashingEmbeddingService` (детерминированный fallback) |
 | Субагенты | `SubAgentRunner` | `createRealSubAgentRunner` (изолированный `AgentSession` по `subtreeSessionId`) | `emulatedRunner` (для юнит-тестов) |
-| Cron | `CronRunner`, `CronChangeDetector` | (пока нет) | `emulatedRunner` |
+| Cron | `CronRunner`, `CronChangeDetector` | `createRealCronRunner` (через `SubAgentRunner`), `createRealCronChangeDetector` (дифф `state_snapshot` в sqlite) | `emulatedRunner` (для юнит-тестов) |
 | Vision | `VisionCaller` | (пока нет) | `emulatedVision` |
 | Обучение | `LearningLlm` | (пока нет) | `emulatedLlm` (пустая выдача) |
 | Telegram-бот | `TelegramBotFactory` (grammy `Bot`) | `new Bot(token)` | `FakeBot` в тестах |
@@ -225,7 +225,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 
 **Правило**: `src/utils/*` — чистые функции без побочных эффектов; `*.pi/extensions/*` — тонкие обёртки, которые связывают чистые утилиты с `pi`/`ctx`. Сервисы (`SqliteRagMemoryService`, `CronService`, `UserProfileService`, `ClientNotesService`) — классы с `init()`/`close()` и ленивой инициализацией.
 
-Все оставшиеся «эмуляции» (Cron, Vision, Обучение) — это **осознанные заглушки** с комментарием «swap for a real … later». Они делают фазы рабочими end-to-end, пока не подключены реальные LLM-вызовы.
+Все оставшиеся «эмуляции» (Vision, Обучение) — это **осознанные заглушки** с комментарием «swap for a real … later». Они делают фазы рабочими end-to-end, пока не подключены реальные LLM-вызовы.
 
 ---
 
