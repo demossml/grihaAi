@@ -1,0 +1,639 @@
+{
+  "meta": {
+    "generatedAt": "2026-09-08T18:46:16.025Z",
+    "commitSha": "see repo git log",
+    "node": "v26.0.0",
+    "os": "darwin arm64",
+    "sqlite": "3.53.4 (better-sqlite3 13.0.3)",
+    "sqliteVec": "0.1.9",
+    "embeddingBackend": "HashingEmbeddingService dim=384 (offline fallback; no HTTP embedding configured in this environment)"
+  },
+  "benchmark": {
+    "datasetSize": 1220,
+    "queryCount": 185,
+    "durationMs": 46477
+  },
+  "retrieval": {
+    "recallAt1": 0.1599,
+    "recallAt5": 0.5075,
+    "recallAt10": 0.5892,
+    "mrr": 0.4369,
+    "precisionAt5": 0.2227,
+    "precisionAt10": 0.1341,
+    "ndcgAt10": 0.4515,
+    "perKind": {
+      "exact": {
+        "queries": 20,
+        "recallAt1": 0.4,
+        "recallAt5": 0.95,
+        "recallAt10": 1,
+        "mrr": 0.6266666666666667,
+        "precisionAt5": 0.19000000000000006,
+        "precisionAt10": 0.10000000000000002,
+        "ndcgAt10": 0.7198854381099926
+      },
+      "semantic": {
+        "queries": 20,
+        "recallAt1": 0.07999999999999999,
+        "recallAt5": 0.20000000000000004,
+        "recallAt10": 0.20000000000000004,
+        "mrr": 0.6666666666666667,
+        "precisionAt5": 0.20000000000000004,
+        "precisionAt10": 0.10000000000000002,
+        "ndcgAt10": 0.2551746085306191
+      },
+      "temporal": {
+        "queries": 15,
+        "recallAt1": 0.5,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 1,
+        "precisionAt5": 0.4000000000000001,
+        "precisionAt10": 0.20000000000000004,
+        "ndcgAt10": 1
+      },
+      "contradiction": {
+        "queries": 50,
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "precisionAt5": 0,
+        "precisionAt10": 0,
+        "ndcgAt10": 0
+      },
+      "near-duplicate": {
+        "queries": 50,
+        "recallAt1": 0.02,
+        "recallAt5": 0.77,
+        "recallAt10": 1,
+        "mrr": 0.3993333333333332,
+        "precisionAt5": 0.308,
+        "precisionAt10": 0.19999999999999993,
+        "ndcgAt10": 0.5806837437927341
+      },
+      "noisy": {
+        "queries": 10,
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "precisionAt5": 0,
+        "precisionAt10": 0,
+        "ndcgAt10": 0
+      },
+      "multi-hop": {
+        "queries": 10,
+        "recallAt1": 0.1476190476190476,
+        "recallAt5": 0.7380952380952381,
+        "recallAt10": 1,
+        "mrr": 1,
+        "precisionAt5": 1,
+        "precisionAt10": 0.68,
+        "ndcgAt10": 1
+      },
+      "metadata-filter": {
+        "queries": 10,
+        "recallAt1": 1,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 1,
+        "precisionAt5": 0.19999999999999998,
+        "precisionAt10": 0.09999999999999999,
+        "ndcgAt10": 1
+      }
+    }
+  },
+  "latency": [
+    {
+      "size": 1000,
+      "writeMs": {
+        "avg": 0.08069535100460053,
+        "p50": 0.0620419979095459,
+        "p95": 0.11583298444747925,
+        "p99": 1.0152080059051514,
+        "min": 0.04379194974899292,
+        "max": 1.253374993801117,
+        "n": 1000
+      },
+      "embeddingMs": {
+        "avg": 0.008993254244327545,
+        "p50": 0.006583988666534424,
+        "p95": 0.012000024318695068,
+        "p99": 0.04766702651977539,
+        "min": 0.005791008472442627,
+        "max": 0.7254999876022339,
+        "n": 1000
+      },
+      "ftsMs": {
+        "avg": 0.2235141944885254,
+        "p50": 0.20579200983047485,
+        "p95": 0.31174999475479126,
+        "p99": 0.6969580054283142,
+        "min": 0.16316699981689453,
+        "max": 0.6969580054283142,
+        "n": 50
+      },
+      "vectorMs": {
+        "avg": 0.40125079870224,
+        "p50": 0.3805840015411377,
+        "p95": 0.4799579977989197,
+        "p99": 0.9020410180091858,
+        "min": 0.34662503004074097,
+        "max": 0.9020410180091858,
+        "n": 50
+      },
+      "hybridMs": {
+        "avg": 0.6610792398452758,
+        "p50": 0.6344589591026306,
+        "p95": 0.8155410289764404,
+        "p99": 1.0598750114440918,
+        "min": 0.5325829982757568,
+        "max": 1.0598750114440918,
+        "n": 50
+      },
+      "pipelineMs": {
+        "avg": 0.6156908929347992,
+        "p50": 0.5906669497489929,
+        "p95": 0.7822500467300415,
+        "p99": 0.978583037853241,
+        "min": 0.514333963394165,
+        "max": 0.978583037853241,
+        "n": 50
+      }
+    },
+    {
+      "size": 10000,
+      "writeMs": {
+        "avg": 0.09492957199811936,
+        "p50": 0.06133300065994263,
+        "p95": 0.13224995136260986,
+        "p99": 1.3734999895095825,
+        "min": 0.04387497901916504,
+        "max": 3.98404198884964,
+        "n": 10000
+      },
+      "embeddingMs": {
+        "avg": 0.007702527105808258,
+        "p50": 0.006542026996612549,
+        "p95": 0.009707987308502197,
+        "p99": 0.02183300256729126,
+        "min": 0.005707979202270508,
+        "max": 0.29645800590515137,
+        "n": 10000
+      },
+      "ftsMs": {
+        "avg": 5.13218996167183,
+        "p50": 5.091749966144562,
+        "p95": 5.952084004878998,
+        "p99": 6.3065420389175415,
+        "min": 4.572499990463257,
+        "max": 6.3065420389175415,
+        "n": 50
+      },
+      "vectorMs": {
+        "avg": 7.558019115924835,
+        "p50": 7.347000002861023,
+        "p95": 8.668166995048523,
+        "p99": 13.212708055973053,
+        "min": 6.851875007152557,
+        "max": 13.212708055973053,
+        "n": 50
+      },
+      "hybridMs": {
+        "avg": 9.1742975795269,
+        "p50": 8.924374997615814,
+        "p95": 10.184542000293732,
+        "p99": 14.710749983787537,
+        "min": 8.446208000183105,
+        "max": 14.710749983787537,
+        "n": 50
+      },
+      "pipelineMs": {
+        "avg": 8.868627494573593,
+        "p50": 8.790875017642975,
+        "p95": 9.468708992004395,
+        "p99": 10.691624999046326,
+        "min": 8.180417001247406,
+        "max": 10.691624999046326,
+        "n": 50
+      }
+    },
+    {
+      "size": 50000,
+      "writeMs": {
+        "avg": 0.10468182005763053,
+        "p50": 0.06154203414916992,
+        "p95": 0.1325410008430481,
+        "p99": 2.36599999666214,
+        "min": 0.04462498426437378,
+        "max": 9.319167017936707,
+        "n": 50000
+      },
+      "embeddingMs": {
+        "avg": 0.007372654367685318,
+        "p50": 0.00645899772644043,
+        "p95": 0.008708000183105469,
+        "p99": 0.017250001430511475,
+        "min": 0.005666017532348633,
+        "max": 3.0841659903526306,
+        "n": 50000
+      },
+      "ftsMs": {
+        "avg": 24.708485352993012,
+        "p50": 24.555583000183105,
+        "p95": 27.752083003520966,
+        "p99": 27.752083003520966,
+        "min": 23.383000016212463,
+        "max": 27.752083003520966,
+        "n": 20
+      },
+      "vectorMs": {
+        "avg": 35.425077161192895,
+        "p50": 35.09741699695587,
+        "p95": 40.119666039943695,
+        "p99": 40.119666039943695,
+        "min": 33.99787497520447,
+        "max": 40.119666039943695,
+        "n": 20
+      },
+      "hybridMs": {
+        "avg": 59.28946450352669,
+        "p50": 58.841583013534546,
+        "p95": 64.49683398008347,
+        "p99": 64.49683398008347,
+        "min": 57.15750002861023,
+        "max": 64.49683398008347,
+        "n": 20
+      },
+      "pipelineMs": {
+        "avg": 59.42104994952679,
+        "p50": 58.65224999189377,
+        "p95": 68.32458400726318,
+        "p99": 68.32458400726318,
+        "min": 56.833374977111816,
+        "max": 68.32458400726318,
+        "n": 20
+      }
+    },
+    {
+      "size": 100000,
+      "writeMs": {
+        "avg": 0.10910401632010937,
+        "p50": 0.06245797872543335,
+        "p95": 0.1333329677581787,
+        "p99": 2.6648330092430115,
+        "min": 0.04462498426437378,
+        "max": 19.03533297777176,
+        "n": 100000
+      },
+      "embeddingMs": {
+        "avg": 0.0074793535166978835,
+        "p50": 0.0065000057220458984,
+        "p95": 0.008417010307312012,
+        "p99": 0.01662498712539673,
+        "min": 0.005665957927703857,
+        "max": 5.43970799446106,
+        "n": 100000
+      },
+      "ftsMs": {
+        "avg": 52.053602007031444,
+        "p50": 51.678624987602234,
+        "p95": 60.723791003227234,
+        "p99": 60.723791003227234,
+        "min": 47.61862498521805,
+        "max": 60.723791003227234,
+        "n": 20
+      },
+      "vectorMs": {
+        "avg": 73.79081880450249,
+        "p50": 73.63349997997284,
+        "p95": 81.65116602182388,
+        "p99": 81.65116602182388,
+        "min": 69.42045801877975,
+        "max": 81.65116602182388,
+        "n": 20
+      },
+      "hybridMs": {
+        "avg": 125.16763134598732,
+        "p50": 124.31654196977615,
+        "p95": 135.4298329949379,
+        "p99": 135.4298329949379,
+        "min": 117.41833400726318,
+        "max": 135.4298329949379,
+        "n": 20
+      },
+      "pipelineMs": {
+        "avg": 126.26487084627152,
+        "p50": 125.26674997806549,
+        "p95": 136.25262504816055,
+        "p99": 136.25262504816055,
+        "min": 118.06374996900558,
+        "max": 136.25262504816055,
+        "n": 20
+      }
+    }
+  ],
+  "storage": {
+    "storage10k": {
+      "records": 10000,
+      "rawTextBytes": 759048,
+      "dbBytes": 22302720,
+      "ftsBytes": 20553728,
+      "embeddingBytes": 15360000,
+      "walBytes": 0,
+      "bytesPerRecord": 2230,
+      "factsOnlyBytes": 1748992
+    },
+    "storage100k": {
+      "records": 100000,
+      "rawTextBytes": 7790546,
+      "dbBytes": 222330880,
+      "ftsBytes": 204697600,
+      "embeddingBytes": 153600000,
+      "walBytes": 0,
+      "bytesPerRecord": 2223,
+      "factsOnlyBytes": 17633280
+    }
+  },
+  "concurrency": [
+    {
+      "writers": 1,
+      "readers": 5,
+      "busyErrors": 0,
+      "lockedErrors": 0,
+      "otherErrors": 0,
+      "writeLatencyMs": {
+        "avg": 0.04666144043207168,
+        "p50": 0.031166017055511475,
+        "p95": 0.08641701936721802,
+        "p99": 0.46358299255371094,
+        "min": 0.02012503147125244,
+        "max": 1.050000011920929,
+        "n": 200
+      },
+      "readLatencyMs": {
+        "avg": 0.007513909757137298,
+        "p50": 0.006749987602233887,
+        "p95": 0.012125015258789062,
+        "p99": 0.03533297777175903,
+        "min": 0.0027499794960021973,
+        "max": 0.12145799398422241,
+        "n": 1000
+      },
+      "consistency": true,
+      "note": "single-process, multiple connections; synchronous driver — no multi-core parallelism"
+    },
+    {
+      "writers": 1,
+      "readers": 20,
+      "busyErrors": 0,
+      "lockedErrors": 0,
+      "otherErrors": 0,
+      "writeLatencyMs": {
+        "avg": 0.03935353308916092,
+        "p50": 0.030125021934509277,
+        "p95": 0.07179200649261475,
+        "p99": 0.15266603231430054,
+        "min": 0.019291996955871582,
+        "max": 0.6754580140113831,
+        "n": 200
+      },
+      "readLatencyMs": {
+        "avg": 0.007018457531929016,
+        "p50": 0.006375014781951904,
+        "p95": 0.011541008949279785,
+        "p99": 0.01862502098083496,
+        "min": 0.0026250481605529785,
+        "max": 0.18708300590515137,
+        "n": 4000
+      },
+      "consistency": true,
+      "note": "single-process, multiple connections; synchronous driver — no multi-core parallelism"
+    },
+    {
+      "writers": 5,
+      "readers": 20,
+      "busyErrors": 0,
+      "lockedErrors": 0,
+      "otherErrors": 0,
+      "writeLatencyMs": {
+        "avg": 0.04205641198158264,
+        "p50": 0.02933400869369507,
+        "p95": 0.07312500476837158,
+        "p99": 0.3304590582847595,
+        "min": 0.019208014011383057,
+        "max": 2.010833978652954,
+        "n": 1000
+      },
+      "readLatencyMs": {
+        "avg": 0.018103360578417778,
+        "p50": 0.017166972160339355,
+        "p95": 0.03233301639556885,
+        "p99": 0.0564579963684082,
+        "min": 0.005290985107421875,
+        "max": 0.6279590129852295,
+        "n": 4000
+      },
+      "consistency": true,
+      "note": "single-process, multiple connections; synchronous driver — no multi-core parallelism"
+    }
+  ],
+  "failures": [
+    {
+      "name": "transaction-rollback",
+      "status": "PASS",
+      "detail": "rows=0, fts=0"
+    },
+    {
+      "name": "interrupted-write",
+      "status": "PASS",
+      "detail": "rows after reopen=0"
+    },
+    {
+      "name": "embedding-failure",
+      "status": "PASS",
+      "detail": "threw=true, rows=0"
+    },
+    {
+      "name": "duplicate-insertion",
+      "status": "PASS",
+      "detail": "rows=2 — duplicates are NOT deduplicated by design"
+    },
+    {
+      "name": "malformed-metadata",
+      "status": "FAIL",
+      "detail": "READ PATH THROWS on malformed metadata — partial state is possible via raw SQL"
+    },
+    {
+      "name": "missing-embedding",
+      "status": "PASS",
+      "detail": "fts-hit=true, reembedded=1"
+    },
+    {
+      "name": "corrupted-embedding",
+      "status": "FAIL",
+      "detail": "one corrupted BLOB breaks the ENTIRE vector search query"
+    },
+    {
+      "name": "failed-retrieval",
+      "status": "PASS",
+      "detail": "search before init throws with clear message"
+    },
+    {
+      "name": "sqlite-restart",
+      "status": "PASS",
+      "detail": "hits=1"
+    }
+  ],
+  "idempotency": [
+    {
+      "writes": 1,
+      "factRows": 1,
+      "ftsRows": 1,
+      "embeddingRows": 1,
+      "note": "no deduplication strategy — every write creates a new record/embedding/FTS row"
+    },
+    {
+      "writes": 5,
+      "factRows": 5,
+      "ftsRows": 5,
+      "embeddingRows": 5,
+      "note": "no deduplication strategy — every write creates a new record/embedding/FTS row"
+    },
+    {
+      "writes": 100,
+      "factRows": 100,
+      "ftsRows": 100,
+      "embeddingRows": 100,
+      "note": "no deduplication strategy — every write creates a new record/embedding/FTS row"
+    }
+  ],
+  "deletion": [
+    {
+      "name": "delete-api",
+      "status": "NOT IMPLEMENTED",
+      "detail": "MemoryService has NO delete/update API — deletion only possible via raw SQL"
+    },
+    {
+      "name": "delete-by-id",
+      "status": "PASS",
+      "detail": "search no longer returns id; fts rows=2 (3 inserted, 1 deleted)"
+    },
+    {
+      "name": "delete-by-project",
+      "status": "PASS",
+      "detail": "raw DELETE + FTS trigger removes the record from index; fts rows=1"
+    },
+    {
+      "name": "delete-by-session",
+      "status": "PASS",
+      "detail": "messages + FTS cleaned; fts matches=0"
+    }
+  ],
+  "temporal": [
+    {
+      "scenario": "PostgreSQL (Jan) → SQLite (Sep)",
+      "query": "What database does the user currently use?",
+      "top3": [
+        "A(jan-postgres) [vector]",
+        "B(sep-sqlite) [vector]"
+      ],
+      "note": "posA(jan-postgres)=0, posB(sep-sqlite)=1; ranking has NO time weighting — recency is not part of the score"
+    }
+  ],
+  "contradiction": {
+    "pairs": 50,
+    "newerFirst": 0,
+    "olderFirst": 50,
+    "tie": 0,
+    "note": "no explicit supersedes relation, no contradiction detection, no confidence in ranking"
+  },
+  "sqliteAudit": {
+    "pragmas": {
+      "journal_mode": "wal",
+      "synchronous": "1",
+      "busy_timeout": "5000",
+      "cache_size": "-16000",
+      "page_size": "4096",
+      "auto_vacuum": "0",
+      "mmap_size": "0"
+    },
+    "tables": [
+      "facts",
+      "facts_fts",
+      "facts_fts_config",
+      "facts_fts_data",
+      "facts_fts_docsize",
+      "facts_fts_idx",
+      "insights",
+      "insights_fts",
+      "insights_fts_config",
+      "insights_fts_data",
+      "insights_fts_docsize",
+      "insights_fts_idx",
+      "messages",
+      "messages_fts",
+      "messages_fts_config",
+      "messages_fts_data",
+      "messages_fts_docsize",
+      "messages_fts_idx"
+    ],
+    "explainFts": [
+      "SCAN facts_fts VIRTUAL TABLE INDEX 0:M1",
+      "SEARCH f USING INTEGER PRIMARY KEY (rowid=?)",
+      "USE TEMP B-TREE FOR ORDER BY"
+    ],
+    "explainVector": [
+      "SCAN facts",
+      "USE TEMP B-TREE FOR ORDER BY"
+    ],
+    "production": {
+      "found": true,
+      "path": "/Users/dmitrijsuvalov/.grish-ai/memory.sqlite",
+      "tables": {
+        "facts": 0,
+        "facts_fts": 0,
+        "facts_fts_data": 2,
+        "facts_fts_idx": 0,
+        "facts_fts_docsize": 0,
+        "facts_fts_config": 1,
+        "messages": 0,
+        "messages_fts": 0,
+        "messages_fts_data": 2,
+        "messages_fts_idx": 0,
+        "messages_fts_docsize": 0,
+        "messages_fts_config": 1,
+        "cron_jobs": 0,
+        "cron_runs": 0,
+        "insights": 0,
+        "insights_fts": 0,
+        "insights_fts_data": 2,
+        "insights_fts_idx": 0,
+        "insights_fts_docsize": 0,
+        "insights_fts_config": 1,
+        "user_profiles": 1,
+        "client_notes": 40,
+        "client_notes_fts": 40,
+        "client_notes_fts_data": 12,
+        "client_notes_fts_idx": 10,
+        "client_notes_fts_docsize": 40,
+        "client_notes_fts_config": 1
+      }
+    }
+  },
+  "candidates": {
+    "sqliteRag": {
+      "status": "NOT TESTED (research-only, no runtime benchmark)"
+    },
+    "sqliteVector": {
+      "status": "NOT TESTED (isolated benchmark not run — see report)"
+    },
+    "sqliteMemory": {
+      "status": "NOT TESTED (research-only)"
+    },
+    "sqliteAi": {
+      "status": "NOT TESTED (research-only)"
+    }
+  }
+}
