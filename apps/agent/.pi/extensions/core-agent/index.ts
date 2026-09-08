@@ -1,5 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { discoverSkills, formatSkillsForPrompt } from "@griha/skills";
+import { loadConfig } from "@griha/config";
+import { buildRouterHint } from "../../../src/utils/adaptive-router.js";
+import { createHttpLearningLlm } from "../../../src/utils/http-learning.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",
@@ -44,6 +47,19 @@ export default function coreAgent(pi: ExtensionAPI): void {
       sections.unshift("## Available skills", formatSkillsForPrompt(skills), LEARNING_LOOP_POLICY);
     }
     sections.push(LANGUAGE_POLICY);
+
+    // Adaptive router pre-filter: for COMPLEX messages add a ready delegation
+    // plan as a hint. The agent still decides whether to call delegate_tasks.
+    const cfg = loadConfig();
+    if (cfg) {
+      try {
+        const hint = await buildRouterHint(event.prompt, createHttpLearningLlm(cfg));
+        if (hint) sections.push(hint);
+      } catch {
+        // Router hint is best-effort — never break the agent on it.
+      }
+    }
+
     return { systemPrompt: `${event.systemPrompt}\n\n${sections.join("\n\n")}` };
   });
 

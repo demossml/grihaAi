@@ -82,3 +82,34 @@ ${userMessage}
     return { complexity: "complex", reason, tasks: [{ goal: userMessage, role: "general" }] };
   }
 }
+
+/** Format a delegation plan as a system-prompt hint (does not force the call). */
+export function formatDelegationHint(plan: DelegationPlan): string {
+  const tasks = plan.tasks
+    .map(
+      (t, i) =>
+        `${i + 1}. [${t.role ?? "general"}] ${t.goal}${t.context ? ` (контекст: ${t.context})` : ""}`,
+    )
+    .join("\n");
+  return [
+    "## Delegation hint (adaptive router)",
+    `Задача классифицирована как COMPLEX (${plan.reason}). Готовый план делегирования:`,
+    tasks,
+    "Ты можешь вызвать delegate_tasks с этими подзадачами или выполнить задачу самостоятельно — решение остаётся за тобой.",
+  ].join("\n");
+}
+
+/**
+ * Pre-filter for the agent loop: classify the incoming message and, only when
+ * COMPLEX, build a delegation plan and return a system-prompt hint. SIMPLE
+ * messages return null and never invoke the (LLM) orchestrator.
+ */
+export async function buildRouterHint(
+  userMessage: string,
+  llmCall: (prompt: string) => Promise<string>,
+): Promise<string | null> {
+  const { complexity } = await classifyComplexity(userMessage);
+  if (complexity === "simple") return null;
+  const plan = await buildDelegationPlan(userMessage, llmCall);
+  return formatDelegationHint(plan);
+}
