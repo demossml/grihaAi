@@ -12,7 +12,7 @@ import type {
   ExtensionContext,
   ProviderModelConfig,
 } from "@earendil-works/pi-coding-agent";
-import type { GrishAiConfig } from "@griha/shared-types";
+import type { GrishAiConfig, ModelConfig } from "@griha/shared-types";
 
 export const CUSTOM_BASE_URL_DEFAULT = "https://api.openai.com/v1";
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
@@ -55,6 +55,18 @@ export function registerDeepSeekProvider(pi: ExtensionAPI, cfg: GrishAiConfig): 
       makeModel("deepseek-v4-flash-vision-exp", "DeepSeek V4 Flash Vision (Exp)", { vision: true }),
     ],
   });
+}
+
+/**
+ * Register a model config's provider key through pi — the same mechanism
+ * `applyConfig` uses for the main model. A literal `apiKey` marks the provider
+ * as "authorized" without relying on `process.env`, which pi only snapshots at
+ * startup. Used by the vision tool for `models.vision`.
+ */
+export function registerModelProvider(pi: ExtensionAPI, cfg: ModelConfig): void {
+  if (cfg.apiKey) {
+    pi.registerProvider(cfg.provider, { apiKey: cfg.apiKey });
+  }
 }
 
 /**

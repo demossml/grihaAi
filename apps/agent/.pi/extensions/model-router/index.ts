@@ -6,10 +6,17 @@ import {
   type AnalyzeImageParams,
   type VisionCaller,
 } from "../../../src/utils/image-analyzer.js";
+import { createHttpVisionCaller } from "../../../src/utils/http-vision.js";
+import { downloadTelegramFileAsBase64 } from "../../../src/utils/telegram-files.js";
+import { registerModelProvider } from "../../../src/utils/provider-bootstrap.js";
+import { ModelRouter } from "../../../src/utils/model-router.js";
 
-/** Emulated vision caller — swap for a real vision LLM call later. */
-const emulatedVision: VisionCaller = async (_vision, image, task, languageHint) =>
+/** Emulated vision caller kept for offline/time-free unit tests. */
+export const emulatedVision: VisionCaller = async (_vision, image, task, languageHint) =>
   `[vision] ${task}${languageHint ? ` (${languageHint})` : ""}: ${image.source}:${image.value.slice(0, 80)}`;
+
+/** Real vision caller: OpenAI-compatible /chat/completions to models.vision. */
+const realVision = createHttpVisionCaller();
 
 export default function modelRouter(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (event) => {
@@ -48,7 +55,39 @@ export default function modelRouter(pi: ExtensionAPI): void {
           details: { ok: false },
         };
       }
-      const result = await runAnalyzeImage(cfg, params, emulatedVision);
+
+      // Phase 10: a Telegram photo arrives as a `file_id`. Resolve it to image
+      // bytes through the Bot API before the vision call (the Main Brain path).
+      let resolved = params;
+      if (params.fileId) {
+        const botToken = cfg.telegram?.botToken;
+        if (!botToken) {
+          return {
+            content: [{ type: "text", text: "Telegram bot token is not configured — cannot resolve file_id." }],
+            details: { ok: false },
+          };
+        }
+        try {
+          const dataUrl = await downloadTelegramFileAsBase64(botToken, params.fileId);
+          resolved = { ...params, fileId: undefined, imageBase64: dataUrl };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return {
+            content: [{ type: "text", text: `Failed to download Telegram photo: ${message}` }],
+            details: { ok: false },
+          };
+        }
+      }
+
+      // Register the vision provider key through pi (§6: env is not re-read
+      // after startup). The real caller reads the key from the model config.
+      try {
+        registerModelProvider(pi, new ModelRouter(cfg).getConfig("vision"));
+      } catch {
+        // runAnalyzeImage reports the missing-vision error below.
+      }
+
+      const result = await runAnalyzeImage(cfg, resolved, realVision);
       return { content: [{ type: "text", text: result.text }], details: { ok: result.ok } };
     },
   });

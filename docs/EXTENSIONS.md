@@ -225,9 +225,9 @@
 
 Файлы: `index.ts`.
 
-- `emulatedVision` — заглушка vision (`[vision] ...`).
+- `emulatedVision` — заглушка vision (`[vision] ...`), оставлена для юнит-тестов.
 - **События**: `before_agent_start` — добавляет руководство «когда фото/скрин — используй `analyze_image`».
-- **Инструмент**: `analyze_image` (`imageUrl`/`imageBase64`/`fileId` + `task` ocr|describe|ocr_and_describe + `languageHint`), вызывает `runAnalyzeImage` с `emulatedVision`.
+- **Инструмент**: `analyze_image` (`imageUrl`/`imageBase64`/`fileId` + `task` ocr|describe|ocr_and_describe + `languageHint`). `fileId` (Telegram-фото) резолвится в base64 через Bot API (`src/utils/telegram-files.ts`), затем реальный вызов `createHttpVisionCaller` (`src/utils/http-vision.ts`) к `models.vision`; ключ провайдера регистрируется через `pi.registerProvider` (`registerModelProvider`).
 - **Команда**: `/models` — статус main + vision.
 
 ### `personal-learning/`
