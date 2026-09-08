@@ -21,6 +21,8 @@ import approvalGate from "../approval-gate/index.js";
 import commitmentTracking from "../commitment-tracking/index.js";
 import voiceIntake from "../voice-intake/index.js";
 import proactiveAssistant from "../proactive-assistant/index.js";
+import financeExtension from "../finance/index.js";
+import crmExtension from "../crm/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 
 /**
@@ -53,6 +55,8 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   commitmentTracking,
   voiceIntake,
   proactiveAssistant,
+  financeExtension,
+  crmExtension,
   providerBootstrap,
 ];
 

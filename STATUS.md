@@ -168,5 +168,16 @@
 - [x] Skills: `daily-briefing`, `anomaly-watch`, `meeting-prep`, `meeting-followup`, `contact-context-briefing`, `calendar-scheduling`, `focus-time-protection`, `meeting-notes`
 - [x] Tests: briefing timezone/empty sections/commitments, focus-time, anomaly detectors, calendar service (184 tests)
 
+## Phase 18 — Finance + Documents + CRM (этап 4)
+
+- [x] `finance` extension: `FinanceService` (expenses + invoices) + tools `expense_add/list`, `transaction_categorize`, `invoice_add/list/set_status`, `finance_summary`
+- [x] Статусы invoice (`draft|sent|due|overdue|paid|cancelled`) выводятся из dueDate; `paid` — финансовое действие, проходит approval policy
+- [x] `src/utils/finance.ts` — категоризация (история → уточнение, без auto-apply на похожие), `summarizeExpenses`/`comparePeriods`, `parseExpenseFromOcr` (не угадывает)
+- [x] `crm` extension: `ContactService` (identity, tags, last interaction, provenance, Unicode-безопасный dedupe) + tools `contact_upsert/list/touch`
+- [x] Anomaly-скан счетов: duplicate invoices + invoice overdue записываются в AnomalyService
+- [x] Skills: `expense-invoice-tracking`, `transaction-categorization`, `invoice-followup`, `financial-report`, `document-intake-ocr`, `document-drafting`, `client-notes-crm`
+- [x] `finance` и `crm` добавлены в `SUB_SESSION_EXTENSIONS` Telegram-сессий
+- [x] Tests: finance utils, finance service (invoice statuses), contact service (199 tests)
+
 
 

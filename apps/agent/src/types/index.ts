@@ -462,3 +462,103 @@ export type ContactBriefingParams = Static<typeof ContactBriefingSchema>;
 
 export const MeetingPrepSchema = Type.Object({ eventId: Type.String() });
 export type MeetingPrepParams = Static<typeof MeetingPrepSchema>;
+
+/** Phase 18 — Finance + CRM */
+
+export interface Expense {
+  id: string;
+  userId: string;
+  date: string;
+  vendor: string;
+  amount: number;
+  currency: string;
+  category?: string;
+  paymentMethod?: string;
+  documentId?: string;
+  confidence: number;
+  source: "ocr" | "voice" | "manual";
+  createdAt: string;
+}
+
+export type InvoiceStatus = "draft" | "sent" | "due" | "overdue" | "paid" | "cancelled";
+
+export interface Invoice {
+  id: string;
+  userId: string;
+  number: string;
+  vendor?: string;
+  amount: number;
+  currency: string;
+  dueDate?: string;
+  status: InvoiceStatus;
+  contactId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Contact {
+  id: string;
+  userId: string;
+  name: string;
+  tags: string[];
+  lastInteractionAt?: string;
+  provenance?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ExpenseAddSchema = Type.Object({
+  date: Type.String(),
+  vendor: Type.String({ minLength: 1 }),
+  amount: Type.Number(),
+  currency: Type.String({ minLength: 1 }),
+  category: Type.Optional(Type.String()),
+  paymentMethod: Type.Optional(Type.String()),
+  confidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  source: Type.Optional(Type.Union([Type.Literal("ocr"), Type.Literal("voice"), Type.Literal("manual")])),
+});
+export type ExpenseAddParams = Static<typeof ExpenseAddSchema>;
+
+export const ExpenseListSchema = Type.Object({
+  from: Type.Optional(Type.String()),
+  to: Type.Optional(Type.String()),
+  category: Type.Optional(Type.String()),
+});
+export type ExpenseListParams = Static<typeof ExpenseListSchema>;
+
+export const InvoiceAddSchema = Type.Object({
+  number: Type.String({ minLength: 1 }),
+  vendor: Type.Optional(Type.String()),
+  amount: Type.Number(),
+  currency: Type.String({ minLength: 1 }),
+  dueDate: Type.Optional(Type.String()),
+  contactId: Type.Optional(Type.String()),
+});
+export type InvoiceAddParams = Static<typeof InvoiceAddSchema>;
+
+export const InvoiceSetStatusSchema = Type.Object({
+  id: Type.String(),
+  status: Type.Union([
+    Type.Literal("draft"), Type.Literal("sent"), Type.Literal("due"),
+    Type.Literal("overdue"), Type.Literal("paid"), Type.Literal("cancelled"),
+  ]),
+});
+export type InvoiceSetStatusParams = Static<typeof InvoiceSetStatusSchema>;
+
+export const FinanceSummarySchema = Type.Object({
+  from: Type.Optional(Type.String()),
+  to: Type.Optional(Type.String()),
+});
+export type FinanceSummaryParams = Static<typeof FinanceSummarySchema>;
+
+export const TransactionCategorizeSchema = Type.Object({
+  vendor: Type.String({ minLength: 1 }),
+  amount: Type.Optional(Type.Number()),
+});
+export type TransactionCategorizeParams = Static<typeof TransactionCategorizeSchema>;
+
+export const ContactUpsertSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  tags: Type.Optional(Type.Array(Type.String())),
+});
+export type ContactUpsertParams = Static<typeof ContactUpsertSchema>;
