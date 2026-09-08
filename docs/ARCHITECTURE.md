@@ -253,4 +253,5 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 
 - [docs/EXTENSIONS.md](EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
 - [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md) — глубокий разбор Telegram-бота и пула изолированных сессий.
+- [docs/SECURITY.md](SECURITY.md) — периметр, модель доверия, gateway и sandbox-слои.
 - [STATUS.md](../STATUS.md) — прогресс по фазам.

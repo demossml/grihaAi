@@ -13,6 +13,8 @@ import { applyConfig } from "../../../src/utils/provider-bootstrap.js";
 import coreAgent from "../core-agent/index.js";
 import modelRouter from "../model-router/index.js";
 import userRules from "../user-rules/index.js";
+import gateway from "../gateway/index.js";
+import { setSessionTrust } from "../../../src/sandbox/gateway-context.js";
 import type { SubAgentRunTask, SubAgentRunner } from "./SubAgentManager.js";
 
 /**
@@ -40,6 +42,7 @@ const SUB_AGENT_EXTENSIONS: ExtensionFactory[] = [
   coreAgent,
   modelRouter,
   userRules,
+  gateway,
   providerBootstrap,
 ];
 
@@ -100,6 +103,9 @@ async function createSession(cwd: string, task: SubAgentRunTask): Promise<AgentS
     sessionManager: SessionManager.create(cwd, sessionsDir),
     sessionStartEvent: { type: "session_start", reason: "startup" },
   });
+  // Sub-agents run LLM-driven tool calls on untrusted input → mark untrusted so
+  // the gateway blocks shell/file-mutation tools (defense-in-depth).
+  setSessionTrust(session.sessionId, "untrusted");
   await session.bindExtensions({ mode: "json" });
   return session;
 }

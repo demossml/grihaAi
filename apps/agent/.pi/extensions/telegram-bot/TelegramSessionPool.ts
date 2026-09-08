@@ -14,6 +14,7 @@ import coreAgent from "../core-agent/index.js";
 import multiAgent from "../multi-agent/index.js";
 import modelRouter from "../model-router/index.js";
 import userRules from "../user-rules/index.js";
+import gateway from "../gateway/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 
 /**
@@ -40,6 +41,7 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   multiAgent,
   modelRouter,
   userRules,
+  gateway,
   providerBootstrap,
 ];
 

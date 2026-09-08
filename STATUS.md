@@ -116,3 +116,13 @@
 - [x] typecheck зелёный (10 задач)
 
 **Initial Working Project reached — ready for further phases (hard isolation, gateway).**
+
+## Phase 14 — Hard isolation & gateway
+
+- [x] `docs/SECURITY.md` — периметр, модель доверия, слои защиты
+- [x] Gateway-расширение (`gateway`) — единая точка блокировки `tool_call` по allowlist
+- [x] `src/utils/gateway-policy.ts` — чистая политика (trusted/untrusted)
+- [x] `src/sandbox` — `SandboxProvider` (DI): `dev` (local) + `runsc` (gVisor)
+- [x] Субагенты/cron помечаются `untrusted` → без shell и мутации файлов
+- [x] Tests: gateway-policy + sandbox (dev/runsc-missing)
+
