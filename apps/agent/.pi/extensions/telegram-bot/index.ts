@@ -1,10 +1,9 @@
-import { Bot } from "grammy";
+import { Bot, InputFile } from "grammy";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type GrishaAgent } from "./TelegramBridge.js";
 import {
   TelegramBotController,
   type TelegramBotFactory,
-  type TelegramBotLike,
 } from "./TelegramBotController.js";
 import { TelegramSessionPool } from "./TelegramSessionPool.js";
 import { loadConfig, saveConfig } from "@griha/config";
@@ -12,15 +11,33 @@ import { shouldProcessMessage } from "../user-rules/prefilter.js";
 import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { telegramRulesHandler } from "../user-rules/index.js";
 
-const realBotFactory: TelegramBotFactory = (token) =>
-  new Bot(token) as unknown as TelegramBotLike;
+/**
+ * Adapts the real grammy Bot to the framework-free `TelegramBotLike` surface.
+ * Document delivery wraps the path in grammy's `InputFile` (a raw string would
+ * be treated as a remote file_id, not a local file).
+ */
+const realBotFactory: TelegramBotFactory = (token) => {
+  const bot = new Bot(token);
+  return {
+    on: (filter, handler) => {
+      void bot.on(filter, handler as never);
+    },
+    start: () => bot.start(),
+    stop: () => bot.stop(),
+    api: {
+      sendMessage: (chatId, text) => bot.api.sendMessage(chatId, text),
+      sendDocument: (chatId, filePath) =>
+        bot.api.sendDocument(chatId, new InputFile(filePath)),
+    },
+  };
+};
 
 let controller: TelegramBotController | null = null;
 let pool: TelegramSessionPool | null = null;
 
 function grishaAgent(): GrishaAgent {
   return async (input) => {
-    if (!pool) return "Гриша временно недоступен.";
+    if (!pool) return { text: "Гриша временно недоступен." };
     return pool.handleMessage(input.userId, input.chatId, input.message);
   };
 }

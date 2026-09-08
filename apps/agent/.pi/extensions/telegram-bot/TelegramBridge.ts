@@ -27,6 +27,12 @@ export interface TgUpdate {
   message?: TgMessage;
 }
 
+export interface GrishaAgentReply {
+  text: string;
+  /** Optional path to a generated file to send as a document (99% of replies omit it). */
+  filePath?: string;
+}
+
 export interface GrishaAgent {
   (input: {
     message: string;
@@ -34,7 +40,7 @@ export interface GrishaAgent {
     platform: "telegram";
     sessionKey: string;
     chatId?: string;
-  }): Promise<string>;
+  }): Promise<GrishaAgentReply>;
 }
 
 /** Layer-1 pre-filter: return false to silently drop the message (0 tokens). */
@@ -53,7 +59,7 @@ export interface TelegramResetHandler {
 }
 
 export interface TelegramReplySender {
-  (chatId: number, text: string): Promise<void>;
+  (chatId: number, text: string, filePath?: string): Promise<void>;
 }
 
 function lastPhotoFileId(photo: Array<{ file_id?: string }>): string {
@@ -132,7 +138,7 @@ export class TelegramBridge {
         sessionKey: `tg:${userId}`,
         chatId: String(chatId),
       });
-      await this.sender(chatId, response);
+      await this.sender(chatId, response.text, response.filePath);
       return { handled: true };
     }
     if (msg.document?.file_id) {
@@ -145,7 +151,7 @@ export class TelegramBridge {
         sessionKey: `tg:${userId}`,
         chatId: String(chatId),
       });
-      await this.sender(chatId, response);
+      await this.sender(chatId, response.text, response.filePath);
       return { handled: true };
     }
     if (!text) return { handled: false, reason: "empty" };
@@ -159,7 +165,7 @@ export class TelegramBridge {
       sessionKey: `tg:${userId}`,
       chatId: String(chatId),
     });
-    await this.sender(chatId, response);
+    await this.sender(chatId, response.text, response.filePath);
     return { handled: true };
   }
 }

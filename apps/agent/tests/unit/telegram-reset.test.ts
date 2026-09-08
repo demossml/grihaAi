@@ -11,7 +11,7 @@ class FakeAgentSession {
   prompts: string[] = [];
   lastText = "";
   disposed = false;
-  id = Math.random().toString(36).slice(2);
+  sessionId = Math.random().toString(36).slice(2);
 
   subscribe(listener: Listener): () => void {
     this.listeners.push(listener);
@@ -72,7 +72,7 @@ describe("telegram /new reset", () => {
     const sent: string[] = [];
     const bridge = new TelegramBridge(
       [123],
-      async () => "x",
+      async () => ({ text: "x" }),
       async (_chatId, text) => {
         sent.push(text);
       },

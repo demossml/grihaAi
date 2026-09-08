@@ -10,11 +10,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { getConfigDir, loadConfig } from "@griha/config";
 import { applyConfig } from "../../../src/utils/provider-bootstrap.js";
+import { takeSessionFile } from "../../../src/utils/session-files.js";
 import coreAgent from "../core-agent/index.js";
 import multiAgent from "../multi-agent/index.js";
 import modelRouter from "../model-router/index.js";
 import userRules from "../user-rules/index.js";
 import gateway from "../gateway/index.js";
+import reportGenerator from "../report-generator/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 
 /**
@@ -42,6 +44,7 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   modelRouter,
   userRules,
   gateway,
+  reportGenerator,
   providerBootstrap,
 ];
 
@@ -57,7 +60,13 @@ export interface TelegramSessionPoolOptions {
 
 interface SessionEntry {
   sessionPromise: Promise<AgentSession>;
-  queue: Promise<string>;
+  queue: Promise<TelegramReply>;
+}
+
+/** Agent reply: text plus an optional generated file to send as a document. */
+export interface TelegramReply {
+  text: string;
+  filePath?: string;
 }
 
 /**
@@ -100,7 +109,7 @@ export class TelegramSessionPool {
     if (!entry) {
       entry = {
         sessionPromise: this.sessionFactory(userId),
-        queue: Promise.resolve(""),
+        queue: Promise.resolve({ text: "" }),
       };
       this.sessions.set(userId, entry);
     }
@@ -136,9 +145,9 @@ export class TelegramSessionPool {
   }
 
   /** Send a message to a user's isolated session and return Grisha's reply. */
-  handleMessage(userId: number, chatId: string | undefined, message: string): Promise<string> {
+  handleMessage(userId: number, chatId: string | undefined, message: string): Promise<TelegramReply> {
     const entry = this.getOrCreate(userId);
-    const run = async (): Promise<string> => {
+    const run = async (): Promise<TelegramReply> => {
       const session = await entry.sessionPromise;
       return this.runPrompt(session, chatId, String(userId), message);
     };
@@ -151,14 +160,14 @@ export class TelegramSessionPool {
     chatId: string | undefined,
     userId: string,
     message: string,
-  ): Promise<string> {
+  ): Promise<TelegramReply> {
     let settled = false;
-    let resolveReply!: (value: string) => void;
-    const reply = new Promise<string>((resolve) => {
+    let resolveReply!: (value: TelegramReply) => void;
+    const reply = new Promise<TelegramReply>((resolve) => {
       resolveReply = resolve;
     });
 
-    const finish = (value: string): void => {
+    const finish = (value: TelegramReply): void => {
       if (settled) return;
       settled = true;
       resolveReply(value);
@@ -172,7 +181,9 @@ export class TelegramSessionPool {
       unsubscribe();
       clearSessionContext(sessionId);
       const text = session.getLastAssistantText();
-      finish(text && text.trim() ? text : "Гриша не ответил.");
+      // Pick up any file a tool registered for this session (report-generator).
+      const filePath = takeSessionFile(sessionId);
+      finish({ text: text && text.trim() ? text : "Гриша не ответил.", filePath });
     });
 
     try {
@@ -183,7 +194,7 @@ export class TelegramSessionPool {
     } catch {
       unsubscribe();
       clearSessionContext(sessionId);
-      finish("Не удалось получить ответ от Гриши.");
+      finish({ text: "Не удалось получить ответ от Гриши." });
     }
 
     return reply;

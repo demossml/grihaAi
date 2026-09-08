@@ -12,7 +12,10 @@ export interface TelegramBotLike {
   on(filter: "message", handler: (ctx: unknown) => unknown): void;
   start(): Promise<unknown>;
   stop(): Promise<unknown>;
-  api: { sendMessage(chatId: number, text: string): Promise<unknown> };
+  api: {
+    sendMessage(chatId: number, text: string): Promise<unknown>;
+    sendDocument(chatId: number, filePath: string): Promise<unknown>;
+  };
 }
 
 export interface TelegramBotFactory {
@@ -51,7 +54,10 @@ export class TelegramBotController {
     const bridge = new TelegramBridge(
       this.allowedUserIds,
       this.agent,
-      (chatId, text) => bot.api.sendMessage(chatId, text).then(() => undefined),
+      async (chatId, text, filePath) => {
+        await bot.api.sendMessage(chatId, text);
+        if (filePath) await bot.api.sendDocument(chatId, filePath);
+      },
       this.options,
     );
 

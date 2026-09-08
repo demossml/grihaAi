@@ -1,11 +1,12 @@
 import { Type, type Static } from "typebox";
 import { Check, Errors } from "typebox/value";
-import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   ReportTypeSchema,
   REPORT_SCHEMAS,
 } from "../../../src/utils/report-schemas.js";
 import { renderPdfReport, renderPresentation } from "../../../src/utils/report-renderer.js";
+import { setSessionFile } from "../../../src/utils/session-files.js";
 
 /**
  * Deterministic document generation.
@@ -41,6 +42,9 @@ export default function reportGenerator(pi: ExtensionAPI): void {
     async execute(
       _toolCallId: string,
       params: GenerateReportParams,
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ path?: string; error?: string }>> {
       const schema = REPORT_SCHEMAS[params.reportType];
       if (!Check(schema, params.data)) {
@@ -53,6 +57,9 @@ export default function reportGenerator(pi: ExtensionAPI): void {
 
       try {
         const filePath = await renderPdfReport(params.reportType, params.data);
+        // Register the file for the session so the Telegram layer can attach it
+        // to the reply as a document (same per-session form as file_id handling).
+        setSessionFile(ctx.sessionManager.getSessionId(), filePath);
         return {
           content: [{ type: "text", text: `Report generated: ${filePath}` }],
           details: { path: filePath },
@@ -76,9 +83,15 @@ export default function reportGenerator(pi: ExtensionAPI): void {
     async execute(
       _toolCallId: string,
       params: GeneratePresentationParams,
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ path?: string; error?: string }>> {
       try {
         const filePath = await renderPresentation(params.slides);
+        // Register the file for the session so the Telegram layer can attach it
+        // to the reply as a document.
+        setSessionFile(ctx.sessionManager.getSessionId(), filePath);
         return {
           content: [{ type: "text", text: `Presentation generated: ${filePath}` }],
           details: { path: filePath },

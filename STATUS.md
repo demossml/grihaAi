@@ -134,4 +134,15 @@
 - [x] `src/utils/report-renderer.ts` — renderHtml / renderPdfReport (Playwright) / renderPresentation (pptxgenjs)
 - [x] DI: pdfRenderFn/pptxWriteFn инжектируемы; integration-тест с реальным Chromium — skip без браузера
 
+## Phase 15b — Telegram-доставка сгенерированных файлов
+
+- [x] `src/utils/session-files.ts` — per-session registry `setSessionFile`/`takeSessionFile`
+- [x] `generate_report`/`generate_presentation` регистрируют путь через `ctx.sessionManager.getSessionId()`
+- [x] `TelegramSessionPool.runPrompt` забирает файл на `agent_end` и возвращает `{text, filePath?}`
+- [x] Bridge/controller: текст доставляется как раньше, при наличии файла — `sendDocument` (grammy `InputFile`)
+- [x] `report-generator` добавлен в `SUB_SESSION_EXTENSIONS` Telegram-сессий
+- [x] Skills: `sales-report` и `meeting-minutes` (формат фиксирован шаблоном, агент меняет только данные)
+- [x] Tests: доставка файла в bridge/controller/pool (grammy Bot замокан)
+
+
 

@@ -9,6 +9,7 @@ import {
   type TelegramBotLike,
 } from "../../.pi/extensions/telegram-bot/TelegramBotController.js";
 import { TelegramSessionPool } from "../../.pi/extensions/telegram-bot/TelegramSessionPool.js";
+import { setSessionFile } from "../../src/utils/session-files.js";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "@griha/config";
 import type { GrishAiConfig } from "@griha/shared-types";
@@ -21,7 +22,7 @@ describe("telegram bridge", () => {
       [123],
       async (input) => {
         calls.push({ message: input.message, userId: input.userId, sessionKey: input.sessionKey });
-        return "ответ Гриши";
+        return { text: "ответ Гриши" };
       },
       async (chatId, text) => {
         sent.push({ chatId, text });
@@ -47,7 +48,7 @@ describe("telegram bridge", () => {
       [123],
       async () => {
         agentCalled = true;
-        return "x";
+        return { text: "x" };
       },
       async () => {
         sent++;
@@ -67,7 +68,7 @@ describe("telegram bridge", () => {
 
   it("handles /start and /status commands", async () => {
     const sent: string[] = [];
-    const bridge = new TelegramBridge([123], async () => "x", async (_chatId, text) => {
+    const bridge = new TelegramBridge([123], async () => ({ text: "x" }), async (_chatId, text) => {
       sent.push(text);
     });
     await bridge.handleUpdate({
@@ -89,7 +90,7 @@ describe("telegram bridge", () => {
       [123],
       async () => {
         agentCalled = true;
-        return "x";
+        return { text: "x" };
       },
       async (chatId) => {
         sent.push(chatId);
@@ -114,7 +115,7 @@ describe("telegram bridge", () => {
     let sent = "";
     const bridge = new TelegramBridge(
       [123],
-      async () => "x",
+      async () => ({ text: "x" }),
       async (_chatId, text) => {
         sent = text;
       },
@@ -157,12 +158,33 @@ describe("telegram bridge", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("sends a document when the agent reply carries a file path", async () => {
+    const sent: Array<{ chatId: number; text: string; filePath?: string }> = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => ({ text: "Готово", filePath: "/tmp/report.pdf" }),
+      async (chatId, text, filePath) => {
+        sent.push({ chatId, text, filePath });
+      },
+    );
+
+    await bridge.handleUpdate({
+      updateId: 6,
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "сделай отчёт" },
+    });
+
+    assert.equal(sent[0].text, "Готово");
+    assert.equal(sent[0].filePath, "/tmp/report.pdf");
+  });
 });
 
 class FakeBot implements TelegramBotLike {
   started = 0;
   stopped = 0;
   handler: ((ctx: unknown) => unknown) | null = null;
+  sent: Array<{ chatId: number; text: string }> = [];
+  docs: Array<{ chatId: number; filePath: string }> = [];
 
   on(_filter: "message", handler: (ctx: unknown) => unknown): void {
     this.handler = handler;
@@ -179,14 +201,21 @@ class FakeBot implements TelegramBotLike {
   }
 
   api = {
-    sendMessage: async (_chatId: number, _text: string): Promise<unknown> => undefined,
+    sendMessage: async (chatId: number, text: string): Promise<unknown> => {
+      this.sent.push({ chatId, text });
+      return undefined;
+    },
+    sendDocument: async (chatId: number, filePath: string): Promise<unknown> => {
+      this.docs.push({ chatId, filePath });
+      return undefined;
+    },
   };
 }
 
 describe("telegram bot controller", () => {
   it("starts and stops long polling", async () => {
     const fake = new FakeBot();
-    const controller = new TelegramBotController(async () => "x", [123], () => fake);
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake);
 
     controller.start("token");
     assert.equal(controller.isRunning(), true);
@@ -200,18 +229,41 @@ describe("telegram bot controller", () => {
 
   it("does not restart when already running", () => {
     const fake = new FakeBot();
-    const controller = new TelegramBotController(async () => "x", [123], () => fake);
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake);
     controller.start("token");
     controller.start("token");
     assert.equal(fake.started, 1);
   });
+
+  it("calls sendDocument with the file path from the agent reply", async () => {
+    const fake = new FakeBot();
+    const controller = new TelegramBotController(
+      async () => ({ text: "Готово", filePath: "/tmp/report.pdf" }),
+      [123],
+      () => fake,
+    );
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "отчёт" },
+    });
+    // Let the async bridge/sender chain settle (FakeBot pushes synchronously).
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(fake.sent, [{ chatId: 999, text: "Готово" }]);
+    assert.deepEqual(fake.docs, [{ chatId: 999, filePath: "/tmp/report.pdf" }]);
+  });
 });
 
 class FakeAgentSession {
+  sessionId = Math.random().toString(36).slice(2);
   listeners: Array<(event: unknown) => void> = [];
   prompts: string[] = [];
   lastText = "";
   disposed = false;
+  /** When set, the session registers this file path before ending the turn. */
+  pendingFile?: string;
 
   subscribe(listener: (event: unknown) => void): () => void {
     this.listeners.push(listener);
@@ -223,6 +275,7 @@ class FakeAgentSession {
 
   async prompt(message: string): Promise<void> {
     this.prompts.push(message);
+    if (this.pendingFile) setSessionFile(this.sessionId, this.pendingFile);
     this.lastText = `ответ на: ${message}`;
     for (const l of [...this.listeners]) l({ type: "agent_end", messages: [] });
   }
@@ -257,8 +310,8 @@ describe("telegram session pool", () => {
     const { pool, sessions } = makePool();
     const a = await pool.handleMessage(1, undefined, "привет");
     const b = await pool.handleMessage(2, undefined, "hi");
-    assert.equal(a, "ответ на: привет");
-    assert.equal(b, "ответ на: hi");
+    assert.equal(a.text, "ответ на: привет");
+    assert.equal(b.text, "ответ на: hi");
     assert.equal(pool.activeCount(), 2);
     assert.equal(sessions.size, 2);
     assert.deepEqual(sessions.get(1)!.prompts, ["привет"]);
@@ -281,5 +334,24 @@ describe("telegram session pool", () => {
     await pool.disposeAll();
     assert.equal(pool.activeCount(), 0);
     for (const s of sessions.values()) assert.equal(s.disposed, true);
+  });
+
+  it("returns the pending file path from the session", async () => {
+    const pool = new TelegramSessionPool({
+      sessionFactory: async () => {
+        const s = new FakeAgentSession();
+        s.pendingFile = "/tmp/report.pdf";
+        return s as unknown as AgentSession;
+      },
+    });
+    const reply = await pool.handleMessage(1, undefined, "отчёт");
+    assert.equal(reply.text, "ответ на: отчёт");
+    assert.equal(reply.filePath, "/tmp/report.pdf");
+  });
+
+  it("returns no filePath when nothing was generated", async () => {
+    const { pool } = makePool();
+    const reply = await pool.handleMessage(1, undefined, "привет");
+    assert.equal(reply.filePath, undefined);
   });
 });
