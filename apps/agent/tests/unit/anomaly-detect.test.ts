@@ -4,6 +4,7 @@ import {
   detectCommitmentOverdue,
   detectDuplicateInvoices,
   detectExpenseOutliers,
+  detectRepeatedFailures,
 } from "../../src/utils/anomaly-detect.js";
 import type { Commitment } from "../../src/types/index.js";
 
@@ -64,5 +65,19 @@ describe("anomaly detection", () => {
       { id: "e2", amount: 5000, currency: "RUB" },
     ]);
     assert.equal(out.length, 0);
+  });
+
+  it("flags repeated workflow failures", () => {
+    const out = detectRepeatedFailures([
+      { id: "r1", status: "failed" },
+      { id: "r2", status: "failed" },
+      { id: "r3", status: "failed" },
+    ]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].type, "repeated_failure");
+  });
+
+  it("does not flag failures below the threshold", () => {
+    assert.equal(detectRepeatedFailures([{ id: "r1", status: "failed" }]).length, 0);
   });
 });

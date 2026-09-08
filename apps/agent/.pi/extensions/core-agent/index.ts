@@ -21,6 +21,19 @@ const DELEGATION_POLICY = [
   "6. Важные находки субагентов сохраняй в Shared Insights (инструмент get_shared_insights).",
 ].join("\n");
 
+const ORCHESTRATION_POLICY = [
+  "## Orchestration flow",
+  "Ты — оркестратор. Для каждой задачи иди по цепочке, не выполняя бизнес-логику сам:",
+  "1. Определи intent (что хочет пользователь).",
+  "2. Выбери skill/capability (см. список доступных skills).",
+  "3. Получи нужный context через инструменты (meeting_prep, contact_briefing, briefing_generate, finance_summary, commitment_list) — не сканируй всю память вручную.",
+  "4. Проверь policy (approval_required для side-effect / финансовых действий).",
+  "5. Запусти workflow-шаг через соответствующий инструмент (commitment_add, expense_add, event_add, …).",
+  "6. Верни результат.",
+  "",
+  "Доменная логика живёт в сервисах/инструментах, а не в твоём ответе.",
+].join("\n");
+
 export const LANGUAGE_POLICY = `
 ## Language Policy (strict)
 
@@ -42,7 +55,7 @@ Just answer naturally in the matching language.
 export default function coreAgent(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (event) => {
     const skills = await discoverSkills();
-    const sections = [DELEGATION_POLICY];
+    const sections = [DELEGATION_POLICY, ORCHESTRATION_POLICY];
     if (skills.length > 0) {
       sections.unshift("## Available skills", formatSkillsForPrompt(skills), LEARNING_LOOP_POLICY);
     }

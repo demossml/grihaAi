@@ -112,3 +112,32 @@ export function toAnomaly(id: string, input: AnomalyInput, detectedAt: string): 
     status: "new",
   };
 }
+
+/** Repeatedly failed workflow runs → anomaly (deterministic, no LLM). */
+export interface RunRecordLike {
+  id: string;
+  status: string;
+}
+
+export function detectRepeatedFailures(
+  runs: RunRecordLike[],
+  threshold = 3,
+): AnomalyInput[] {
+  // Consider only the most recent consecutive failures.
+  const sorted = [...runs].sort((a, b) => (a.id < b.id ? 1 : -1));
+  let failures = 0;
+  for (const run of sorted) {
+    if (run.status === "failed") failures++;
+    else break;
+  }
+  if (failures < threshold) return [];
+  return [
+    {
+      userId: "owner",
+      type: "repeated_failure",
+      severity: "warning",
+      explanation: `Повторяющиеся сбои workflow: ${failures} подряд.`,
+      evidence: { consecutiveFailures: failures },
+    },
+  ];
+}
