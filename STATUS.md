@@ -222,5 +222,13 @@
 - [x] Авторизация модели: логирование результата `applyConfig` (успех/причина неудачи) в основной сессии и Telegram-субсессиях
 - [x] Tests: reconnect/retry (6), proxy (2), applyConfig (2) — 250 tests
 
+## Phase 24 — PDF-рендер на @json-render/react-pdf
+
+- [x] PDF-рендер отчётов мигрировал с Playwright (headless Chromium) на **@json-render/react-pdf** (JSON-spec + `@react-pdf/renderer`, чистый Node без браузера)
+- [x] `src/utils/reports/report-specs.ts` — три builder-функции (sales/expense/meeting-minutes) из фиксированного каталога компонентов; Handlebars-шаблоны удалены
+- [x] `renderPdfReport` с DI (`pdfSpecRenderFn`); unit-тесты проверяют spec-дерево, integration-тест рендерит реальный PDF в обычном CI
+- [x] Презентации (pptxgenjs) — без изменений
+
+
 
 

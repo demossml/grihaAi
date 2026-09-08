@@ -95,7 +95,8 @@
 ### `src/utils/reports/` — отчёты
 
 - `report-schemas.ts`: TypeBox-схемы данных отчётов (`SalesReportSchema`, `ExpenseReportSchema`, `MeetingMinutesSchema`), `ReportTypeSchema`, `REPORT_SCHEMAS`. Валидация (`Check`/`Errors`) — **до** рендера.
-- `report-renderer.ts`: `renderHtml` (Handlebars), `renderPdfReport` (Playwright), `renderPresentation` (pptxgenjs). DI: `pdfRenderFn`/`pptxWriteFn` инжектируемы для тестов. Шаблоны — `../.pi/extensions/report-generator/templates/` относительно файла.
+- `report-specs.ts`: три builder-функции (`buildSalesReportSpec`/`buildExpenseReportSpec`/`buildMeetingMinutesSpec`) — собирают json-render-спек из фиксированного каталога компонентов (`Document/Page/Heading/Text/Table/List/Divider/Spacer`). Палитра из старых HTML-шаблонов (`#1f3864` и т.д.).
+- `report-renderer.ts`: `renderPdfReport` (spec → `renderToFile` из **@json-render/react-pdf**, чистый Node без браузера), `renderPresentation` (pptxgenjs, без изменений). DI: `pdfSpecRenderFn`/`pptxWriteFn` инжектируемы для тестов.
 
 ### `src/utils/telegram/` — Telegram-специфика
 
@@ -318,10 +319,10 @@ Allowlist capabilities для субагентов (untrusted): только `me
 
 ### `report-generator/`
 
-Файлы: `index.ts`, `templates/*.html` (sales-report, expense-report, meeting-minutes).
+Файлы: `index.ts`.
 
 - **Инструменты**: `generate_report(reportType, data)` (PDF) и `generate_presentation(slides)` (PPTX).
-- Валидация данных — `src/utils/reports/report-schemas.ts`; рендер — `src/utils/reports/report-renderer.ts`; путь файла регистрируется в `src/utils/telegram/session-files.ts` через `ctx.sessionManager.getSessionId()` (для Telegram-доставки).
+- Валидация данных — `src/utils/reports/report-schemas.ts`; spec — `src/utils/reports/report-specs.ts`; рендер — `src/utils/reports/report-renderer.ts`; путь файла регистрируется в `src/utils/telegram/session-files.ts` через `ctx.sessionManager.getSessionId()` (для Telegram-доставки).
 - Вывод: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
 
 ### `approval-gate/`
@@ -411,7 +412,7 @@ Allowlist capabilities для субагентов (untrusted): только `me
   - HTTP-вызовы: `http-vision`, `http-learning`, `telegram-files`;
   - telegram: `telegram` (bridge/controller/pool + доставка файла), `telegram-reset`;
   - `user-rules`.
-- `tests/unit/*.integration.test.ts` — интеграционные (`real-subagent-runner`, `report-renderer`): реальный Chromium/субагент; скипаются без браузера/сети.
+- `tests/unit/*.integration.test.ts` — интеграционные (`real-subagent-runner`, `report-renderer`): реальный субагент / реальный `@react-pdf/renderer` (чистый Node, без браузера).
 - `tests/integration/` — пусто (зарезервировано).
 
 Запуск: `npm test` (это `tsx --test tests/**/*.test.ts`).

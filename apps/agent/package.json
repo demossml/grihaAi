@@ -18,18 +18,19 @@
     "@griha/shared-types": "*",
     "@griha/skills": "*",
     "@griha/stt": "*",
+    "@json-render/core": "^0.20.0",
+    "@json-render/react-pdf": "^0.20.0",
     "better-sqlite3": "^13.0.3",
     "grammy": "^1.46.0",
-    "handlebars": "^4.7.9",
     "https-proxy-agent": "^7.0.6",
-    "playwright": "^1.63.0",
     "pptxgenjs": "^4.0.1",
+    "react": "^19.2.8",
     "sqlite-vec": "^0.1.9",
-    "typebox": "^1.3.28"
+    "typebox": "^1.3.28",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/handlebars": "^4.1.0",
     "tsx": "^4.23.13"
   }
 }

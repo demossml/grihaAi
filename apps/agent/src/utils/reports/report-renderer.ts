@@ -1,23 +1,19 @@
-import Handlebars from "handlebars";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import type { ReportType } from "./report-schemas.js";
+import { buildReportSpec, type ReportSpec } from "./report-specs.js";
 
 /**
- * Deterministic document generation from FIXED templates.
+ * Deterministic document generation from FIXED json-render specs.
  *
- * The LLM only fills data into a pre-built layout — it cannot change the
- * template, so figures land in the same place in every report. Handlebars is
- * the template engine; Playwright (headless Chromium) renders HTML→PDF for
- * pixel-accurate output — a deliberate heavy dependency (see ARCHITECTURE.md).
+ * The LLM only fills data into a pre-built spec — it cannot change the layout,
+ * so figures land in the same place in every report. The spec uses only the
+ * standard @json-render/react-pdf component catalog (Document, Page, Heading,
+ * Text, Table, List, Divider, Spacer); rendering happens in pure Node via
+ * @react-pdf/renderer — no headless browser.
  */
-
-const DEFAULT_TEMPLATES_DIR = fileURLToPath(
-  new URL("../../../.pi/extensions/report-generator/templates/", import.meta.url),
-);
 
 /** Output directory for generated files. */
 export const REPORTS_DIR = path.join(homedir(), ".grish-ai", "reports");
@@ -28,46 +24,30 @@ export interface PresentationSlide {
 }
 
 export interface ReportRendererOptions {
-  /** Override the templates directory (tests). */
-  templatesDir?: string;
   /** Override the output directory (tests). */
   outputDir?: string;
-  /** Inject the HTML→PDF step (tests). Defaults to Playwright headless Chromium. */
-  pdfRenderFn?: (html: string, outputPath: string) => Promise<void>;
+  /** Inject the spec→PDF step (tests). Defaults to @json-render/react-pdf renderToFile. */
+  pdfSpecRenderFn?: (spec: ReportSpec, outputPath: string) => Promise<void>;
   /** Inject the PPTX write step (tests). Defaults to pptxgenjs. */
   pptxWriteFn?: (slides: PresentationSlide[], outputPath: string) => Promise<void>;
-}
-
-/**
- * Compile a template with Handlebars and substitute the data. Pure-ish and
- * fast — unit-tested with real templates, no browser/network involved.
- */
-export async function renderHtml(
-  templateName: string,
-  data: Record<string, unknown>,
-  options: ReportRendererOptions = {},
-): Promise<string> {
-  const dir = options.templatesDir ?? DEFAULT_TEMPLATES_DIR;
-  const source = await fs.readFile(path.join(dir, `${templateName}.html`), "utf8");
-  return Handlebars.compile(source)(data);
 }
 
 async function ensureOutputDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
 }
 
-/** Render a fixed-template report to a PDF file and return its path. */
+/** Render a fixed-spec report to a PDF file and return its path. */
 export async function renderPdfReport(
   type: ReportType,
   data: Record<string, unknown>,
   options: ReportRendererOptions = {},
 ): Promise<string> {
-  const html = await renderHtml(type, data, options);
+  const spec = buildReportSpec(type, data);
   const dir = options.outputDir ?? REPORTS_DIR;
   await ensureOutputDir(dir);
   const outputPath = path.join(dir, `${randomUUID()}.pdf`);
-  const pdfRender = options.pdfRenderFn ?? defaultPdfRender;
-  await pdfRender(html, outputPath);
+  const pdfRender = options.pdfSpecRenderFn ?? defaultPdfRender;
+  await pdfRender(spec, outputPath);
   return outputPath;
 }
 
@@ -85,19 +65,13 @@ export async function renderPresentation(
 }
 
 /**
- * Playwright headless Chromium — lazy-imported so unit tests never load the
- * browser. Requires `npx playwright install chromium` once at deploy time.
+ * @json-render/react-pdf — lazy-imported so unit tests never load
+ * @react-pdf/renderer. Pure Node rendering (no browser), safe for plain CI.
  */
-async function defaultPdfRender(html: string, outputPath: string): Promise<void> {
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "load" });
-    await page.pdf({ path: outputPath, format: "A4", printBackground: true });
-  } finally {
-    await browser.close();
-  }
+async function defaultPdfRender(spec: ReportSpec, outputPath: string): Promise<void> {
+  const { renderToFile } = await import("@json-render/react-pdf");
+  // The spec is structural; the library types are catalog-generic.
+  await renderToFile(spec as unknown as Parameters<typeof renderToFile>[0], outputPath);
 }
 
 /**

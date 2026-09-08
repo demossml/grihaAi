@@ -241,7 +241,7 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 | Telegram-бот | `TelegramBotFactory` (grammy `Bot`) | `new Bot(token)` | `FakeBot` в тестах |
 | Telegram-сессии | `TelegramSessionFactory` | `createAgentSession` | `FakeAgentSession` в тестах |
 | Роутер моделей | `ModelCaller` | — (не реализован, не используется в проде) | мок в тестах |
-| Документы | `pdfRenderFn`, `pptxWriteFn` | Playwright (headless Chromium), pptxgenjs | fake-функции в тестах |
+| Документы | `pdfSpecRenderFn`, `pptxWriteFn` | `@json-render/react-pdf` (`renderToFile`), pptxgenjs | fake-функции в тестах |
 
 **`ModelCaller` — единственный незакрытый компонент таблицы.** Это интерфейс `ModelRouter.call(role, messages)` для прямого вызова текстовой модели (`models.main`/`models.vision`). В проде он **не реализован и не вызывается**: генерация текста идёт через `AgentSession` (цикл pi), а vision — через `createHttpVisionCaller` (обход `ModelRouter.call`; сам `ModelRouter` используется только как `getConfig("vision")`). Приоритет низкий: нужен лишь при появлении сценария прямого LLM-вызова вне агентского цикла — тогда достаточно реализовать `ModelCaller` через OpenAI-совместимый `/chat/completions` (по образцу `createHttpLearningLlm`).
 
@@ -276,17 +276,16 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 
 ## 9. Генерация документов (report-generator)
 
-Расширение `report-generator` генерирует PDF/PPTX по **фиксированным шаблонам** — LLM только подставляет данные в готовый макет и **не может** менять layout. Это принципиально: цифры попадают в одно и то же место в каждом отчёте.
+Расширение `report-generator` генерирует PDF/PPTX по **фиксированным макетам** — LLM только подставляет данные в готовый layout и **не может** его менять. Это принципиально: цифры попадают в одно и то же место в каждом отчёте.
 
-- **Шаблоны**: `.pi/extensions/report-generator/templates/*.html` (Handlebars `{{field}}`, `{{#each items}}`) — три типа: `sales-report` (период, итоговая выручка, таблица категорий, топ-сделки), `expense-report` (период, итоговая сумма, категории, построчный список трат), `meeting-minutes` (заголовок, дата, участники, повестка, решения с ответственными). Вёрстка фиксированная, спокойная деловая типографика, без внешних ресурсов (self-contained CSS).
-- **Схемы данных**: `src/utils/reports/report-schemas.ts` (TypeBox) — строгая валидация **до** рендера через `typebox/value` (`Check`/`Errors`). Невалидные данные → понятная ошибка инструмента, а не кривой PDF с пропущенными полями.
+- **Spec-билдеры**: `src/utils/reports/report-specs.ts` — три builder-функции (`buildSalesReportSpec`, `buildExpenseReportSpec`, `buildMeetingMinutesSpec`), каждая собирает json-render-спек из **фиксированного каталога компонентов** (`@json-render/react-pdf`: Document, Page, Heading, Text, Table, List, Divider, Spacer). Это структурная (не только промптная) гарантия: каталог компонентов физически не допускает произвольной вёрстки — LLM может только заполнить готовые слоты. Структура и данные сохранены от прежних HTML-шаблонов (период, итоговая сумма крупно, таблица категорий, топ-сделки / список трат / участники-повестка-решения), палитра (`#1f3864`, `#555555`, `#1a1a1a`, `#dddddd`) перенесена из CSS-переменных старых шаблонов.
+- **Схемы данных**: `src/utils/reports/report-schemas.ts` (TypeBox) — строгая валидация **до** рендера через `typebox/value` (`Check`/`Errors`). Невалидные данные → понятная ошибка инструмента, а не кривой PDF с пропущенными полями. Этот шаг не менялся.
 - **Рендер**: `src/utils/reports/report-renderer.ts`:
-  - `renderHtml(type, data)` — компиляция Handlebars + подстановка (чистая, тестируется без браузера/сети);
-  - `renderPdfReport(type, data, options)` — HTML → PDF через **Playwright** (headless Chromium: `page.setContent(html)` + `page.pdf({ format: "A4", printBackground: true })`). Playwright — осознанно тяжёлая зависимость (Chromium) ради пиксель-точного рендера; браузер ставится один раз через `npx playwright install chromium`;
-  - `renderPresentation(slides, options)` — PPTX через **pptxgenjs**, один фиксированный slide-master (шапка-заголовок, единый шрифт/цвета); данные — просто массив `{ title, bullets[] }`.
+  - `renderPdfReport(type, data, options)` — собирает spec через builder из п.2 и зовёт `renderToFile(spec, outputPath)` из **@json-render/react-pdf** (внутри — `@react-pdf/renderer`). Рендер в чистом Node, **без headless-браузера** — никакого Chromium, integration-тест гоняется в обычном CI;
+  - `renderPresentation(slides, options)` — PPTX через **pptxgenjs** (путь без изменений; у json-render нет pptx-таргета), один фиксированный slide-master (шапка-заголовок, единый шрифт/цвета); данные — просто массив `{ title, bullets[] }`.
 - **Инструменты**: `generate_report(reportType, data)` и `generate_presentation(slides)`. Параметра `style`/`layout` **нет намеренно** — это гарантия однотипности, а не случайное ограничение. Оба возвращают путь к файлу в `details` и регистрируют его в per-session registry (`src/utils/telegram/session-files.ts`, `setSessionFile`) через `ctx.sessionManager.getSessionId()`.
 - **Доставка в Telegram**: `TelegramSessionPool.runPrompt` на `agent_end` забирает файл (`takeSessionFile`) и возвращает `{ text, filePath? }`; бот доставляет текст как обычно, а при наличии файла — `sendDocument` (grammy `InputFile`). Подробности — [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md).
-- **DI**: `pdfRenderFn`/`pptxWriteFn` инжектируемы (тот же паттерн, что у `HttpEmbeddingService`/`fetchFn`) — unit-тесты подменяют Playwright/pptxgenjs; integration-тест с реальным Chromium скипается, если браузер не установлен.
+- **DI**: `pdfSpecRenderFn`/`pptxWriteFn` инжектируемы (тот же паттерн, что у `HttpEmbeddingService`/`fetchFn`) — unit-тесты проверяют структуру spec-дерева без реального рендера, подменяя `renderToFile`/pptxgenjs; integration-тест рендерит настоящий PDF через `@react-pdf/renderer`.
 - **Путь вывода**: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
 
 ---
