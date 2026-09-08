@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { BotRegistry } from "./BotRegistry.js";
 import { SubAgentManager, type SubAgentRunner, type SubAgentResult } from "./SubAgentManager.js";
+import { createRealSubAgentRunner } from "./RealSubAgentRunner.js";
 import { SqliteRagMemoryService } from "../sqlite-rag-memory/MemoryService.js";
 import { HashingEmbeddingService } from "../../../src/utils/embeddings.js";
 import type { SearchResult, SubAgentState, SubAgentTask } from "../../../src/types/index.js";
@@ -30,19 +31,21 @@ async function getMemory(): Promise<SqliteRagMemoryService> {
 }
 
 /**
- * Emulated runner: sub-agent tasks execute deterministically in this phase.
- * Swap for a real LLM runner with an isolated context scoped by
- * `subtreeSessionId` when available.
+ * Emulated runner kept for offline/time-free unit tests. Production uses the
+ * real SDK-backed runner below (isolated AgentSession per `subtreeSessionId`).
  */
 const emulatedRunner: SubAgentRunner = async (task) => ({
   result: `Подзадача выполнена (роль: ${task.role ?? "general"}): ${task.goal}`,
 });
 
+/** Real runner: isolated AgentSession per sub-agent via createAgentSession. */
+const realRunner = createRealSubAgentRunner();
+
 function getManager(): SubAgentManager {
   if (!manager) {
     manager = new SubAgentManager(
       { addInsight: (i) => getMemory().then((m) => m.addInsight(i)) },
-      emulatedRunner,
+      realRunner,
     );
   }
   return manager;

@@ -215,7 +215,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 | Компонент | Что инжектируется | Реальная реализация | Эмуляция/заглушка |
 |---|---|---|---|
 | Память | `EmbeddingService` | `HttpEmbeddingService` (OpenAI-совместимый `/embeddings`, из `cfg.embedding`) | `HashingEmbeddingService` (детерминированный fallback) |
-| Субагенты | `SubAgentRunner` | (пока нет) | `emulatedRunner` (возвращает шаблонный текст) |
+| Субагенты | `SubAgentRunner` | `createRealSubAgentRunner` (изолированный `AgentSession` по `subtreeSessionId`) | `emulatedRunner` (для юнит-тестов) |
 | Cron | `CronRunner`, `CronChangeDetector` | (пока нет) | `emulatedRunner` |
 | Vision | `VisionCaller` | (пока нет) | `emulatedVision` |
 | Обучение | `LearningLlm` | (пока нет) | `emulatedLlm` (пустая выдача) |
@@ -225,7 +225,7 @@ agent_end → getLastAssistantText() → ответ в Telegram-чат
 
 **Правило**: `src/utils/*` — чистые функции без побочных эффектов; `*.pi/extensions/*` — тонкие обёртки, которые связывают чистые утилиты с `pi`/`ctx`. Сервисы (`SqliteRagMemoryService`, `CronService`, `UserProfileService`, `ClientNotesService`) — классы с `init()`/`close()` и ленивой инициализацией.
 
-Все «эмуляции» (кроме embeddings) — это **осознанные заглушки** с комментарием «swap for a real … later». Они делают фазы рабочими end-to-end, пока не подключены реальные LLM-вызовы.
+Все оставшиеся «эмуляции» (Cron, Vision, Обучение) — это **осознанные заглушки** с комментарием «swap for a real … later». Они делают фазы рабочими end-to-end, пока не подключены реальные LLM-вызовы.
 
 ---
 
