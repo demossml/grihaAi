@@ -29,6 +29,7 @@ import { CommitmentService } from "../commitment-tracking/CommitmentService.js";
 import { ApprovalService } from "../approval-gate/ApprovalService.js";
 import { ClientNotesService } from "../sqlite-rag-memory/ClientNotesService.js";
 import { getSessionContext } from "../user-rules/context.js";
+import { ContextBuilder } from "../../../src/context/ContextBuilder.js";
 
 const CALENDAR_DB = path.join(getConfigDir(), "calendar.sqlite");
 const ANOMALIES_DB = path.join(getConfigDir(), "anomalies.sqlite");
@@ -94,6 +95,21 @@ async function getClientNotes(): Promise<ClientNotesService> {
 
 function resolveUserId(ctx: ExtensionContext): string {
   return getSessionContext(ctx.sessionManager.getSessionId())?.userId ?? "owner";
+}
+
+/** Single ContextBuilder wired to the domain services (skills do not scan memory themselves). */
+function getContextBuilder(): ContextBuilder {
+  return new ContextBuilder({
+    getEvents: (userId) => getCalendar().list(userId),
+    getCommitments: (userId) => getCommitments().list(userId, { limit: 100 }),
+    getAnomalies: (userId) => getAnomalies().list(userId),
+    getApprovals: (userId) => getApprovals().listPending(userId),
+    getClientNotes: async (userId, query) =>
+      query ? await (await getClientNotes()).searchNotes(userId, query) : await (await getClientNotes()).listNotes(userId),
+    getContacts: () => [],
+    getExpenses: () => [],
+    getInvoices: () => [],
+  });
 }
 
 function closeAll(): void {
@@ -282,30 +298,7 @@ export default function proactiveAssistant(pi: ExtensionAPI): void {
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ context: string }>> {
       const userId = resolveUserId(ctx);
-      const event = getCalendar().get(params.eventId);
-      const lines: string[] = [];
-      if (event) {
-        lines.push(`Встреча: ${event.title} (${event.startsAt} — ${event.endsAt}, ${event.timezone})`);
-        if (event.participants.length > 0) lines.push(`Участники: ${event.participants.join(", ")}`);
-        if (event.location) lines.push(`Место: ${event.location}`);
-      } else {
-        lines.push("Событие не найдено.");
-      }
-      const related = getCommitments()
-        .list(userId, { limit: 100 })
-        .filter((c) => c.status !== "completed" && c.status !== "cancelled");
-      if (related.length > 0) {
-        lines.push("\nОткрытые обязательства:");
-        for (const c of related) lines.push(`- ${c.text}${c.dueDate ? ` (до ${c.dueDate.slice(0, 10)})` : ""}`);
-      }
-      const notes = event
-        ? await (await getClientNotes()).searchNotes(userId, event.title)
-        : [];
-      if (notes.length > 0) {
-        lines.push("\nЗаметки о клиенте/теме:");
-        for (const n of notes) lines.push(`- ${n.content}`);
-      }
-      const context = lines.join("\n");
+      const { text: context } = await getContextBuilder().getMeetingContext(userId, params.eventId);
       return { content: [{ type: "text", text: context }], details: { context } };
     },
   });
@@ -324,29 +317,7 @@ export default function proactiveAssistant(pi: ExtensionAPI): void {
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ context: string }>> {
       const userId = resolveUserId(ctx);
-      const notes = await getClientNotes().then((s) => s.searchNotes(userId, params.contactName));
-      const commitmentsFor = getCommitments()
-        .list(userId, { limit: 100 })
-        .filter(
-          (c) =>
-            (c.toWhom && c.toWhom.toLowerCase().includes(params.contactName.toLowerCase())) ||
-            c.text.toLowerCase().includes(params.contactName.toLowerCase()),
-        );
-
-      const lines: string[] = [`Контекст по контакту: ${params.contactName}`];
-      if (notes.length === 0 && commitmentsFor.length === 0) {
-        lines.push("Ничего не найдено.");
-      } else {
-        if (notes.length > 0) {
-          lines.push("\nЗаметки:");
-          for (const n of notes) lines.push(`- ${n.content}`);
-        }
-        if (commitmentsFor.length > 0) {
-          lines.push("\nСвязанные обязательства:");
-          for (const c of commitmentsFor) lines.push(`- [${c.status}] ${c.text}`);
-        }
-      }
-      const context = lines.join("\n");
+      const { text: context } = await getContextBuilder().getContactContext(userId, params.contactName);
       return { content: [{ type: "text", text: context }], details: { context } };
     },
   });
