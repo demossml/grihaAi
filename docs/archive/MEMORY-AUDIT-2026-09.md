@@ -288,4 +288,4 @@ FTS5 ≈ 92% размера БД; эмбеддинги ≈ 69%. Если хра�
 
 ---
 
-*Сырые данные всех замеров: `docs/memory-audit-results.json`. Инструменты: `tools/memory-audit/` (бенчмарки изолированы от production).*
+*Сырые данные всех замеров: `docs/archive/memory-audit-results.json`. Инструменты: `tools/memory-audit/` (бенчмарки изолированы от production).*

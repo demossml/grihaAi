@@ -1,6 +1,6 @@
 /**
  * Memory audit orchestrator: runs every benchmark against TEMPORARY databases
- * and writes docs/memory-audit-results.json. Production code/DB untouched.
+ * and writes docs/archive/memory-audit-results.json. Production code/DB untouched.
  *
  *   npx tsx tools/memory-audit/run.ts            # core suite
  *   AUDIT_LARGE=1 npx tsx tools/memory-audit/run.ts  # +100k latency/storage
@@ -101,7 +101,8 @@ async function main(): Promise<void> {
     },
   };
 
-  const outDir = path.join(process.cwd(), "docs");
+  const outDir = path.join(process.cwd(), "docs", "archive");
+  fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(
     path.join(outDir, "memory-audit-results.json"),
     JSON.stringify(results, null, 2),
@@ -116,7 +117,7 @@ async function main(): Promise<void> {
     contradiction: temporal.contradiction,
   }, null, 2));
 
-  console.log("wrote docs/memory-audit-results.json");
+  console.log("wrote docs/archive/memory-audit-results.json");
   cleanTmp();
 }
 

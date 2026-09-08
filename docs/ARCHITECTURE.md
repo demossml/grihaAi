@@ -1,5 +1,7 @@
 # Архитектура grish-ai
 
+> **Это единственный живой источник правды по архитектуре; `docs/archive/` содержит только историю, не актуальное состояние.**
+
 Этот документ объясняет, **как всё устроено и почему**, чтобы новый агент (или человек) мог разобраться в проекте за один проход. Здесь — общая картина, платформа, поток сообщения, конфигурация, секреты, паттерны тестируемости и все важные «мелочи».
 
 Оглавление:
@@ -12,6 +14,9 @@
 6. [Провайдеры, модели и bootstrap](#6-провайдеры-модели-и-bootstrap)
 7. [Паттерны DI и тестируемости](#7-паттерны-di-и-тестируемости)
 8. [Важные «мелочи» и подводные камни](#8-важные-мелочи-и-подводные-камни)
+9. [Генерация документов (report-generator)](#9-генерация-документов-report-generator)
+10. [Фактическая карта компонентов](#10-фактическая-карта-компонентов)
+11. [Слоистая модель и domain contracts](#11-слоистая-модель-и-domain-contracts)
 
 ---
 
@@ -263,6 +268,9 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 11. **Телеграм: `allowedUserIds: []` блокирует всех.** В `TelegramBridge.isAllowed` пустой список означает `false` для любого пользователя. При настройке обязательно добавить свой `user_id`.
 12. **Телеграм `/new` сбрасывает изолированную сессию.** `TelegramBridge` зовёт `resetHandler` → `TelegramSessionPool.reset(userId)`: текущий `AgentSession` закрывается (`dispose()`), новый с чистым `sessionId` создаётся лениво на следующем сообщении. Файлы старой сессии не удаляются; личная память/правила/профиль не затрагиваются (сброс диалога, не профиля).
 13. **Команда `git`/публикация**: репозиторий приватный, коммит без секретов (см. `README` → «Конфигурация и секреты»). `gh` на машине не был авторизован на момент подготовки.
+14. **Ранжирование памяти не учитывает время/важность/уверенность.** Скор — только `bm25` (FTS), `1 − vec_distance_cosine` (sqlite-vec) и гибридный RRF (`k=60`). Противоречащие факты не разрешаются: «старый» факт может стоять выше «нового». Delete/update API у памяти нет (только raw SQL), дедупликации нет.
+15. **Векторный поиск — полный скан.** ANN-индекса нет; на 100k записей гибридный поиск ~125 мс, FTS-индекс занимает ~92% размера БД. Замеры и дерево решений по масштабу — в аудите памяти: [docs/archive/MEMORY-AUDIT-2026-09.md](archive/MEMORY-AUDIT-2026-09.md).
+16. **Хеш-эмбеддинги — фолбэк, не семантика.** Без `cfg.embedding` используется лексический `HashingEmbeddingService` (dim=384): точный/фильтрованный поиск работает, парафразы — нет. Для семантики включить `cfg.embedding` (см. §7).
 
 ---
 
@@ -283,14 +291,182 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 
 ---
 
+## 10. Фактическая карта компонентов
+
+### Ответственность расширений
+
+| Компонент | Ответственность |
+|---|---|
+| `first-run-setup` | Мастер настройки провайдера/модели/ключа |
+| `core-agent` | System-prompt: skills, политика делегирования, language policy, router-hint. `/skills`. **Тонкий** — не God Object |
+| `sqlite-rag-memory` | Гибридная память (facts/messages/insights) + ClientNotes + UserProfile |
+| `multi-agent` | Делегирование, BotRegistry, SubAgentManager, Shared Insights |
+| `cron` | Планировщик (CronService) + real runner/change-detector |
+| `model-router` | main/vision-маршрутизация + `analyze_image` |
+| `personal-learning` | Профиль, заметки, авто-дообучение, skill proposals (review-gated) |
+| `telegram-bot` | Long polling + изолированные AgentSession на пользователя |
+| `user-rules` | hard/soft-правила + prefilter + инъекция + Telegram-контекст |
+| `gateway` | Единая блокировка side-effect tool-calls (trusted/untrusted) |
+| `report-generator` | PDF/PPTX по фикс. шаблонам |
+| `approval-gate` | Approval-запросы + финансовые пороги |
+| `commitment-tracking` | Обязательства (structured state) |
+| `voice-intake` | `transcribe_voice` (STT) + confidence-гейт |
+| `proactive-assistant` | Календарь, брифинг, аномалии, meeting_prep/contact_briefing |
+| `finance` | Расходы/счета/категоризация/сводка |
+| `crm` | Контакты |
+| `travel` | Поездки |
+| `connector` | Capability report |
+
+### Где хранится state
+
+| Хранилище | Файл | Владелец |
+|---|---|---|
+| Memory (facts/messages/insights) | `~/.grish-ai/memory.sqlite` | sqlite-rag-memory |
+| Client notes / User profile | `memory.sqlite` (таблицы) | sqlite-rag-memory |
+| Cron jobs/runs | `memory.sqlite` (таблицы cron_*) | cron |
+| Commitments | `commitments.sqlite` | commitment-tracking |
+| Approvals / policies | `approvals.sqlite` | approval-gate |
+| Calendar events | `calendar.sqlite` | proactive-assistant |
+| Anomalies | `anomalies.sqlite` | proactive-assistant |
+| Briefing runs (dedupe) | `briefings.sqlite` | proactive-assistant |
+| Expenses / invoices | `finance.sqlite` | finance |
+| Contacts | `contacts.sqlite` | crm |
+| Travel items | `travel.sqlite` | travel |
+| User rules | `user-rules.sqlite` | user-rules |
+
+**Разделение**: Memory (знания/контекст) и Structured State (операционное состояние)
+хранятся в разных сущностях, но cron-таблицы и client notes живут в `memory.sqlite`
+вместе с памятью.
+
+### Где выполняются side effects
+
+- `gateway` (`tool_call`) — блокирует shell/мутацию для untrusted.
+- `invoice_set_status("paid")` — финансовое действие, проверяет approval policy.
+- Telegram `sendDocument`/`sendMessage` — реальная отправка.
+- Остальные инструменты — внутренние мутации (SQLite), без внешнего эффекта.
+
+Внешних connectors (gmail/calendar/travel/crm/accounting) **нет** — только
+connector-ready boundary (`src/utils/capabilities.ts`).
+
+### Где принимаются permission decisions
+
+- `gateway` — техническая граница (trust level).
+- `approval-gate` (`src/utils/finance/approval-policy.ts`) — классификация действия +
+  финансовые пороги; у запросов есть `scope` (default `ONCE`, политики `global|chat`)
+  и статусы `pending|approved|rejected|cancelled|expired`.
+- `user-rules` prefilter — hard-правила «отвечай только мне».
+
+### Routing
+
+- `adaptive-router` (`classifyComplexity`) → SIMPLE/COMPLEX → `delegate_tasks` (подсказка, не принуждение).
+- `model-router` → main/vision.
+- Skill-выбор — через system-prompt (`core-agent` инжектирует список skills); LLM выбирает skill, отдельного «skill router» как компонента нет.
+
+### Context
+
+Контекст собирается в **`src/context/ContextBuilder.ts`** — единой точке агрегации:
+skills спрашивают контекст у билдера, а не сканируют память сами. Параллельно
+`core-agent` (skills+политики), `personal-learning` (профиль+заметки) и `user-rules`
+(правила+Telegram-контекст) дописывают свои части system-prompt в
+`before_agent_start`; `meeting_prep`/`contact_briefing` собирают контекст точечно через билдер.
+
+### Переиспользуемые механизмы
+
+- `provider-bootstrap` (`applyConfig`) — провайдер/модель (см. §6).
+- DI-паттерн (fetch/render/runner/фабрики бота) — для тестов (см. §7).
+- per-session registry (`session-files.ts`, `user-rules/context.ts`).
+- SQLite-service паттерн (`init()`/`close()`, WAL).
+
+---
+
+## 11. Слоистая модель и domain contracts
+
+Целевая слоистая модель (границы ответственности, а не построчная реализация):
+
+```
+Transport            → telegram-bot (long polling + изолированные сессии)
+Session / Identity   → sessionId + per-session context (user-rules/context.ts)
+Core Agent           → pi runtime + core-agent system-prompt (оркестратор)
+Skill Router         → список skills в system-prompt (LLM выбирает capability)
+Context Builder      → src/context/ContextBuilder.ts (единая сборка контекста)
+Policy / Approval    → gateway (технич.) + approval-policy + approval-gate
+Workflow             → src/workflow/workflows.ts (meeting / finance)
+Domain Services      → CommitmentService, FinanceService, CalendarService, …
+Tools / Cron / Providers → tools, deterministic cron tasks, provider-интерфейсы
+Persistence          → SQLite-сервисы (WAL)
+```
+
+Отдельные сквозные механизмы: Memory (знания/контекст), Structured State
+(операционное состояние), Capabilities, Policies, Approvals, Events.
+
+### Ключевые разделения
+
+1. **Memory ≠ Structured State.** Memory (`memory.sqlite`: facts/messages/insights)
+   хранит знания и историю. Structured State (commitments/expenses/invoices/
+   contacts/events/anomalies/approvals) — отдельные SQLite-файлы (исключения:
+   cron и client notes в `memory.sqlite`, см. §10).
+2. **Gateway ≠ Policy ≠ Approval.**
+   - Gateway — техническая граница (`tool_call`, trusted/untrusted).
+   - Policy — разрешено ли действие пользователю в контексте (financial thresholds,
+     user rules с `ruleClass`).
+   - Approval — существует ли действующее явное подтверждение
+     (`scope: ONCE|SESSION|WORKFLOW`, статусы `pending|approved|rejected|expired|cancelled`).
+   - Поток: Agent → Capability Check → Policy Check → Approval Check → Execute / Reject / Ask.
+3. **Capability Registry** — единый источник возможностей (`src/utils/capabilities.ts`,
+   статусы `AVAILABLE|UNAVAILABLE|REQUIRES_CONNECTION|REQUIRES_APPROVAL`).
+4. **ContextBuilder** — skills не сканируют всю память; контекст собирается в одном месте.
+5. **Workflow** — координирует шаги; skill = capability; service = business logic;
+   provider = внешняя система.
+
+### Domain contracts
+
+`src/types/domain.ts` — канонические контракты:
+
+- **Commitment** — `id, userId, actor, action, target, deadline, status, source,
+  sourceMessageId, meetingId, contactId, confidence, completedAt`. Статусы
+  `open|due_soon|overdue|completed|cancelled` (due_soon/overdue выводятся из deadline).
+- **Approval** — `id, userId, sessionId, action, actionClass, target, args, scope,
+  status, expiresAt`. Scope `ONCE|SESSION|WORKFLOW`.
+- **Anomaly** — `type, severity, detectedAt, explanation, evidence, status`.
+- **Briefing** — `userId, dayKey, text, ranAt` (dedupe по user+day).
+- **Meeting / CalendarEvent** — `kind: meeting|event|focus|other`.
+- **Contact** — identity + tags + lastInteraction + provenance (notes отдельно).
+- **Invoice / Expense** — финансы (`FinanceService`).
+- **Task** — единица работы субагента/cron.
+
+### Providers
+
+`src/providers/providers.ts` — интерфейсы `CalendarProvider`, `EmailProvider`,
+`CRMProvider`, `TravelProvider`, `AccountingProvider`. Сейчас все — `noop`
+(возвращают `ok:false` + описание лимита), кроме локального `email.draft`.
+Реальные API не подключены; fake success запрещён.
+
+### Sub-agent capabilities
+
+`src/capabilities/subagent-capabilities.ts` — явный allowlist. Субагенты
+(untrusted) могут только `memory.search`, `ocr.process`, `report.pdf`, `report.pptx`.
+Запрещены write/side-effect/approval-gated capabilities.
+
+### Deterministic cron
+
+`src/cron/deterministic-tasks.ts` — cron сначала выполняет детерминированные
+запросы к сервисам (`daily-briefing`, `anomaly-scan`, `commitment-due-scan`),
+и только потом LLM синтезирует. Cron никогда не просит LLM «прочитать всю память».
+
+### Learning guard
+
+`src/utils/learning/skill-improver.ts` (`isProtectedSkillContent`) — авто-дообучение
+не предлагает/не применяет изменения в domains: security, approval, permission,
+restriction, financial policy/limits. Protected skill names:
+`human-approval-gate`, `approval-thresholds`, `privacy-data-hygiene`, `delegation-triage`.
+
+---
+
 ## Смежные документы
 
 - [docs/EXTENSIONS.md](EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
-- [docs/DOMAIN-ARCHITECTURE.md](DOMAIN-ARCHITECTURE.md) — целевая слоистая модель, domain contracts, провайдеры, sub-agent capabilities, deterministic cron.
-- [docs/CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) — аудит текущей архитектуры и точки hardening.
+- [docs/SKILLS.md](SKILLS.md) — живой каталог skills + workflow graphs.
 - [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md) — глубокий разбор Telegram-бота и пула изолированных сессий.
 - [docs/SECURITY.md](SECURITY.md) — периметр, модель доверия, gateway, policy, approval и sandbox-слои.
-- [docs/GRISHA_SKILLS.md](GRISHA_SKILLS.md) — канонический каталог skills + workflow graphs.
-- [docs/GRISHA_SKILL_CAPABILITY_MATRIX.md](GRISHA_SKILL_CAPABILITY_MATRIX.md) — аудит и gap-классификация.
-- [docs/GRISHA_SKILLS_FINAL_REPORT.md](GRISHA_SKILLS_FINAL_REPORT.md) — финальный QA-отчёт.
+- [docs/archive/](archive/) — история: аудиты и отчёты завершённых фаз (не актуальное состояние).
 - [STATUS.md](../STATUS.md) — прогресс по фазам.

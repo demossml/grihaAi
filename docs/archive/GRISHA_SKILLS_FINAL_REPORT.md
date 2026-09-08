@@ -1,5 +1,7 @@
 # Griha AI — Skills Final Report (QA / Acceptance)
 
+> Исторический документ (архив). Живой каталог skills — `docs/SKILLS.md`.
+
 Дата: 2026-09-08. Build gate зелёный: `npm install`, `npx turbo run typecheck test build`
 (16 задач). Тесты агента: **208 pass / 0 fail**; пакет skills: 5 pass.
 

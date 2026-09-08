@@ -192,7 +192,7 @@
 
 - [x] Все 25 canonical skills + `core` существуют в `packages/skills` и видны registry
 - [x] `discoverSkills` возвращает детерминированный порядок (sort по name)
-- [x] `docs/GRISHA_SKILLS.md` — полный каталог (статусы/инструменты/storage/connector/approval) + workflow graphs (Meeting/Finance/Executive lifecycle)
+- [x] `docs/archive/GRISHA_SKILLS.md` — полный каталог (статусы/инструменты/storage/connector/approval) + workflow graphs (Meeting/Finance/Executive lifecycle); живой каталог — `docs/SKILLS.md`
 - [x] Tests: skill-catalog (наличие всех, без дублей, порядок, описания) — 208 tests
 
 ## Phase 21 — Final QA / Acceptance (этап 7)
@@ -202,16 +202,16 @@
 - [x] Safety scenarios S1–S10 проверены (draft/approval/commitment/due/briefing/anomaly/voice/connector/OCR/followup)
 - [x] Data isolation: commitments/expenses/invoices/contacts/policies — scoped по userId (память в субсессиях — задокументированное ограничение)
 - [x] Cron safety: dedupe брифингов, timezone, дедупликация аномалий, monitorMode
-- [x] `docs/GRISHA_SKILLS_FINAL_REPORT.md` + обновлены README/ARCHITECTURE/EXTENSIONS
+- [x] `docs/archive/GRISHA_SKILLS_FINAL_REPORT.md` + обновлены README/ARCHITECTURE/EXTENSIONS
 
 ## Phase 22 — Architecture Hardening (фазы 0–7)
 
-- [x] Phase 0: `docs/CURRENT_ARCHITECTURE.md` (аудит, mapping current→target layer)
+- [x] Phase 0: `docs/archive/CURRENT_ARCHITECTURE.md` (аудит, mapping current→target layer)
 - [x] Phase 1: Domain Foundations — Commitment contract (actor/action/target/deadline/sourceMessageId/completedAt, миграция БД), `src/types/domain.ts`
 - [x] Phase 2: Policy/Approval/Capabilities — Capability Registry (4 статуса), Approval scope (ONCE/SESSION/WORKFLOW) + статусы approved/rejected/cancelled, UserRule `ruleClass`, learning guard
 - [x] Phase 3–4: ContextBuilder, Workflow (meeting/finance), Provider-интерфейсы (noop), sub-agent capability allowlist
 - [x] Phase 5–6: deterministic cron tasks (daily-briefing/anomaly-scan/commitment-due-scan), detectRepeatedFailures, ORCHESTRATION_POLICY в core-agent
-- [x] Phase 7: `docs/DOMAIN-ARCHITECTURE.md`, обновлены README/ARCHITECTURE/EXTENSIONS/SECURITY, `TEST_REPORT.md`
+- [x] Phase 7: `docs/archive/DOMAIN-ARCHITECTURE.md`, обновлены README/ARCHITECTURE/EXTENSIONS/SECURITY, `TEST_REPORT.md`
 - [x] Tests: 240 agent + 5 skills — зелёные
 
 ## Phase 23 — Telegram-бот: стабильность (ТЗ починки бота)

@@ -72,8 +72,8 @@ Per-file highlights (line %):
 | `.pi/extensions/telegram-bot/TelegramBridge.ts` | 70.51 | photo/document/voice branches untested |
 | `.pi/extensions/telegram-bot/TelegramBotController.ts` | 83.65 | error/stop paths partially untested |
 | `.pi/extensions/telegram-bot/TelegramSessionPool.ts` | 86.44 | real SDK factory path untested (mocked) |
-| `src/utils/provider-bootstrap.ts` | 61.00 | custom/deepseek registration paths untested |
-| `src/utils/embeddings.ts` | 60.00 | embedBatch untested |
+| `src/utils/bootstrap/provider-bootstrap.ts` | 61.00 | custom/deepseek registration paths untested |
+| `src/utils/memory/embeddings.ts` | 60.00 | embedBatch untested |
 | `core-agent/index.ts` | 100.00* | *tool-reported; no direct test — see Risks |
 
 Files with **0%** coverage: none (every loaded file has >0%).

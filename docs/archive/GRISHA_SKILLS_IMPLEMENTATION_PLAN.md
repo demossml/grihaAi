@@ -64,7 +64,7 @@
 1. Проверить все 25 skills в `packages/skills` + регистрацию в registry.
 2. Единый frontmatter + структура каждого SKILL.md (Purpose/Activation/Context/Workflow/Tools/Memory/Approval/Failure/Connector/Examples/Do-not).
 3. Workflow graphs: Meeting lifecycle, Finance lifecycle, Executive lifecycle.
-4. `docs/GRISHA_SKILLS.md` — полный каталог со статусами/triggers/dependencies/tools/storage/connector/approval.
+4. `docs/archive/GRISHA_SKILLS.md` — полный каталог со статусами/triggers/dependencies/tools/storage/connector/approval (сейчас живой каталог — `docs/SKILLS.md`).
 
 ## Фаза 6 — Full QA (этап 7)
 
@@ -74,7 +74,7 @@
 4. Safety scenarios S1–S10.
 5. Data isolation: user A ≠ user B; commitments/notes/policies scoped.
 6. Cron safety: duplicate jobs/briefings, timezone, retry, no spam, monitorMode не мутирует данные.
-7. `docs/GRISHA_SKILLS_FINAL_REPORT.md` — таблица `Skill | Status | Runtime | Tests | Connector | Approval` со статусами `READY | PARTIAL | BLOCKED_BY_CONNECTOR`.
+7. `docs/archive/GRISHA_SKILLS_FINAL_REPORT.md` — таблица `Skill | Status | Runtime | Tests | Connector | Approval` со статусами `READY | PARTIAL | BLOCKED_BY_CONNECTOR`.
 
 ## Порядок работ
 

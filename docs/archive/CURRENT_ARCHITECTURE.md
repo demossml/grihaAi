@@ -1,5 +1,7 @@
 # Current Architecture — Audit (Phase 0)
 
+> Исторический документ (архив). Актуальное описание — `docs/ARCHITECTURE.md` (§10–11).
+
 Аудит фактического кода `grihaAi` перед hardening. Источник истины — код, а не README.
 
 ## 1. Фактическая архитектура

@@ -1,5 +1,7 @@
 # Griha AI — Skill Capability Matrix
 
+> Исторический документ (архив). Живой каталог skills — `docs/SKILLS.md`.
+
 Аудит состояния репозитория `grihaAi` относительно целевого каталога из 25 skills.
 Источник истины — код (`apps/agent/.pi/extensions`, `packages/skills`, `packages/stt`, `packages/shared-types`), а не документация.
 

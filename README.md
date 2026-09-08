@@ -136,9 +136,7 @@ npm test          # tsx --test tests/**/*.test.ts
 2. [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
 3. [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — бот и изоляция сессий.
 4. [docs/SECURITY.md](docs/SECURITY.md) — периметр, модель доверия, gateway и sandbox-слои.
-5. [docs/GRISHA_SKILLS.md](docs/GRISHA_SKILLS.md) — канонический каталог 25 skills + workflow graphs.
-6. [docs/DOMAIN-ARCHITECTURE.md](docs/DOMAIN-ARCHITECTURE.md) — целевая слоистая модель (ContextBuilder/Workflow/Providers/Capabilities).
-7. [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) — аудит текущей архитектуры.
-8. [docs/GRISHA_SKILL_CAPABILITY_MATRIX.md](docs/GRISHA_SKILL_CAPABILITY_MATRIX.md) — аудит и gap-классификация.
-9. [docs/GRISHA_SKILLS_FINAL_REPORT.md](docs/GRISHA_SKILLS_FINAL_REPORT.md) — финальный QA-отчёт.
-10. [STATUS.md](STATUS.md) — прогресс по фазам.
+5. [docs/SKILLS.md](docs/SKILLS.md) — живой каталог skills + workflow graphs.
+6. [STATUS.md](STATUS.md) — прогресс по фазам.
+
+История (аудиты, планы и отчёты завершённых фаз) — в [docs/archive/](docs/archive/); это не актуальное состояние.

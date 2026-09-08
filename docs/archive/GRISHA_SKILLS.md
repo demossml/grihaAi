@@ -1,5 +1,7 @@
 # Griha AI — Canonical Skill Catalog
 
+> Исторический документ (архив). Живой каталог skills — `docs/SKILLS.md`.
+
 Полный каталог skills (в `packages/skills/skills/<name>/SKILL.md`) с их runtime,
 инструментами, хранилищем, connector-требованиями и approval-правилами.
 
