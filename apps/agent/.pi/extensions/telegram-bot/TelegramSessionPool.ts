@@ -17,6 +17,9 @@ import modelRouter from "../model-router/index.js";
 import userRules from "../user-rules/index.js";
 import gateway from "../gateway/index.js";
 import reportGenerator from "../report-generator/index.js";
+import approvalGate from "../approval-gate/index.js";
+import commitmentTracking from "../commitment-tracking/index.js";
+import voiceIntake from "../voice-intake/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 
 /**
@@ -45,6 +48,9 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   userRules,
   gateway,
   reportGenerator,
+  approvalGate,
+  commitmentTracking,
+  voiceIntake,
   providerBootstrap,
 ];
 

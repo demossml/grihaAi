@@ -144,5 +144,18 @@
 - [x] Skills: `sales-report` и `meeting-minutes` (формат фиксирован шаблоном, агент меняет только данные)
 - [x] Tests: доставка файла в bridge/controller/pool (grammy Bot замокан)
 
+## Phase 16 — Foundation: safety + state (этап 2)
+
+- [x] `approval-gate` extension: `ApprovalService` (SQLite `~/.grish-ai/approvals.sqlite`) + tools `approval_required`/`approval_status`/`approval_grant`/`approval_deny` + `policy_get`/`policy_set`; команды `/approvals`, `/approve <id>`, `/deny <id>`
+- [x] Классификация действий (`src/utils/approval-policy.ts`): `READ_ONLY | REVERSIBLE_LOW_RISK | SIDE_EFFECT | HIGH_RISK_IRREVERSIBLE`; сегментный матчинг токенов
+- [x] Финансовые пороги (`approval-thresholds`): `FinancialApprovalPolicy` (autoApproveBelow/alwaysConfirmAbove/categoriesAlwaysConfirm) — политика приоритетнее LLM
+- [x] `commitment-tracking` extension: `CommitmentService` + tools `commitment_add/list/update/complete/cancel`; статусы `open|due_soon|overdue|completed|cancelled` (due_soon/overdue выводятся из dueDate)
+- [x] `voice-intake` extension: tool `transcribe_voice` (filePath/fileId) + `assessTranscriptConfidence` (эвристический gate, переспрос при неоднозначности)
+- [x] `privacy-data-hygiene`: `src/utils/secret-filter.ts` — `memory_add` отказывается хранить секреты (API keys/password/token/bot token/карты/private key)
+- [x] `delegation-triage`: уточнён `adaptive-router` — не делегировать короткие reminders/CRUD/классификации
+- [x] Новые extensions добавлены в `SUB_SESSION_EXTENSIONS` Telegram-сессий (approval-gate, commitment-tracking, voice-intake)
+- [x] Skills: `human-approval-gate`, `approval-thresholds`, `commitment-tracking`, `voice-intake`, `privacy-data-hygiene`, `delegation-triage`
+- [x] Tests: approval boundaries/thresholds, approval service, commitment extraction/status/refresh, secret filter, voice confidence, delegation triage (168 tests)
+
 
 

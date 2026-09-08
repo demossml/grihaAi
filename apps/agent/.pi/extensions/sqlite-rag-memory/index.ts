@@ -10,6 +10,7 @@ import {
   type SearchResult,
 } from "../../../src/types/index.js";
 import { createEmbeddingService } from "../../../src/utils/embeddings.js";
+import { detectSecret, secretReason } from "../../../src/utils/secret-filter.js";
 import { loadConfig } from "@griha/config";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
@@ -45,6 +46,14 @@ export default function sqliteRagMemory(pi: ExtensionAPI): void {
       _toolCallId: string,
       params: MemoryAddParams,
     ): Promise<AgentToolResult<{ id: string }>> {
+      // Privacy data hygiene: never persist secrets to long-term memory.
+      const secret = detectSecret(params.content);
+      if (secret) {
+        return {
+          content: [{ type: "text", text: secretReason(secret) }],
+          details: { id: "" },
+        };
+      }
       const service = await getService();
       const fact = await service.addFact({
         content: params.content,

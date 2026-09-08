@@ -1,6 +1,33 @@
 import type { DelegationPlan, TaskComplexity } from "../types/index.js";
 
 /**
+ * Delegation triage — messages that must NOT be delegated even if they look
+ * multi-part. These are cheap, atomic operations where spawning sub-agents
+ * would only add latency and isolation overhead.
+ */
+const NON_DELEGATABLE_SIGNALS = [
+  "напомни",
+  "remind",
+  "запиши",
+  "запомни",
+  "зафиксируй",
+  "добавь в память",
+  "memory_add",
+  "переведи",
+  "классифицируй",
+];
+
+const CRUD_SIGNALS = [
+  "найди",
+  "найти",
+  "покажи",
+  "список",
+  "list",
+  "search",
+  "напомни",
+];
+
+/**
  * Cheap complexity classifier. Heuristic-first; an optional LLM call can be
  * used later to make the decision smarter.
  */
@@ -9,6 +36,16 @@ export async function classifyComplexity(
   _llmCall?: (prompt: string) => Promise<string>,
 ): Promise<{ complexity: TaskComplexity; reason: string }> {
   const lower = userMessage.toLowerCase();
+
+  // Triage gate: short reminders, memory CRUD and simple classifications are
+  // never delegated.
+  if (userMessage.length <= 40 && NON_DELEGATABLE_SIGNALS.some((s) => lower.includes(s))) {
+    return { complexity: "simple", reason: "Короткий reminder/CRUD — делегирование не нужно" };
+  }
+  if (CRUD_SIGNALS.some((s) => lower.startsWith(s)) && !lower.includes(" и ")) {
+    return { complexity: "simple", reason: "Простая операция поиска/списка — делегирование не нужно" };
+  }
+
   const complexSignals = [
     "и ",
     "а также",

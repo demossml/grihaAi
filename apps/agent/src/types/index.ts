@@ -244,3 +244,126 @@ export type RulesDeleteParams = Static<typeof RulesDeleteSchema>;
 
 export const RulesGetSchema = Type.Object({ id: Type.String() });
 export type RulesGetParams = Static<typeof RulesGetSchema>;
+
+/** Phase 16 — Foundation: approvals + commitments */
+
+export type ApprovalActionClass =
+  | "READ_ONLY"
+  | "REVERSIBLE_LOW_RISK"
+  | "SIDE_EFFECT"
+  | "HIGH_RISK_IRREVERSIBLE";
+
+export interface FinancialApprovalPolicy {
+  currency: string;
+  autoApproveBelow?: number;
+  alwaysConfirmAbove?: number;
+  categoriesAlwaysConfirm?: string[];
+}
+
+export interface ApprovalPolicyRecord {
+  id: string;
+  userId: string;
+  scope: "global" | "chat";
+  chatId?: string;
+  financial?: FinancialApprovalPolicy;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ApprovalStatus = "pending" | "granted" | "denied" | "expired";
+
+export interface ApprovalRequestRecord {
+  id: string;
+  userId: string;
+  sessionId: string;
+  action: string;
+  actionClass: ApprovalActionClass;
+  target?: string;
+  args?: Record<string, unknown>;
+  status: ApprovalStatus;
+  expiresAt?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export type CommitmentStatus = "open" | "due_soon" | "overdue" | "completed" | "cancelled";
+
+export interface Commitment {
+  id: string;
+  userId: string;
+  /** What needs to be done. */
+  text: string;
+  /** Who is responsible. */
+  who?: string;
+  /** To whom it is owed / for whom. */
+  toWhom?: string;
+  /** ISO timestamp. */
+  dueDate?: string;
+  status: CommitmentStatus;
+  sourceType?: "message" | "meeting" | "voice" | "manual";
+  sourceId?: string;
+  contactId?: string;
+  meetingId?: string;
+  /** 0..1 extraction confidence. */
+  confidence: number;
+  provenance?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ApprovalPolicySetSchema = Type.Object({
+  scope: Type.Optional(Type.Union([Type.Literal("global"), Type.Literal("chat")])),
+  chatId: Type.Optional(Type.String()),
+  financial: Type.Object({
+    currency: Type.String({ minLength: 1 }),
+    autoApproveBelow: Type.Optional(Type.Number()),
+    alwaysConfirmAbove: Type.Optional(Type.Number()),
+    categoriesAlwaysConfirm: Type.Optional(Type.Array(Type.String())),
+  }),
+});
+export type ApprovalPolicySetParams = Static<typeof ApprovalPolicySetSchema>;
+
+export const ApprovalRequestSchema = Type.Object({
+  action: Type.String({ minLength: 1 }),
+  target: Type.Optional(Type.String()),
+  arguments: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
+export type ApprovalRequestParams = Static<typeof ApprovalRequestSchema>;
+
+export const ApprovalGrantSchema = Type.Object({ id: Type.String() });
+export type ApprovalGrantParams = Static<typeof ApprovalGrantSchema>;
+
+export const CommitmentAddSchema = Type.Object({
+  text: Type.String({ minLength: 1 }),
+  who: Type.Optional(Type.String()),
+  toWhom: Type.Optional(Type.String()),
+  dueDate: Type.Optional(Type.String()),
+  confidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  sourceType: Type.Optional(Type.Union([
+    Type.Literal("message"), Type.Literal("meeting"), Type.Literal("voice"), Type.Literal("manual"),
+  ])),
+  sourceId: Type.Optional(Type.String()),
+  contactId: Type.Optional(Type.String()),
+  meetingId: Type.Optional(Type.String()),
+});
+export type CommitmentAddParams = Static<typeof CommitmentAddSchema>;
+
+export const CommitmentListSchema = Type.Object({
+  status: Type.Optional(Type.Union([
+    Type.Literal("open"), Type.Literal("due_soon"), Type.Literal("overdue"),
+    Type.Literal("completed"), Type.Literal("cancelled"),
+  ])),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 20 })),
+});
+export type CommitmentListParams = Static<typeof CommitmentListSchema>;
+
+export const CommitmentUpdateSchema = Type.Object({
+  id: Type.String(),
+  text: Type.Optional(Type.String()),
+  status: Type.Optional(Type.Union([
+    Type.Literal("open"), Type.Literal("due_soon"), Type.Literal("overdue"),
+    Type.Literal("completed"), Type.Literal("cancelled"),
+  ])),
+  dueDate: Type.Optional(Type.String()),
+});
+export type CommitmentUpdateParams = Static<typeof CommitmentUpdateSchema>;
