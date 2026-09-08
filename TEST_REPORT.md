@@ -1,8 +1,8 @@
 # Griha AI — Test Report
 
-- **Date (UTC):** 2026-09-07 21:41 UTC
-- **Commit / branch:** `main` @ `de9101710c9d2a38d934372c570f122312a7d711`
-- **Agent task:** full test after monorepo (Turborepo + Hono) restructuring
+- **Date (UTC):** 2026-09-08
+- **Commit / branch:** `main` (architecture hardening phases 0–7)
+- **Agent task:** final QA after architecture hardening
 - **Package manager:** npm (workspaces)
 - **Node version:** v26.0.0
 - **Turbo version:** 2.10.12
@@ -11,17 +11,15 @@
 
 | Check | Status | Notes |
 |-------|--------|-------|
-| install | PASS | `npm install` up to date, 302 packages, 0 vulnerabilities |
-| typecheck | PASS | 9 tasks, 0 errors |
+| install | PASS | `npm install` up to date |
+| typecheck | PASS | 10 tasks, 0 errors |
 | lint | SKIP | not configured (no `lint` script in any package) |
 | build | PASS | 6 tasks |
-| unit/integration tests | PASS | 72 passed, 0 failed, 0 skipped (24 suites, 14 files) |
-| coverage | DONE | Node built-in: lines 79.81%, branches 76.35%, funcs 81.45% |
-| smoke imports | PASS | shared-types/config/stt/skills ok; api /health → 200 |
-| stt runtime | SKIP (stub) | `stt_local.py` runs; `faster_whisper` not installed |
+| unit/integration tests | PASS | 240 passed (agent) + 5 passed (skills), 0 failed |
+| static verification | PASS | no secrets, no `.env`, no TODO, no duplicate registries |
 
 **Overall:** GREEN
-(typecheck + tests green; coverage measured ~80%; smoke passed. Lint not configured, STT is a stub.)
+(typecheck + tests + build green; 240 agent tests + 5 skills tests; no secrets/hardcoded keys.)
 
 ## 2. Environment
 
@@ -52,8 +50,9 @@
 ## 6. Tests
 
 - command: `npx turbo run test` (agent: `tsx --test tests/**/*.test.ts`)
-- totals: **72 passed, 0 failed, 0 skipped** (24 suites, 14 test files, all in `@griha/agent`)
+- totals: **240 passed, 0 failed, 0 skipped** (74 suites in `@griha/agent`) + **5 passed** (`@griha/skills`)
 - failed tests detail: **none**.
+- New hardening test suites: `approval-policy`, `approval-service`, `commitment-service` (contract), `secret-filter`, `capabilities`, `context-builder`, `workflow`, `providers`, `subagent-capabilities`, `deterministic-tasks`, `skill-catalog`.
 
 ## 7. Coverage
 

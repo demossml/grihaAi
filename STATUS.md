@@ -204,5 +204,15 @@
 - [x] Cron safety: dedupe брифингов, timezone, дедупликация аномалий, monitorMode
 - [x] `docs/GRISHA_SKILLS_FINAL_REPORT.md` + обновлены README/ARCHITECTURE/EXTENSIONS
 
+## Phase 22 — Architecture Hardening (фазы 0–7)
+
+- [x] Phase 0: `docs/CURRENT_ARCHITECTURE.md` (аудит, mapping current→target layer)
+- [x] Phase 1: Domain Foundations — Commitment contract (actor/action/target/deadline/sourceMessageId/completedAt, миграция БД), `src/types/domain.ts`
+- [x] Phase 2: Policy/Approval/Capabilities — Capability Registry (4 статуса), Approval scope (ONCE/SESSION/WORKFLOW) + статусы approved/rejected/cancelled, UserRule `ruleClass`, learning guard
+- [x] Phase 3–4: ContextBuilder, Workflow (meeting/finance), Provider-интерфейсы (noop), sub-agent capability allowlist
+- [x] Phase 5–6: deterministic cron tasks (daily-briefing/anomaly-scan/commitment-due-scan), detectRepeatedFailures, ORCHESTRATION_POLICY в core-agent
+- [x] Phase 7: `docs/DOMAIN-ARCHITECTURE.md`, обновлены README/ARCHITECTURE/EXTENSIONS/SECURITY, `TEST_REPORT.md`
+- [x] Tests: 240 agent + 5 skills — зелёные
+
 
 

@@ -21,9 +21,34 @@
 1. **Whitelist Telegram** — `allowedUserIds` (`TelegramBridge.isAllowed`): входящие сообщения принимаются только от разрешённых `user_id`.
 2. **Prefilter user-rules** — `shouldProcessMessage` (hard rules): «отвечай только мне»-правила блокируют сообщение ещё до LLM (0 токенов).
 3. **Gateway** — единая точка проверки side-effect tool-calls (см. §4).
-4. **Sandbox** — изоляция исполнения кода, когда оно разрешено (см. §5).
+4. **Policy** — финансовые пороги и `ruleClass` (см. §3.1).
+5. **Approval** — действующее явное подтверждение с scope и expiration (см. §3.1).
+6. **Sandbox** — изоляция исполнения кода, когда оно разрешено (см. §5).
 
 > Примечание: отдельного rate-limiter в коде сейчас нет (whitelist + prefilter — это текущие ограничители). Если он появится, это будет ещё один слой между whitelist и gateway.
+
+## 3.1. Три уровня: Gateway / Policy / Approval
+
+Поток решения: **Agent → Capability Check → Policy Check → Approval Check →
+Execute / Reject / Ask User**.
+
+- **Gateway** (техническая граница) — `tool_call` + trust level: может ли tool/session
+  выполнить side effect вообще.
+- **Policy** (разрешено ли действие в контексте) — `src/utils/approval-policy.ts`:
+  финансовые пороги (`autoApproveBelow`/`alwaysConfirmAbove`/
+  `categoriesAlwaysConfirm`) и `ruleClass` user-rules
+  (`preference|policy|permission|restriction`).
+- **Approval** (существует ли явное подтверждение) — `approval-gate`:
+  `scope: ONCE|SESSION|WORKFLOW`, статусы `pending|approved|rejected|expired|cancelled`,
+  TTL. Одно подтверждение покрывает одно действие + аргументы + target + сессию.
+
+**Capability Registry** (`src/utils/capabilities.ts`) — единый источник возможностей
+(`AVAILABLE|UNAVAILABLE|REQUIRES_CONNECTION|REQUIRES_APPROVAL`). Недоступная
+capability не даёт fake success. Субагенты имеют явный allowlist
+(`src/capabilities/subagent-capabilities.ts`).
+
+**Learning guard** (`isProtectedSkillContent`) — авто-дообучение не меняет
+financial limits, permissions, restrictions, approval/security policies.
 
 ## 4. Gateway (`apps/agent/.pi/extensions/gateway`)
 

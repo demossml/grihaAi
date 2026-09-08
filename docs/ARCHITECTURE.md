@@ -286,8 +286,10 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 ## Смежные документы
 
 - [docs/EXTENSIONS.md](EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
+- [docs/DOMAIN-ARCHITECTURE.md](DOMAIN-ARCHITECTURE.md) — целевая слоистая модель, domain contracts, провайдеры, sub-agent capabilities, deterministic cron.
+- [docs/CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) — аудит текущей архитектуры и точки hardening.
 - [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md) — глубокий разбор Telegram-бота и пула изолированных сессий.
-- [docs/SECURITY.md](SECURITY.md) — периметр, модель доверия, gateway и sandbox-слои.
+- [docs/SECURITY.md](SECURITY.md) — периметр, модель доверия, gateway, policy, approval и sandbox-слои.
 - [docs/GRISHA_SKILLS.md](GRISHA_SKILLS.md) — канонический каталог skills + workflow graphs.
 - [docs/GRISHA_SKILL_CAPABILITY_MATRIX.md](GRISHA_SKILL_CAPABILITY_MATRIX.md) — аудит и gap-классификация.
 - [docs/GRISHA_SKILLS_FINAL_REPORT.md](GRISHA_SKILLS_FINAL_REPORT.md) — финальный QA-отчёт.

@@ -167,6 +167,33 @@ OpenAI-совместимые HTTP-вызовы: `HttpEmbeddingService` (`POST /
 
 `assessTranscriptConfidence(result)` — эвристический confidence-гейт (пусто/коротко/мусор → uncertain, переспрос).
 
+### `src/context/ContextBuilder.ts`
+
+Единая сборка контекста (skills не сканируют память сами): `getContactContext`,
+`getMeetingContext`, `getDailyBriefingContext`, `getFinancialContext`,
+`getCommitmentContext`. Инжектируемые reader-функции; без бизнес-логики skill.
+
+### `src/workflow/workflows.ts`
+
+Лёгкий workflow-слой: `MEETING_WORKFLOW`, `FINANCE_WORKFLOW`, `getWorkflow`,
+`nextStep`, `workflowCapabilities`. Шаг = skill + capability + описание.
+
+### `src/providers/providers.ts`
+
+Интерфейсы `CalendarProvider`/`EmailProvider`/`CRMProvider`/`TravelProvider`/
+`AccountingProvider` + noop-реализации (возвращают `ok:false` + лимит, кроме
+локального `email.draft`). Реальные API не подключены — fake success запрещён.
+
+### `src/cron/deterministic-tasks.ts`
+
+Детерминированные cron-задачи (`daily-briefing`, `anomaly-scan`,
+`commitment-due-scan`): сервис-запросы без LLM; LLM только синтезирует после.
+
+### `src/capabilities/subagent-capabilities.ts`
+
+Allowlist capabilities для субагентов (untrusted): только `memory.search`,
+`ocr.process`, `report.pdf`, `report.pptx`.
+
 ---
 
 ## Расширения (`.pi/extensions/`)
