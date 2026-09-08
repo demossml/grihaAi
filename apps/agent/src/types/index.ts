@@ -291,22 +291,33 @@ export type CommitmentStatus = "open" | "due_soon" | "overdue" | "completed" | "
 export interface Commitment {
   id: string;
   userId: string;
-  /** What needs to be done. */
+  /** Human-readable description of the obligation. */
   text: string;
+  /** What must be done (canonical domain field; alias of text). */
+  action?: string;
   /** Who is responsible. */
   who?: string;
+  /** Who is responsible (canonical domain field; alias of who). */
+  actor?: string;
   /** To whom it is owed / for whom. */
   toWhom?: string;
+  /** To whom / about what (canonical domain field; alias of toWhom). */
+  target?: string;
   /** ISO timestamp. */
   dueDate?: string;
+  /** ISO timestamp (canonical domain field; alias of dueDate). */
+  deadline?: string;
   status: CommitmentStatus;
   sourceType?: "message" | "meeting" | "voice" | "manual";
+  source?: string;
   sourceId?: string;
+  sourceMessageId?: string;
   contactId?: string;
   meetingId?: string;
   /** 0..1 extraction confidence. */
   confidence: number;
   provenance?: string;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -338,6 +349,11 @@ export const CommitmentAddSchema = Type.Object({
   who: Type.Optional(Type.String()),
   toWhom: Type.Optional(Type.String()),
   dueDate: Type.Optional(Type.String()),
+  actor: Type.Optional(Type.String()),
+  action: Type.Optional(Type.String()),
+  target: Type.Optional(Type.String()),
+  deadline: Type.Optional(Type.String()),
+  sourceMessageId: Type.Optional(Type.String()),
   confidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
   sourceType: Type.Optional(Type.Union([
     Type.Literal("message"), Type.Literal("meeting"), Type.Literal("voice"), Type.Literal("manual"),

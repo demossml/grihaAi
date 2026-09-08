@@ -25,6 +25,17 @@ CREATE INDEX IF NOT EXISTS idx_commitments_user_status ON commitments(user_id, s
 CREATE INDEX IF NOT EXISTS idx_commitments_due ON commitments(due_date);
 `;
 
+/** Columns added by the domain contract (migrated onto older DBs). */
+const NEW_COLUMNS: Array<[name: string, ddl: string]> = [
+  ["actor", "TEXT"],
+  ["action", "TEXT"],
+  ["target", "TEXT"],
+  ["deadline", "TEXT"],
+  ["source", "TEXT"],
+  ["source_message_id", "TEXT"],
+  ["completed_at", "TEXT"],
+];
+
 interface CommitmentRow {
   id: string;
   user_id: string;
@@ -41,6 +52,13 @@ interface CommitmentRow {
   provenance: string | null;
   created_at: string;
   updated_at: string;
+  actor?: string | null;
+  action?: string | null;
+  target?: string | null;
+  deadline?: string | null;
+  source?: string | null;
+  source_message_id?: string | null;
+  completed_at?: string | null;
 }
 
 export interface CommitmentAddInput {
@@ -49,6 +67,12 @@ export interface CommitmentAddInput {
   who?: string;
   toWhom?: string;
   dueDate?: string;
+  actor?: string;
+  action?: string;
+  target?: string;
+  deadline?: string;
+  source?: string;
+  sourceMessageId?: string;
   confidence?: number;
   sourceType?: Commitment["sourceType"];
   sourceId?: string;
@@ -61,6 +85,7 @@ export interface CommitmentUpdatePatch {
   text?: string;
   status?: CommitmentStatus;
   dueDate?: string;
+  completedAt?: string;
 }
 
 const TERMINAL: Set<CommitmentStatus> = new Set(["completed", "cancelled"]);
@@ -91,16 +116,23 @@ function rowToCommitment(row: CommitmentRow): Commitment {
     id: row.id,
     userId: row.user_id,
     text: row.text,
+    action: row.action ?? row.text,
     who: row.who ?? undefined,
+    actor: row.actor ?? row.who ?? undefined,
     toWhom: row.to_whom ?? undefined,
+    target: row.target ?? row.to_whom ?? undefined,
     dueDate: row.due_date ?? undefined,
+    deadline: row.deadline ?? row.due_date ?? undefined,
     status: row.status as CommitmentStatus,
     sourceType: (row.source_type ?? undefined) as Commitment["sourceType"],
+    source: row.source ?? row.source_type ?? undefined,
     sourceId: row.source_id ?? undefined,
+    sourceMessageId: row.source_message_id ?? row.source_id ?? undefined,
     contactId: row.contact_id ?? undefined,
     meetingId: row.meeting_id ?? undefined,
     confidence: row.confidence,
     provenance: row.provenance ?? undefined,
+    completedAt: row.completed_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -125,6 +157,20 @@ export class CommitmentService {
     this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
+    this.migrate();
+  }
+
+  /** Add missing domain-contract columns onto databases created before the contract. */
+  private migrate(): void {
+    const db = this.requireDb();
+    const existing = new Set(
+      (db.pragma("table_info(commitments)") as Array<{ name: string }>).map((c) => c.name),
+    );
+    for (const [name, ddl] of NEW_COLUMNS) {
+      if (!existing.has(name)) {
+        db.exec(`ALTER TABLE commitments ADD COLUMN ${name} ${ddl}`);
+      }
+    }
   }
 
   close(): void {
@@ -138,19 +184,33 @@ export class CommitmentService {
     const db = this.requireDb();
     const now = new Date().toISOString();
     const id = randomUUID();
-    const status = deriveStatus("open", input.dueDate);
+
+    // Domain contract aliases: canonical fields fall back to legacy fields.
+    const text = input.text || input.action || "";
+    const action = input.action ?? input.text;
+    const who = input.who ?? input.actor;
+    const actor = input.actor ?? input.who;
+    const toWhom = input.toWhom ?? input.target;
+    const target = input.target ?? input.toWhom;
+    const dueDate = input.dueDate ?? input.deadline;
+    const deadline = input.deadline ?? input.dueDate;
+    const sourceMessageId =
+      input.sourceMessageId ?? (input.sourceType === "message" ? input.sourceId : undefined);
+
+    const status = deriveStatus("open", dueDate);
     db.prepare(
       `INSERT INTO commitments
        (id, user_id, text, who, to_whom, due_date, status, source_type, source_id,
-        contact_id, meeting_id, confidence, provenance, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        contact_id, meeting_id, confidence, provenance, created_at, updated_at,
+        actor, action, target, deadline, source, source_message_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.userId,
-      input.text,
-      input.who ?? null,
-      input.toWhom ?? null,
-      input.dueDate ?? null,
+      text,
+      who ?? null,
+      toWhom ?? null,
+      dueDate ?? null,
       status,
       input.sourceType ?? null,
       input.sourceId ?? null,
@@ -160,6 +220,12 @@ export class CommitmentService {
       input.provenance ?? null,
       now,
       now,
+      actor ?? null,
+      action ?? null,
+      target ?? null,
+      deadline ?? null,
+      input.source ?? input.sourceType ?? null,
+      sourceMessageId ?? null,
     );
     return this.get(id)!;
   }
@@ -184,17 +250,34 @@ export class CommitmentService {
     return rows.map(rowToCommitment);
   }
 
+  /** Commitments that will become due within the window (not yet overdue). */
+  dueSoon(userId: string, now: Date = new Date()): Commitment[] {
+    this.refreshStatuses(now);
+    return this.list(userId, { limit: 100 }).filter((c) => c.status === "due_soon");
+  }
+
+  /** Commitments past their deadline. */
+  overdue(userId: string, now: Date = new Date()): Commitment[] {
+    this.refreshStatuses(now);
+    return this.list(userId, { limit: 100 }).filter((c) => c.status === "overdue");
+  }
+
   update(id: string, patch: CommitmentUpdatePatch): Commitment | undefined {
     const db = this.requireDb();
     const existing = this.get(id);
     if (!existing) return undefined;
 
-    const status = patch.status ?? deriveStatus(existing.status, patch.dueDate ?? existing.dueDate);
-    const text = patch.text ?? existing.text;
     const dueDate = patch.dueDate !== undefined ? patch.dueDate : existing.dueDate;
+    const status = patch.status ?? deriveStatus(existing.status, dueDate);
+    const text = patch.text ?? existing.text;
+    const completedAt =
+      status === "completed" && !TERMINAL.has(existing.status)
+        ? patch.completedAt ?? new Date().toISOString()
+        : existing.completedAt;
+
     db.prepare(
-      `UPDATE commitments SET text = ?, status = ?, due_date = ?, updated_at = ? WHERE id = ?`,
-    ).run(text, status, dueDate ?? null, new Date().toISOString(), id);
+      `UPDATE commitments SET text = ?, action = COALESCE(action, ?), status = ?, due_date = ?, deadline = COALESCE(deadline, ?), completed_at = ?, updated_at = ? WHERE id = ?`,
+    ).run(text, text, status, dueDate ?? null, dueDate ?? null, completedAt ?? null, new Date().toISOString(), id);
     return this.get(id);
   }
 
