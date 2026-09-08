@@ -188,5 +188,12 @@
 - [x] `travel` и `connector` добавлены в `SUB_SESSION_EXTENSIONS`
 - [x] Tests: capabilities report, travel service (204 tests)
 
+## Phase 20 — Canonical skill catalog + workflows (этап 6)
+
+- [x] Все 25 canonical skills + `core` существуют в `packages/skills` и видны registry
+- [x] `discoverSkills` возвращает детерминированный порядок (sort по name)
+- [x] `docs/GRISHA_SKILLS.md` — полный каталог (статусы/инструменты/storage/connector/approval) + workflow graphs (Meeting/Finance/Executive lifecycle)
+- [x] Tests: skill-catalog (наличие всех, без дублей, порядок, описания) — 208 tests
+
 
 

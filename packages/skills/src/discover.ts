@@ -90,5 +90,7 @@ export async function discoverSkills(rootDir?: string): Promise<SkillMeta[]> {
     }
   }
 
-  return skills;
+  // Deterministic ordering: sort by name so prompt formatting and registry
+  // consumers see a stable list regardless of filesystem readdir order.
+  return skills.sort((a, b) => a.name.localeCompare(b.name));
 }
