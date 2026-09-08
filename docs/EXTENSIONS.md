@@ -52,14 +52,16 @@
 - `registerDeepSeekProvider(pi, cfg)` — официальный DeepSeek endpoint + 3 модели (одна vision).
 - `applyConfig(pi, ctx, cfg)` — основной сценарий (см. [ARCHITECTURE.md §6](ARCHITECTURE.md#6-провайдеры-модели-и-bootstrap)).
 
-### `src/utils/skills.ts`
+### Skills discovery — `@griha/skills`
 
-Обнаружение и форматирование skills (agentskills.io):
+Обнаружение и форматирование skills вынесено в пакет **`packages/skills`** (`@griha/skills`) — единственный источник контента и registry API:
 
-- `discoverSkills(rootDir)` — рекурсивный обход: каталог с `SKILL.md` — корень skill (не рекурсируем дальше); иначе прямые `.md`-файлы — skill'ы; подкаталоги — рекурсия.
-- `parseSkillFile` — читает frontmatter через `parseFrontmatter` из pi; имя по умолчанию — имя каталога (для `SKILL.md`) или имя файла.
-- `normalizeTags` — теги из массива или строки через запятую.
-- `formatSkillsForPrompt(skills)` — строки вида `- name (autoCreated, v1): description` для system-prompt.
+- `getSkillsRoot()` — абсолютный путь к `packages/skills/skills`.
+- `discoverSkills(rootDir?)` — рекурсивный обход (по умолчанию `getSkillsRoot()`): каталог с `SKILL.md` — корень skill (не рекурсируем); иначе прямые `.md`-файлы — skills; подкаталоги — рекурсия.
+- `formatSkillsForPrompt(skills)` — строки вида `- name (autoCreated, v1): description`.
+- `parseFrontmatter` — минимальный line-based парсер (без зависимости от pi).
+
+Старый `apps/agent/src/utils/skills.ts` удалён. Контент — в `packages/skills/skills/<name>/SKILL.md`.
 
 ### `src/utils/model-catalog.ts`
 
@@ -111,7 +113,7 @@
 
 - **События**:
   - `before_agent_start` — добавляет в system-prompt:
-    1. список доступных skills (`discoverSkills` + `formatSkillsForPrompt`);
+    1. список доступных skills (`discoverSkills()` + `formatSkillsForPrompt` из `@griha/skills`);
     2. политику делегирования (`DELEGATION_POLICY`: SIMPLE → сам; COMPLEX → `delegate_tasks` → `check_subagents` → итог → `get_shared_insights`);
     3. политику закрытого цикла обучения (предлагать создание skill'а).
 - **Команды**: `/skills` — список skills.
@@ -251,9 +253,9 @@
 
 ---
 
-## `skills/core/SKILL.md`
+## `packages/skills/skills/core/SKILL.md`
 
-Базовый skill с frontmatter (`name: core`, `description`, `tags`) и политикой памяти: использовать `memory_add` для durable-фактов, `memory_search` перед использованием неуверенного контекста, не хранить секреты. Плюс правило закрытого цикла обучения.
+Канонический каталог skills (`@griha/skills`). Базовый skill `core` с frontmatter (`name: core`, `description`, `tags`) и политикой памяти: использовать `memory_add` для durable-фактов, `memory_search` перед использованием неуверенного контекста, не хранить секреты. Плюс правило закрытого цикла обучения.
 
 ---
 
@@ -261,7 +263,7 @@
 
 - `tests/setup.ts` — `before()` только создаёт `tests/.tmp-db` (без `rm` — см. «мелочи» в ARCHITECTURE). Хелперы `getTestDbPath(name)`, `cleanTestDb(name)`.
 - `tests/unit/*.test.ts` — `node:test` + `assert/strict`:
-  - `smoke`, `skills`, `config`, `model-catalog`, `model-router` — утилиты;
+  - `smoke`, `config`, `model-catalog`, `model-router` — утилиты;
   - `memory-service`, `vector-memory` — память (гибрид, эмбеддинги, FTS-fallback);
   - `bot-registry`, `delegation`, `live-steering` — multi-agent;
   - `cron`, `personal-learning` — соответствующие расширения;

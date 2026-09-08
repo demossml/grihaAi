@@ -3,5 +3,7 @@ dist/
 *.log
 .DS_Store
 .env
-tests/.tmp-db/
+.tmp-db/
 .grish-ai/
+
+.turbo/

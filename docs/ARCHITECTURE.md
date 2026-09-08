@@ -17,7 +17,7 @@
 
 ## 1. Что это за проект
 
-`grish-ai` — TypeScript-переписывание ключевых возможностей агента **Nous Research Hermes** поверх платформы **pi.dev** (`@earendil-works/pi-coding-agent`). Имя агента — **Гриша**.
+`griha-ai` — самостоятельный TypeScript-агент на платформе **pi.dev** (`@earendil-works/pi-coding-agent`). Имя агента — **Гриша**.
 
 Финальная роль агента: **профессиональный ассистент менеджера / секретаря / бухгалтера** — расписания, документы, отчёты, переписка, исследования, заметки со встреч, лёгкая финансовая поддержка. Инструменты программирования — вторичны.
 
@@ -49,29 +49,34 @@ pi.dev — рантайм для кодинг-агентов. Установле
 
 Подробный справочник по каждому файлу и расширению — в [docs/EXTENSIONS.md](EXTENSIONS.md).
 
-### Структура проекта (кратко)
+### Структура монорепы (кратко)
+
+Репо — **Turborepo-монорепа** (npm workspaces): приложение и библиотеки разнесены по пакетам с общим scope `@griha/*`.
 
 ```
-grish-ai/
-├── .pi/
-│   ├── settings.json              # какие расширения и skills грузить
-│   └── extensions/                # все расширения (это и есть «приложение»)
-│       ├── core-agent/            # skills + политика делегирования в system-prompt
-│       ├── first-run-setup/       # мастер первичной настройки (провайдер/модель/ключ)
-│       ├── sqlite-rag-memory/     # гибридная память (SQLite + FTS5 + вектора)
-│       ├── multi-agent/           # делегирование, боты, субагенты
-│       ├── cron/                  # планировщик задач
-│       ├── model-router/          # маршрутизация main/vision + analyze_image
-│       ├── personal-learning/     # профиль пользователя + заметки + автодообучение
-│       └── telegram-bot/          # Telegram-бот (long polling) + пул изолированных сессий
-├── src/
-│   ├── types/                     # общие TypeBox-схемы и TS-типы
-│   └── utils/                     # чистые утилиты (конфиг, skills, embeddings, роутеры…)
-├── skills/core/SKILL.md           # базовый skill (agentskills.io frontmatter)
-├── tests/                         # node:test (unit), setup.ts
-├── docs/                          # эта документация
-└── README.md / STATUS.md
+grihaAi/
+├── apps/
+│   ├── agent/                    # ГЛАВНОЕ приложение: pi extensions + src + tests
+│   │   ├── .pi/extensions/       # все расширения (core-agent, memory, multi-agent, cron,
+│   │   │                         #   model-router, personal-learning, telegram-bot, user-rules)
+│   │   ├── src/types, src/utils  # agent-only типы и утилиты
+│   │   └── scripts/stt_local.py  # голосовой STT (stub)
+│   └── api/                      # Hono HTTP-скелет (createApp + /health)
+├── packages/
+│   ├── shared-types/             # общие доменные типы (@griha/shared-types)
+│   ├── config/                   # ~/.grish-ai config helpers (@griha/config)
+│   ├── skills/                   # канонический skills-контент + registry (@griha/skills)
+│   ├── stt/                      # voice transcription client (@griha/stt)
+│   └── tsconfig/                 # общие base/node tsconfig (@griha/tsconfig)
+├── package.json                  # private: true, npm workspaces
+├── turbo.json
+└── docs/                         # эта документация
 ```
+
+**Правило импортов**: между пакетами — только `@griha/*` (`@griha/config`, `@griha/shared-types`, `@griha/skills`, `@griha/stt`); запрещены относительные пути в `packages/`. Внутри `apps/agent` относительные пути (`../../../src/...`, `../core-agent/...`) сохранены.
+
+**Запуск**: агент стартует из `apps/agent` (`cd apps/agent && ../../node_modules/.bin/pi`), потому что pi читает `.pi/extensions` относительно cwd; skills агент берёт из пакета `@griha/skills` (`packages/skills/skills`). Перед запуском/тестами пакеты `@griha/*` должны быть собраны (`npm run build`), т.к. их `exports` указывает на `dist/`.
+
 
 ---
 

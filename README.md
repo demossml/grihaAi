@@ -1,6 +1,6 @@
-# grish-ai
+# griha-ai
 
-Агент **Гриша** — TypeScript-переписывание ключевых возможностей **Nous Research Hermes Agent** поверх платформы **pi.dev** (версия Hermes 2026): замкнутый цикл обучения, слоистая память, именованный Bot Mode, автономное создание skills.
+Агент **Гриша** — самостоятельный TypeScript-агент на платформе **pi.dev**: замкнутый цикл обучения, слоистая память, именованный Bot Mode, автономное создание skills.
 
 ## Роль агента
 
@@ -17,18 +17,21 @@
 ## Быстрый старт
 
 ```bash
-npm install               # зависимости
-npm run typecheck         # строгая проверка типов
-npm test                  # 63 теста (unit)
-./node_modules/.bin/pi    # запустить агента (CLI pi)
+npm install               # workspace-зависимости
+npm run typecheck         # turbo: typecheck всех пакетов (собирает @griha/*)
+npm test                  # turbo: тесты агента (72 unit)
+npm run build             # turbo: сборка пакетов в dist/
 
+# Запуск агента — из apps/agent (pi читает .pi/ и skills/ оттуда):
+cd apps/agent
+../../node_modules/.bin/pi
 # В pi при первом запуске откроется мастер настройки:
 #   провайдер → модель → API-ключ (или /setup повторно)
 ```
 
 ## Как это устроено (кратко)
 
-Вся бизнес-логика — **расширения pi.dev** в `.pi/extensions/`. Каждое расширение — файл `index.ts` с `export default function (pi: ExtensionAPI)`, который подписывается на события агента, регистрирует LLM-инструменты и slash-команды.
+Вся бизнес-логика — **расширения pi.dev** в `apps/agent/.pi/extensions/`. Каждое расширение — файл `index.ts` с `export default function (pi: ExtensionAPI)`, который подписывается на события агента, регистрирует LLM-инструменты и slash-команды.
 
 | Расширение | Что даёт |
 |---|---|
@@ -43,39 +46,48 @@ npm test                  # 63 теста (unit)
 
 Подробности: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) и [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
-## Структура проекта
+## Структура (Turborepo + Hono)
 
 ```
-grish-ai/
-├── package.json / tsconfig.json
-├── .pi/
-│   ├── settings.json          # какие расширения и skills грузить
-│   └── extensions/            # расширения (вся бизнес-логика)
-│       ├── core-agent/  first-run-setup/  sqlite-rag-memory/
-│       ├── multi-agent/  cron/  model-router/
-│       ├── personal-learning/  telegram-bot/
-├── skills/core/SKILL.md       # базовый skill (agentskills.io frontmatter)
-├── src/
-│   ├── types/                 # TypeBox-схемы и TS-типы
-│   └── utils/                 # чистые утилиты (config, skills, embeddings, роутеры…)
-├── tests/
-│   ├── unit/                  # 13 тест-файлов (node:test)
-│   ├── integration/           # зарезервировано
-│   └── setup.ts
-├── docs/                      # документация
-│   ├── ARCHITECTURE.md        # общая картина, платформа, «мелочи»
-│   ├── EXTENSIONS.md          # пофайловый справочник
-│   └── TELEGRAM-BOT.md        # глубокий разбор бота
+grihaAi/
+├── apps/
+│   ├── agent/                # главный агент (pi extensions, telegram, memory)
+│   │   ├── .pi/extensions/   # все расширения (вся бизнес-логика)
+│   │   ├── src/              # types + utils (agent-only)
+│   │   ├── scripts/stt_local.py  # голосовой STT (v1, stub)
+│   │   └── tests/
+│   ├── api/                  # Hono HTTP-скелет (health; будущий STT/admin)
+├── packages/
+│   ├── shared-types/         # общие TS-типы (@griha/shared-types)
+│   ├── config/               # ~/.grish-ai config helpers (@griha/config)
+│   ├── skills/               # канонический skills-контент + registry (@griha/skills)
+│   ├── stt/                  # voice transcription client (@griha/stt)
+│   └── tsconfig/             # общие base/node tsconfig (@griha/tsconfig)
+├── package.json              # private: true, npm workspaces
+├── turbo.json
+├── docs/                     # документация
+│   ├── ARCHITECTURE.md       # общая картина, платформа, «мелочи»
+│   ├── EXTENSIONS.md         # пофайловый справочник
+│   └── TELEGRAM-BOT.md       # глубокий разбор бота
 └── README.md / STATUS.md
 ```
 
-## Команды npm
+Правила: импорты между пакетами только через `@griha/*` (не через относительные пути в `packages/`). Один менеджер пакетов на репу (npm).
+
+## Команды
 
 ```bash
-npm install       # зависимости
-npm run build     # компиляция в dist/
+npm install       # workspace-установка
+npm run build     # turbo run build
+npm run typecheck # turbo run typecheck
+npm test          # turbo run test
+```
+
+Внутри пакета (например, `apps/agent`):
+
+```bash
+npm run typecheck # tsc --noEmit
 npm test          # tsx --test tests/**/*.test.ts
-npm run typecheck # tsc --noEmit (strict)
 ```
 
 ## Конфигурация и секреты

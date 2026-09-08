@@ -1,4 +1,0 @@
-{
-  "extensions": [".pi/extensions/**/*.ts", ".pi/extensions/**/index.ts"],
-  "skills": ["skills"]
-}

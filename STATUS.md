@@ -1,4 +1,4 @@
-# Status — Phase 3 (latest Hermes aligned)
+# Status — griha-ai
 
 - [x] Scaffold + modern types (BotConfig, layered memory)
 - [x] Test harness green
@@ -83,5 +83,36 @@
 - [x] /model и /setup умеют настраивать vision
 - [x] Flash отсутствует (осознанно)
 - [x] Tests green
+
+## Phase 11 — User Rules
+- [x] SQLite-хранилище user_rules (CRUD + in-memory cache)
+- [x] Инструменты rules_list / rules_add / rules_edit / rules_delete / rules_get
+- [x] Pre-filter hard-правил до агента (0 токенов, «только мои сообщения»)
+- [x] Injection soft-правил в system-prompt (global + chat)
+- [x] /rules команда (list / add / delete / on / off) + Telegram /rules с chat-контекстом
+- [x] Tests green
+
+## Phase 12 — Monorepo (Turborepo + Hono)
+- [x] npm workspaces: apps/* + packages/*
+- [x] turbo.json (build/typecheck/test) + root scripts
+- [x] packages/tsconfig (@griha/tsconfig: base.json, node.json)
+- [x] packages/shared-types (@griha/shared-types: config types, UserRule, STT)
+- [x] packages/config (@griha/config: ~/.grish-ai helpers)
+- [x] packages/stt (@griha/stt: transcribeVoice → python3 bridge)
+- [x] apps/agent — все .pi/extensions + src + skills + tests перенесены
+- [x] apps/api — Hono skeleton (createApp + /health)
+- [x] apps/skills — stub package
+- [x] Импорты через @griha/* (без ../../../packages/...)
+- [x] turbo run typecheck и turbo run test зелёные (72 tests)
+
+## Phase 13 — Skills package (@griha/skills)
+- [x] Контент перенесён в packages/skills/skills/ (core/SKILL.md)
+- [x] Registry API: getSkillsRoot, discoverSkills(rootDir?), formatSkillsForPrompt, SkillMeta
+- [x] Минимальный frontmatter-парсер (без зависимости от pi)
+- [x] core-agent импортирует из @griha/skills (discoverSkills() без cwd)
+- [x] Старый apps/agent/src/utils/skills.ts удалён; apps/agent/skills → README «moved»
+- [x] apps/skills stub удалён (канон хранения = packages/skills)
+- [x] Tests: @griha/skills 5 tests + agent 69 tests — зелёные
+- [x] typecheck зелёный (10 задач)
 
 **Initial Working Project reached — ready for further phases (hard isolation, gateway).**
