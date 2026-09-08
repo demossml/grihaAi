@@ -562,3 +562,53 @@ export const ContactUpsertSchema = Type.Object({
   tags: Type.Optional(Type.Array(Type.String())),
 });
 export type ContactUpsertParams = Static<typeof ContactUpsertSchema>;
+
+/** Phase 19 — Connector-ready architecture */
+
+export type ExternalCapability =
+  | "email.read"
+  | "email.draft"
+  | "email.send"
+  | "calendar.read"
+  | "calendar.write"
+  | "travel.read"
+  | "travel.book"
+  | "crm.read"
+  | "crm.write"
+  | "accounting.read"
+  | "accounting.write";
+
+export type TravelItemKind = "flight" | "hotel" | "transfer" | "other";
+
+export interface TravelItem {
+  id: string;
+  userId: string;
+  tripId: string;
+  kind: TravelItemKind;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  location?: string;
+  confirmationRef?: string;
+  source: string;
+  createdAt: string;
+}
+
+export const TravelItemAddSchema = Type.Object({
+  tripId: Type.String({ minLength: 1 }),
+  kind: Type.Union([
+    Type.Literal("flight"), Type.Literal("hotel"), Type.Literal("transfer"), Type.Literal("other"),
+  ]),
+  title: Type.String({ minLength: 1 }),
+  startsAt: Type.String(),
+  endsAt: Type.String(),
+  location: Type.Optional(Type.String()),
+  confirmationRef: Type.Optional(Type.String()),
+});
+export type TravelItemAddParams = Static<typeof TravelItemAddSchema>;
+
+export const TravelListSchema = Type.Object({
+  tripId: Type.Optional(Type.String()),
+  days: Type.Optional(Type.Number({ minimum: 0 })),
+});
+export type TravelListParams = Static<typeof TravelListSchema>;

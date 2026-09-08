@@ -23,6 +23,8 @@ import voiceIntake from "../voice-intake/index.js";
 import proactiveAssistant from "../proactive-assistant/index.js";
 import financeExtension from "../finance/index.js";
 import crmExtension from "../crm/index.js";
+import travelExtension from "../travel/index.js";
+import connector from "../connector/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 
 /**
@@ -57,6 +59,8 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   proactiveAssistant,
   financeExtension,
   crmExtension,
+  travelExtension,
+  connector,
   providerBootstrap,
 ];
 

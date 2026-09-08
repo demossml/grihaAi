@@ -179,5 +179,14 @@
 - [x] `finance` и `crm` добавлены в `SUB_SESSION_EXTENSIONS` Telegram-сессий
 - [x] Tests: finance utils, finance service (invoice statuses), contact service (199 tests)
 
+## Phase 19 — Connector-ready architecture (этап 5)
+
+- [x] `ExternalCapability` union + `src/utils/capabilities.ts` (capability report, degraded skills, approval-required actions) — machine-readable
+- [x] `connector` extension: tool `capabilities_list`
+- [x] `travel` extension: `TravelService` + tools `travel_item_add/list/upcoming/itinerary`; booking НЕ реализован (connector-ready)
+- [x] Skills: `correspondence`, `inbox-triage`, `travel-coordination` (draft fallback, честное ограничение, approval перед отправкой)
+- [x] `travel` и `connector` добавлены в `SUB_SESSION_EXTENSIONS`
+- [x] Tests: capabilities report, travel service (204 tests)
+
 
 
