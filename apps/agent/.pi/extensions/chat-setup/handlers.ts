@@ -79,7 +79,7 @@ function wasAddedToChat(event: MyChatMemberEvent): boolean {
   );
 }
 
-/** §4: бота добавили в группу → safe_default + pending + DM (fallback в группу). */
+/** §4: бота добавили в группу → safe_default + pending + онбординг в группу (и в DM). */
 export async function onChatMemberAdded(
   event: MyChatMemberEvent,
   deps: SetupDeps,
@@ -106,22 +106,28 @@ export async function onChatMemberAdded(
   });
 
   const title = event.chat.title ?? chatId;
+
+  // Риск A: бот в группе шлёт сообщения без «первого /start» (в отличие от DM) —
+  // онбординг в ГРУППЕ надёжнее. Тишина — только по контенту (Ограничение D):
+  // онбординг-сообщение и /setup разрешены в pending-группе.
+  try {
+    await deps.sendMessage(Number(chatId), buildOnboardingText(title), {
+      parseMode: "HTML",
+      inlineButtons: buildOnboardingKeyboard(chatId),
+    });
+  } catch {
+    // Группа недоступна (бот кикнут и т.п.) — молча; ниже DM остаётся страховкой.
+    console.error("[chat-setup] group onboarding send failed for chat", chatId);
+  }
+
+  // DM добавившему — как раньше (кнопки работают и там).
   try {
     await deps.sendMessage(Number(actorId), buildOnboardingText(title), {
       parseMode: "HTML",
       inlineButtons: buildOnboardingKeyboard(chatId),
     });
   } catch {
-    // R3: ОДИН короткий fallback в группу, без кнопок пресетов (кнопки — только в DM).
-    // Это НЕ диалог с агентом и не снимает silent (R1 остаётся).
-    try {
-      await deps.sendMessage(
-        Number(chatId),
-        "Чтобы настроить меня для этой группы, откройте личный чат со мной, нажмите /start и отправьте /setup.",
-      );
-    } catch {
-      /* ignore */
-    }
+    /* ignore — онбординг уже ушёл в группу */
   }
 }
 
@@ -241,7 +247,19 @@ export async function runSetupCommand(
   deps: SetupDeps,
 ): Promise<string> {
   if (!ctx.isPrivate) {
-    return "Настройка групп — только в личных сообщениях с ботом. Откройте DM и отправьте /setup.";
+    // Ограничение D (согласовано): /setup разрешён в ГРУППЕ — но только для
+    // ЭТОЙ группы и только от её creator/administrator (Пакет B).
+    const rec = await deps.setup.get(ctx.chatId);
+    if (!rec || rec.status !== "pending") {
+      return "Эта группа не ожидает настройки. Список групп в ожидании — командой /setup в личных сообщениях.";
+    }
+    const check = await checkGroupAuthority(ctx.chatId, ctx.userId, rec, deps);
+    if (!check.ok) return check.reason;
+    await deps.sendMessage(Number(ctx.chatId), buildOnboardingText(rec.chatTitle ?? ctx.chatId), {
+      parseMode: "HTML",
+      inlineButtons: buildOnboardingKeyboard(ctx.chatId),
+    });
+    return "Отправил меню настройки в эту группу.";
   }
   if (!(await deps.users.canManage(ctx.userId))) {
     return "Недостаточно прав. Нужна роль owner или admin.";

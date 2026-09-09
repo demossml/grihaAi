@@ -251,18 +251,22 @@ await session.bindExtensions({ mode: "json" });
 
 ### Chat onboarding + пресеты правил
 
-- **Group setup contract (mandatory)**: пока группа pending — бот в ней **молчит**
-  (R1: prefilter → false, 0 токенов LLM, даже на @mention). Настройка (пресеты,
-  «настроить самому», «оставить как есть») — **только в DM** с тем, кто добавил
-  (R2). Если DM не доставлен — **один** короткий fallback в группу («откройте личный
-  чат… /start … /setup», R3) — это не диалог и не снимает silent.
+- **Group setup contract (mandatory)**: пока группа pending — бот в ней **молчит по
+  контенту** (R1: prefilter → false, 0 токенов LLM, даже на @mention). Исключение
+  (согласовано с заказчиком, «Ограничение D»): **онбординг-сообщение и `/setup`
+  разрешены в группе** — это не диалог с агентом и не снимает silent.
+- Онбординг при добавлении бота: сообщение с кнопками пресетов уходит **в саму группу**
+  (бот в группе не ограничен «первым /start», в отличие от DM — надёжнее), а также
+  в DM добавившему. `/setup` в группе — только для этой группы и только от её
+  creator/administrator; `/setup` в DM — список pending-групп (≤5 keyboard) или
+  `/setup <chatId>` (та же проверка прав через getChatMember).
 - `safe_default` пишется при add (silent, R4), но status остаётся pending — настройка
   завершается только preset/skip (R5). Личные чаты не блокируются (R6). Callback
-  пресетов — только из DM или от canManage/addedBy (R7). Никаких LLM-ответов
+  пресетов — canManage/addedBy + реальный admin-статус группы (R7). Никаких LLM-ответов
   «я пока не настроен» в pending-группе (R8).
 - При добавлении бота в группу (`my_chat_member`) сразу применяются **safe defaults** чата
   (hard rules: `require_mention`, `reply_to_bot`, `ignore_bots`, `ignore_service`,
-  `ignore_if_other_mention`), а добавившему в DM уходит сообщение с кнопками пресетов.
+  `ignore_if_other_mention`), а в группу и добавившему в DM уходит сообщение с кнопками пресетов.
 - Пресеты (`RulePresets.ts`): team / secretary / listener / shop / only_me + «Настроить самому»
   (детерминированный парсер + кнопки confirm/cancel) и «Оставить как есть».
   Callback-данные: `cs:{chatId}:{p:{preset}|custom|skip|confirm|cancel}` (≤64 байт).

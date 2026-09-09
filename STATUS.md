@@ -254,6 +254,15 @@
 - [x] Не откачено: silent-until-configured, caption_entities, session keys, STT, ACL callbacks, forum threads
 - [x] Tests: 450 unit — зелёные; отчёт `TELEGRAM_RELIABILITY_AUTH_REPORT.md`
 
+## Phase 27 — Telegram Groups Rewrite (онбординг в группе)
+
+- [x] Риск A: онбординг-сообщение с кнопками пресетов уходит **в саму группу** (бот в группе не ограничен «первым /start») + DM добавившему
+- [x] Ограничение D (согласовано с заказчиком): тишина только по контенту — онбординг и `/setup` в pending-группе разрешены; LLM-ответы по-прежнему блокируются (R1)
+- [x] `/setup` в группе: только для этой группы, только от creator/administrator (getChatMember); в DM — как раньше (≤5 pending + `/setup <chatId>`)
+- [x] Риск B уже закрыт Пакетом B (getChatMember, fail closed); Риск C — callback_data ≤64 байт (уже учтено)
+- [x] Удалён старый R3-фоллбэк «откройте DM…» — теперь полное меню в группе
+- [x] Tests: 452 unit — зелёные; docs/TELEGRAM-BOT.md обновлён; отчёт `TELEGRAM_GROUPS_REWRITE_REPORT.md`
+
 
 
 

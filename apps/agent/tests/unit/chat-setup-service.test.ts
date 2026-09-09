@@ -143,9 +143,9 @@ describe("onboarding handlers", () => {
     rules,
   });
 
-  it("my_chat_member → safe_default applied + pending + DM sent", async () => {
+  it("my_chat_member → safe_default + pending + онбординг в группу И в DM", async () => {
     const { setup, rules } = makeSetup();
-    const sent: string[] = [];
+    const sent: Array<{ chatId: number; text: string; hasButtons: boolean }> = [];
     await onChatMemberAdded(
       {
         oldStatus: "left",
@@ -156,8 +156,8 @@ describe("onboarding handlers", () => {
       {
         setup,
         users: { canManage: async () => true },
-        sendMessage: async (chatId, text) => {
-          sent.push(`${chatId}:${text}`);
+        sendMessage: async (chatId, text, extra) => {
+          sent.push({ chatId, text, hasButtons: (extra?.inlineButtons?.length ?? 0) > 0 });
         },
       },
     );
@@ -165,9 +165,12 @@ describe("onboarding handlers", () => {
     assert.equal(rules.replaced.length, 1);
     assert.equal(rules.replaced[0].meta.source, "preset:safe_default");
     assert.equal((await setup.get("-100"))?.status, "pending");
-    assert.equal(sent.length, 1);
-    assert.ok(sent[0].startsWith("42:"));
-    assert.ok(sent[0].includes("Отдел продаж"));
+    assert.equal(sent.length, 2, "группа + DM актору");
+    assert.equal(sent[0].chatId, -100, "онбординг сначала в группу");
+    assert.ok(sent[0].text.includes("Отдел продаж"));
+    assert.ok(sent[0].hasButtons, "кнопки пресетов в группе");
+    assert.equal(sent[1].chatId, 42, "и в DM добавившему");
+    assert.ok(sent[1].hasButtons);
   });
 
   it("second add after completed → no DM, no rule rewrite", async () => {
@@ -193,35 +196,34 @@ describe("onboarding handlers", () => {
     );
 
     assert.equal(rules.replaced.length, replacedAfter);
-    assert.equal(sent.length, 1, "повторный add не спамит онбордингом");
+    assert.equal(sent.length, 2, "повторный add не спамит (первый add: группа + DM)");
   });
 
-  it("DM упал → ровно один короткий fallback в группу (без кнопок)", async () => {
+  it("DM упал → онбординг всё равно ушёл в группу (с кнопками)", async () => {
     const { setup, rules } = makeSetup();
     const toActor: string[] = [];
-    const toGroup: Array<{ chatId: number; text: string }> = [];
+    const toGroup: Array<{ chatId: number; text: string; hasButtons: boolean }> = [];
     await onChatMemberAdded(
       { oldStatus: "left", newStatus: "member", chat: { id: -100, type: "group", title: "T" }, from: { id: 42 } },
       {
         setup,
         users: { canManage: async () => true },
-        sendMessage: async (chatId, text) => {
+        sendMessage: async (chatId, text, extra) => {
           if (chatId === 42) {
             toActor.push(text);
             throw new Error("can't DM");
           }
-          toGroup.push({ chatId, text });
+          toGroup.push({ chatId, text, hasButtons: (extra?.inlineButtons?.length ?? 0) > 0 });
         },
       },
     );
 
     assert.equal(toActor.length, 1, "DM попытка была ровно одна");
-    assert.equal(toGroup.length, 1, "fallback ровно один");
-    assert.ok(toGroup[0].text.includes("/start"));
-    assert.ok(toGroup[0].text.includes("/setup"));
-    assert.ok(!toGroup[0].text.includes("Выберите сценарий"), "кнопки/меню — только в DM");
+    assert.equal(toGroup.length, 1, "онбординг в группу ровно один");
+    assert.ok(toGroup[0].text.includes("Выберите сценарий"), "полное меню в группе");
+    assert.ok(toGroup[0].hasButtons, "кнопки пресетов в группе");
     assert.equal(rules.replaced.length, 1, "safe_default всё равно применён");
-    assert.equal(setup.isConfiguredSync("-100"), false, "fallback не завершает настройку");
+    assert.equal(setup.isConfiguredSync("-100"), false, "онбординг не завершает настройку");
   });
 
   it("callback p:team от canManage-actor применяет пресет и редактирует сообщение", async () => {

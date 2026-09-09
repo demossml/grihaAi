@@ -315,7 +315,8 @@ export class TelegramBridge {
         return { handled: true };
       }
     }
-    // /setup ... — настройка групп: ТОЛЬКО в DM (D5), handler сам шлёт keyboard.
+    // /setup ... — настройка групп: в DM — все pending; в группе — только эта
+    // группа (только creator/administrator, Пакет B). Handler сам шлёт keyboard.
     if (text === "/setup" || text.startsWith("/setup ")) {
       const handler = this.options?.setupCommandHandler;
       if (handler) {
