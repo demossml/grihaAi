@@ -363,6 +363,18 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
 - Онбординг идемпотентен: повторный add при pending не дублирует онбординг-сообщение
   (FR-8); completed/skipped — no-op. Логи `my_chat_member` — событие/chat/actor/результат.
 
+### Отправка файлов по запросу (`send_file`)
+
+- Инструмент `send_file(filePath, caption?)` доступен агенту в Telegram-субсессиях
+  (`telegram-file-send`). Целевой чат и тема берутся из контекста сессии
+  (pool ставит `{chatId, userId, threadId}` перед каждым prompt) — файл уходит в тот
+  же чат/тему, откуда пришёл запрос, через мост в контроллер: текущий bot instance,
+  per-chat очередь, sendWithRetry (retry_after/429), grammy `InputFile`.
+- Валидация: файл существует, обычный (не директория), ≤50 МБ, внутри разрешённых
+  корней (tmp / cwd / `~/.grish-ai`); ACL — `UsersService.isAllowed` (как у входящих).
+  Ошибки — понятным текстом, без падения бота. Лог: кто/что/куда + file_id/message_id.
+- Не затрагивает доставку файлов report-generator (`session-files.ts`) — это отдельный путь.
+
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
   polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:

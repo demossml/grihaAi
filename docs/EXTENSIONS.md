@@ -325,6 +325,21 @@ Allowlist capabilities для субагентов (untrusted): только `me
 - Валидация данных — `src/utils/reports/report-schemas.ts`; spec — `src/utils/reports/report-specs.ts`; рендер — `src/utils/reports/report-renderer.ts`; путь файла регистрируется в `src/utils/telegram/session-files.ts` через `ctx.sessionManager.getSessionId()` (для Telegram-доставки).
 - Вывод: `~/.grish-ai/reports/<uuid>.pdf|.pptx`.
 
+### `telegram-file-send/`
+
+Файлы: `index.ts`. Инструмент `send_file` — доступен только в Telegram-субсессиях
+(в `SUB_SESSION_EXTENSIONS` пула):
+
+- Вход: `filePath` + опциональный `caption`; целевой чат/тема — из контекста сессии
+  (`user-rules/context.ts`), никаких глобальных переменных.
+- Валидация (`telegram-bot/file-send.ts`): файл существует, обычный файл, ≤50 МБ,
+  внутри разрешённых корней (tmp/cwd/`~/.grish-ai`) — без произвольного доступа к ФС.
+- ACL — `UsersService.isAllowed` (тот же, что у входящих апдейтов; мост переопределяется в тестах).
+- Отправка — через мост `file-send-bridge.ts` в контроллер: текущий bot instance +
+  per-chat очередь + sendWithRetry (уважает retry_after/429); форум — `message_thread_id`.
+- Логируется факт отправки (кто, что, куда) и результат (file_id/message_id).
+- Вывод: статус «Файл отправлен в чат» или понятная ошибка (не найден/большой/нет доступа/сеть).
+
 ### `approval-gate/`
 
 Файлы: `index.ts`, `ApprovalService.ts`.

@@ -35,6 +35,7 @@ import {
   tryHandleCustomText,
 } from "../chat-setup/handlers.js";
 import { mapChatMemberStatus } from "./chat-auth.js";
+import { setTelegramFileAclCheck } from "./file-send-bridge.js";
 import { transcribeVoice } from "@griha/stt";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
@@ -135,6 +136,7 @@ const realBotFactory: TelegramBotFactory = (token) => {
       sendDocument: (chatId, filePath, extra) =>
         bot.api.sendDocument(chatId, new InputFile(filePath), {
           ...(extra?.caption ? { caption: extra.caption } : {}),
+          ...(extra?.messageThreadId ? { message_thread_id: extra.messageThreadId } : {}),
         }),
       sendChatAction: (chatId, action) => bot.api.sendChatAction(chatId, action),
       setMyCommands: (commands) => bot.api.setMyCommands(commands),
@@ -167,6 +169,8 @@ function getController(): TelegramBotController {
     // по нему на каждый апдейт (disk store + cache, writes — без рестарта).
     const users = getUsersService();
     const setup = getChatSetupService();
+    // ACL для инструмента send_file — тот же источник (UsersService).
+    setTelegramFileAclCheck((userId, chatId) => users.isAllowed(userId, chatId));
     controller = new TelegramBotController(
       grishaAgent(),
       cfg?.telegram?.allowedUserIds ?? [],

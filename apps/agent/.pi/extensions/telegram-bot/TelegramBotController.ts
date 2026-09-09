@@ -12,6 +12,7 @@ import {
   type TgUpdate,
 } from "./TelegramBridge.js";
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
+import fs from "node:fs";
 import { normalizeThreadId } from "./threads.js";
 import { collectMentionFlags } from "./mentions.js";
 import {
@@ -21,6 +22,12 @@ import {
   type ParsedTelegramError,
 } from "./telegram-errors.js";
 import { ChatSendQueue } from "./send-queue.js";
+import { TELEGRAM_MAX_FILE_BYTES } from "./file-send.js";
+import {
+  setTelegramFileSender,
+  type TelegramFileSendInput,
+  type TelegramFileSendResult,
+} from "./file-send-bridge.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -57,7 +64,11 @@ export interface TelegramBotLike {
         messageThreadId?: number;
       },
     ): Promise<unknown>;
-    sendDocument(chatId: number, filePath: string, extra?: { caption?: string }): Promise<unknown>;
+    sendDocument(
+      chatId: number,
+      filePath: string,
+      extra?: { caption?: string; messageThreadId?: number },
+    ): Promise<unknown>;
     sendChatAction(chatId: number, action: "typing" | "upload_document"): Promise<unknown>;
     setMyCommands(commands: Array<{ command: string; description: string }>): Promise<unknown>;
     setMessageReaction(chatId: number, messageId: number, reaction: string): Promise<unknown>;
@@ -239,7 +250,12 @@ export class TelegramBotController {
     private readonly allowedUserIds: number[],
     private readonly botFactory: TelegramBotFactory,
     private readonly options?: TelegramBotControllerOptions,
-  ) {}
+  ) {
+    // Инструмент send_file в субсессиях шлёт файлы через ЭТОТ контроллер
+    // (текущий bot instance + per-chat очередь + retry). Метод читает this.bot
+    // в момент вызова, поэтому регистрация в конструкторе валидна при реконнектах.
+    setTelegramFileSender((input) => this.sendFileToChat(input));
+  }
 
   isRunning(): boolean {
     return this.running;
@@ -565,7 +581,12 @@ export class TelegramBotController {
         .sendChatAction(chatId, "upload_document")
         .catch((err: unknown) => console.error("[telegram-bot] sendChatAction failed:", err));
       docOk = await this.sendWithRetry(
-        () => bot.api.sendDocument(chatId, filePath, { caption: extra?.documentCaption }),
+        () =>
+          bot.api.sendDocument(chatId, filePath, {
+            caption: extra?.documentCaption,
+            // Форум: документ — в ту же тему, что и входящее сообщение.
+            messageThreadId: extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
+          }),
         "sendDocument",
       );
     }
@@ -576,6 +597,59 @@ export class TelegramBotController {
     } else {
       console.error(`[telegram-bot] reply to chat ${chatId} failed`);
     }
+  }
+
+  /**
+   * Отправка файла по запросу инструмента send_file: текущий bot instance,
+   * per-chat очередь + sendWithRetry (уважает retry_after/429). Форум —
+   * message_thread_id из контекста сессии. Размер проверяется ДО очереди.
+   */
+  async sendFileToChat(input: TelegramFileSendInput): Promise<TelegramFileSendResult> {
+    const bot = this.bot;
+    if (!bot) return { ok: false, error: "Telegram-бот не запущен." };
+
+    // Валидация на входе (инструмент тоже проверяет — защита в глубину).
+    let sizeBytes: number;
+    try {
+      const stat = fs.statSync(input.filePath);
+      if (!stat.isFile()) return { ok: false, error: "Это не файл." };
+      sizeBytes = stat.size;
+    } catch {
+      return { ok: false, error: `Файл не найден: ${input.filePath}` };
+    }
+    if (sizeBytes > TELEGRAM_MAX_FILE_BYTES) {
+      return {
+        ok: false,
+        error: `Файл ${(sizeBytes / (1024 * 1024)).toFixed(1)} МБ — больше лимита Telegram (50 МБ).`,
+      };
+    }
+
+    let result: unknown;
+    let ok = false;
+    await this.sendQueue.enqueue(input.chatId, async () => {
+      ok = await this.sendWithRetry(
+        async () => {
+          result = await bot.api.sendDocument(input.chatId, input.filePath, {
+            caption: input.caption,
+            messageThreadId: input.threadId,
+          });
+        },
+        "sendDocument:send_file",
+      );
+    });
+
+    if (!ok) {
+      return { ok: false, error: "Не удалось отправить файл (лимиты/сеть Telegram)." };
+    }
+    const rec = (result ?? null) as {
+      message_id?: number;
+      document?: { file_id?: string };
+    } | null;
+    return {
+      ok: true,
+      fileId: rec?.document?.file_id,
+      messageId: rec?.message_id,
+    };
   }
 
   private toTgUpdate(ctx: unknown): TgUpdate | null {

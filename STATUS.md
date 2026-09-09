@@ -265,6 +265,16 @@
 - [x] Риск B уже закрыт Пакетом B (getChatMember, fail closed); Риск C — callback_data ≤64 байт (уже учтено)
 - [x] Tests: 458 unit — зелёные; docs/TELEGRAM-BOT.md обновлён; отчёт `TELEGRAM_GROUPS_REWRITE_REPORT.md`
 
+## Phase 28 — send_file: отправка файлов в Telegram
+
+- [x] Инструмент `send_file(filePath, caption?)` в Telegram-субсессиях (`telegram-file-send`, в `SUB_SESSION_EXTENSIONS`)
+- [x] chatId/threadId из контекста сессии (pool ставит перед prompt); форум — ответ в ту же тему
+- [x] Отправка через мост в контроллер: текущий bot instance + per-chat очередь + sendWithRetry (retry_after/429) + grammy InputFile
+- [x] Валидация (`file-send.ts`): существует/обычный файл/≤50 МБ/внутри разрешённых корней (tmp/cwd/~/.grish-ai)
+- [x] ACL — UsersService.isAllowed (как у входящих апдейтов); логирование кто/что/куда + file_id/message_id
+- [x] Не сломан report-generator (session-files.ts — отдельный путь); документы в форуме теперь тоже с message_thread_id
+- [x] Tests: 470 unit — зелёные; typecheck/build зелёные
+
 
 
 

@@ -505,7 +505,7 @@ class FakeBot implements TelegramBotLike {
     buttons?: InlineButton[][];
     threadId?: number;
   }> = [];
-  docs: Array<{ chatId: number; filePath: string; caption?: string }> = [];
+  docs: Array<{ chatId: number; filePath: string; caption?: string; threadId?: number }> = [];
   chatActions: Array<{ chatId: number; action: string }> = [];
   reactions: Array<{ chatId: number; messageId: number; reaction: string }> = [];
   commands: Array<{ command: string; description: string }> | null = null;
@@ -559,9 +559,14 @@ class FakeBot implements TelegramBotLike {
     sendDocument: async (
       chatId: number,
       filePath: string,
-      extra?: { caption?: string },
+      extra?: { caption?: string; messageThreadId?: number },
     ): Promise<unknown> => {
-      this.docs.push({ chatId, filePath, caption: extra?.caption });
+      this.docs.push({
+        chatId,
+        filePath,
+        caption: extra?.caption,
+        threadId: extra?.messageThreadId,
+      });
       return undefined;
     },
     sendChatAction: async (chatId: number, action: "typing" | "upload_document"): Promise<unknown> => {
@@ -866,6 +871,39 @@ describe("telegram bot controller", () => {
 
     assert.equal(agentCalls, 0, "агент не вызывается на сервисное сообщение");
     assert.equal(fake.sent.length, 0, "ответа нет");
+    await controller.stop();
+  });
+
+  it("send_file через контроллер: документ в чат (с темой форума), ошибки без падения", async () => {
+    const fake = new FakeBot();
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake);
+    controller.start("token");
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ctrl-sendfile-"));
+    const filePath = path.join(dir, "f.txt");
+    fs.writeFileSync(filePath, "hello");
+
+    const res = await controller.sendFileToChat({
+      chatId: -100,
+      filePath,
+      caption: "подпись",
+      threadId: 15,
+    });
+    assert.equal(res.ok, true);
+    assert.equal(fake.docs.length, 1);
+    assert.equal(fake.docs[0].chatId, -100);
+    assert.equal(fake.docs[0].caption, "подпись");
+    assert.equal(fake.docs[0].threadId, 15, "форум: документ в ту же тему");
+
+    const missing = await controller.sendFileToChat({
+      chatId: -100,
+      filePath: path.join(dir, "nope.txt"),
+    });
+    assert.equal(missing.ok, false);
+    assert.ok(missing.error!.includes("Файл не найден"));
+    assert.equal(fake.docs.length, 1, "неудачная отправка не добавила документ");
+
+    fs.rmSync(dir, { recursive: true, force: true });
     await controller.stop();
   });
 
