@@ -60,6 +60,13 @@ export interface TelegramBotControllerOptions {
   resetHandler?: TelegramResetHandler;
   /** Shared approve/deny logic (approval-gate) — used by both /approve|/deny text and callback buttons. */
   approvalHandler?: TelegramApprovalHandler;
+  /** Early ACL-проверка (UsersService) — ДО prefilter и агента. */
+  aclCheck?: (userId: string, chatId: string) => boolean | Promise<boolean>;
+  /** Прямой handler /users ... (UsersService + canManage guard). */
+  usersCommandHandler?: (
+    args: string,
+    ctx: { chatId: string; userId: string },
+  ) => string | Promise<string>;
   /** Advertised bot commands (defaults to DEFAULT_TELEGRAM_COMMANDS). */
   commands?: Array<{ command: string; description: string }>;
   /** Send retry policy (injectable for tests). */
@@ -242,6 +249,8 @@ export class TelegramBotController {
               .setMessageReaction(chatId, messageId, emoji)
               .catch((err: unknown) => console.error("[telegram-bot] setMessageReaction failed:", err));
           },
+          aclCheck: this.options?.aclCheck,
+          usersCommandHandler: this.options?.usersCommandHandler,
         },
       );
 
@@ -384,7 +393,7 @@ export class TelegramBotController {
       update?: { update_id?: number };
       message?: {
         from?: { id?: number; first_name?: string };
-        chat?: { id?: number };
+        chat?: { id?: number; type?: string };
         message_id?: number;
         text?: string;
         caption?: string;
@@ -401,7 +410,7 @@ export class TelegramBotController {
       updateId: c.update?.update_id ?? 0,
       message: {
         from: m.from ? { id: m.from.id ?? 0, firstName: m.from.first_name } : undefined,
-        chat: { id: m.chat.id ?? 0 },
+        chat: { id: m.chat.id ?? 0, type: m.chat.type },
         messageId: m.message_id,
         text: m.text,
         caption: m.caption,

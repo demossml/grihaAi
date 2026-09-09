@@ -119,6 +119,105 @@ describe("telegram bridge", () => {
     assert.equal(sent.length, 0);
   });
 
+  it("ACL deny before agent: private chat gets a short denial, agent not called", async () => {
+    let agentCalled = false;
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => {
+        agentCalled = true;
+        return { text: "x" };
+      },
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+      { aclCheck: async () => false },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 20,
+      message: { from: { id: 999 }, chat: { id: 1, type: "private" }, text: "привет" },
+    });
+
+    assert.equal(res.handled, true);
+    assert.equal(res.reason, "acl-denied");
+    assert.equal(agentCalled, false, "неизвестный не должен доходить до агента/LLM");
+    assert.deepEqual(sent, ["Нет доступа."]);
+  });
+
+  it("ACL deny in a group is silent", async () => {
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => ({ text: "x" }),
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+      { aclCheck: async () => false },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 21,
+      message: { from: { id: 999 }, chat: { id: -100, type: "group" }, text: "hi" },
+    });
+
+    assert.equal(res.reason, "acl-denied");
+    assert.equal(sent.length, 0, "в группах — молча, без спама");
+  });
+
+  it("ACL allowed → normal agent flow", async () => {
+    let agentCalled = false;
+    const bridge = new TelegramBridge(
+      [123],
+      async () => {
+        agentCalled = true;
+        return { text: "ok" };
+      },
+      async () => {},
+      { aclCheck: async () => true },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 22,
+      message: { from: { id: 999 }, chat: { id: 1 }, text: "привет" },
+    });
+
+    assert.equal(res.handled, true);
+    assert.equal(agentCalled, true);
+  });
+
+  it("routes /users commands to the handler without calling the agent", async () => {
+    let agentCalled = false;
+    const handled: Array<{ args: string; userId: string }> = [];
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => {
+        agentCalled = true;
+        return { text: "x" };
+      },
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+      {
+        usersCommandHandler: async (args, ctx) => {
+          handled.push({ args, userId: ctx.userId });
+          return `OK: user ${args.split(/\s+/)[1] ?? "?"} role=user`;
+        },
+      },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 23,
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "/users add 111222333" },
+    });
+
+    assert.equal(res.handled, true);
+    assert.deepEqual(handled, [{ args: "add 111222333", userId: "123" }]);
+    assert.equal(agentCalled, false, "команда работает без LLM");
+    assert.equal(sent[0], "OK: user 111222333 role=user");
+  });
+
   it("routes contact messages to the agent and reacts 👍 on the original message", async () => {
     const calls: string[] = [];
     const reactions: Array<{ chatId: number; messageId: number; emoji: string }> = [];

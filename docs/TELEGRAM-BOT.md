@@ -80,15 +80,17 @@ bot.api.sendMessage(chatId, text)  +  filePath ? bot.api.sendDocument(chatId, fi
 
 ### `TelegramBridge`
 
-Чистый класс с тремя зависимостями: `allowedUserIds`, `agent`, `sender`.
+Чистый класс с тремя зависимостями: `allowedUserIds`, `agent`, `sender` (+ опции).
 
-- `isAllowed(userId)`: **пустой `allowedUserIds` ⇒ `false` для всех** (это важно — пустой whitelist блокирует всех).
+- **Early ACL**: если контроллер передал `aclCheck` (UsersService), проверка идёт самой первой —
+  ДО prefilter и агента. Deny в private → «Нет доступа.» (если не `ACL_DENY_REPLY=0`), в
+  группах — молча. Без `aclCheck` — legacy-whitelist `allowedUserIds` (пустой ⇒ `false` для всех).
 - `handleUpdate(update)`:
   1. нет сообщения/чата → `no-message`;
   2. нет `from.id` → `no-user`;
-  3. не в whitelist → `not-allowed` (никакого ответа);
+  3. не прошёл ACL → `acl-denied` (или legacy `not-allowed`, никакого ответа);
   4. `/start`, `/new`, `/status` → canned-ответы;
-  5. `voice` → заглушка о транскрипции;
+  5. `voice` → агенту шлётся `"Пользователь прислал голосовое сообщение.\nfile_id: ...\nПодпись: ..."`;
   6. `photo` → агенту шлётся `"Пользователь прислал изображение.\nfile_id: ...\nПодпись: ..."`;
   7. `document` → аналогично с `file_id`;
   8. иначе (текст) → `agent({ message: text, userId, platform: "telegram", sessionKey: "tg:<userId>" })`.
@@ -231,6 +233,21 @@ await session.bindExtensions({ mode: "json" });
 - Память в субсессиях не изолирована по пользователям (расширения памяти намеренно исключены).
 
 ## 9. Запуск без TUI и устойчивость к сети
+
+### Users ACL (runtime, без рестарта)
+
+- **Store**: `~/.grish-ai/users.json` (JSON, атомарная запись tmp+rename). Источник правды —
+  disk + in-memory cache; writes применяются к следующему входящему апдейту немедленно.
+- **Роли**: `owner` (bootstrap из `config.ownerUserId`/`GRISHA_OWNER_ID`), `admin`, `user`,
+  `blocked`. Owner через tools/команды НЕ назначается; нельзя удалить/демоутнуть
+  единственного owner. Legacy `telegram.allowedUserIds` при пустом store мигрирует в
+  users.json как `role="user"`.
+- **Режим для неизвестных**: `config.aclMode` (или `ACL_MODE=open|closed`); по умолчанию
+  `closed`, если задан owner/whitelist, иначе `open` (dev). Deny-ответ в private —
+  «Нет доступа.», отключается `ACL_DENY_REPLY=0`; в группах всегда молча.
+- **Управление**: slash-команда `/users [list | add <id> [role] | role <id> <role> | remove <id>]`
+  (прямой handler без LLM) и tools `users_list`/`users_add`/`users_set_role`/`users_remove`
+  (для натурального языка). Оба пути — только owner/admin (`canManage`).
 
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long

@@ -16,7 +16,7 @@ export interface TgDocument {
 
 export interface TgMessage {
   from?: TgUser;
-  chat?: { id: number };
+  chat?: { id: number; type?: string };
   messageId?: number;
   text?: string;
   caption?: string;
@@ -118,6 +118,13 @@ export class TelegramBridge {
       beforeAgent?: (chatId: number) => void;
       /** Реакция на исходное сообщение (лёгкое подтверждение «принято»). */
       react?: (chatId: number, messageId: number, emoji: string) => void;
+      /** Early ACL: вызывается ДО prefilter/агента. false → deny (см. §3 политики). */
+      aclCheck?: (userId: string, chatId: string) => boolean | Promise<boolean>;
+      /** Прямой handler /users ... (без LLM, как /rules). */
+      usersCommandHandler?: (
+        args: string,
+        ctx: { chatId: string; userId: string },
+      ) => string | Promise<string>;
     },
   ) {}
 
@@ -145,10 +152,25 @@ export class TelegramBridge {
     if (!msg?.chat) return { handled: false, reason: "no-message" };
     const userId = msg.from?.id;
     if (userId === undefined) return { handled: false, reason: "no-user" };
-    if (!this.isAllowed(userId)) return { handled: false, reason: "not-allowed" };
 
     const chatId = msg.chat.id;
+    const chatType = msg.chat.type ?? "private";
     const text = msg.text ?? "";
+
+    // ── Early ACL: как можно раньше, ДО prefilter/агента (п.3 спеки). ────────
+    if (this.options?.aclCheck) {
+      const allowed = await this.options.aclCheck(String(userId), String(chatId));
+      if (!allowed) {
+        // Политика v1: private → короткий отказ (если не ACL_DENY_REPLY=0);
+        // группа — молча. LLM не вызывается.
+        if (chatType === "private" && process.env.ACL_DENY_REPLY !== "0") {
+          await this.sender(chatId, "Нет доступа.");
+        }
+        return { handled: true, reason: "acl-denied" };
+      }
+    } else if (!this.isAllowed(userId)) {
+      return { handled: false, reason: "not-allowed" };
+    }
 
     if (text === "/start") {
       await this.sender(chatId, "Привет! Я Гриша — твой офисный ассистент.");
@@ -188,6 +210,16 @@ export class TelegramBridge {
         : `Укажите id: /${approvalMatch[1]} <id>`;
       await this.sender(chatId, reply);
       return { handled: true };
+    }
+    // /users ... — прямой handler без LLM (guard canManage внутри handler'а).
+    if (text === "/users" || text.startsWith("/users ")) {
+      const handler = this.options?.usersCommandHandler;
+      if (handler) {
+        const args = text.slice("/users".length).trim();
+        const reply = await handler(args, { chatId: String(chatId), userId: String(userId) });
+        await this.sender(chatId, reply);
+        return { handled: true };
+      }
     }
     if (msg.voice) {
       // Голосовое уходит агенту тем же паттерном, что фото/документ: агент сам

@@ -16,6 +16,8 @@ import { shouldProcessMessage } from "../user-rules/prefilter.js";
 import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
+import { getUsersService, resolveOwnerId } from "../../../src/services/UsersService.js";
+import { handleUsersCommand } from "../../../src/services/users-command.js";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
 // Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
@@ -119,6 +121,9 @@ function grishaAgent(): GrishaAgent {
 function getController(): TelegramBotController {
   if (!controller) {
     const cfg = loadConfig();
+    // Users ACL: единственный сервис на процесс; входящие апдейты проверяются
+    // по нему на каждый апдейт (disk store + cache, writes — без рестарта).
+    const users = getUsersService();
     controller = new TelegramBotController(
       grishaAgent(),
       cfg?.telegram?.allowedUserIds ?? [],
@@ -129,19 +134,33 @@ function getController(): TelegramBotController {
         rulesHandler: telegramRulesHandler,
         resetHandler: (userId) => pool?.reset(userId),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
+        aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
+        usersCommandHandler: (args, ctx) => handleUsersCommand(users, args, ctx),
       },
     );
   }
   return controller;
 }
 
-function startBot(): boolean {
+/**
+ * Bootstrap ACL при старте: legacy-whitelist → role="user", owner из
+ * config.ownerUserId/env GRISHA_OWNER_ID → role="owner" (не затирая поля).
+ */
+async function bootstrapUsers(): Promise<void> {
+  const cfg = loadConfig();
+  const users = getUsersService();
+  await users.seedLegacyUsers(cfg?.telegram?.allowedUserIds);
+  await users.ensureOwner(resolveOwnerId(cfg));
+}
+
+async function startBot(): Promise<boolean> {
   const token = loadConfig()?.telegram?.botToken;
   if (!token) {
     console.warn("[telegram-bot] startBot: no botToken configured");
     return false;
   }
   try {
+    await bootstrapUsers();
     getController().start(token);
     return true;
   } catch (err: unknown) {
@@ -158,7 +177,7 @@ export default function telegramBot(pi: ExtensionAPI): void {
   pool = new TelegramSessionPool();
 
   pi.on("session_start", () => {
-    startBot();
+    void startBot();
   });
 
   pi.on("session_shutdown", async () => {
@@ -206,7 +225,7 @@ export default function telegramBot(pi: ExtensionAPI): void {
 
       await stopBot();
       controller = null;
-      startBot();
+      await startBot();
 
       ctx.ui.notify("Telegram bot configured (long polling).", "info");
     },
@@ -231,7 +250,7 @@ export default function telegramBot(pi: ExtensionAPI): void {
   pi.registerCommand("telegram-start", {
     description: "Start Telegram long polling",
     async handler() {
-      const started = startBot();
+      const started = await startBot();
       pi.sendMessage({
         customType: "telegram-start",
         content: [

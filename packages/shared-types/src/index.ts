@@ -50,6 +50,10 @@ export interface GrishAiConfig {
   adminApiKey?: string;
   setupCompletedAt: string;
   telegram?: TelegramConfig;
+  /** Users ACL: режим для пользователей, которых нет в users.json. Default: closed, если задан ownerUserId/telegram.allowedUserIds; иначе open. */
+  aclMode?: "open" | "closed";
+  /** Telegram user id (string) владельца бота — bootstrapped в users.json как role="owner". */
+  ownerUserId?: string;
   /** Multi-model routing (main + vision). */
   models?: {
     main?: ModelConfig;
