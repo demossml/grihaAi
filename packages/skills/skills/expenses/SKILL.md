@@ -18,3 +18,8 @@ tags: [documents, finance]
 - Do NOT assume last 14 days or any other default period.
 - If tool returns count=0, say records not found.
 - If many needsReview, warn that some amounts may need verification.
+
+## Forum topics
+- Default: current topic only when the question is asked inside a topic.
+- If user says «по всей группе» / «во всех темах» → scope=chat.
+- Never invent cross-topic totals without tool scope=chat.

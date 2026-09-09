@@ -50,7 +50,7 @@ class FakeBot implements TelegramBotLike {
     sendMessage: async (
       chatId: number,
       text: string,
-      _extra?: { parseMode?: "HTML"; inlineButtons?: unknown },
+      _extra?: { parseMode?: "HTML"; inlineButtons?: unknown; messageThreadId?: number },
     ): Promise<unknown> => {
       this.sendCalls++;
       if (this.sendFailures > 0) {

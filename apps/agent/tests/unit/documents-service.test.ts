@@ -95,6 +95,20 @@ describe("DocumentsRepository", () => {
     await repo.insert(doc({ chatId: "-200", total: 7 }));
     assert.equal((await repo.query({ chatId: "-100" })).count, 1);
   });
+
+  it("форумные темы: insert threadId + query по теме и по всему чату", async () => {
+    const { repo } = makeRepo();
+    await repo.insert(doc({ threadId: "10", total: 100 }));
+    await repo.insert(doc({ threadId: "11", total: 500 }));
+
+    const threadA = await repo.query({ chatId: "-100", threadId: "10" });
+    assert.equal(threadA.count, 1);
+    assert.equal(threadA.totalSum, 100);
+
+    const whole = await repo.query({ chatId: "-100" });
+    assert.equal(whole.count, 2);
+    assert.equal(whole.totalSum, 600);
+  });
 });
 
 describe("DocumentIngestService", () => {
@@ -206,5 +220,26 @@ describe("expenses tool handlers", () => {
     assert.ok(text.includes("Ромашка"));
     assert.ok(text.includes("(проверка)"));
     assert.ok(text.includes("вся история чата"));
+  });
+
+  it("форумные темы: ctx.threadId по умолчанию фильтрует по теме", async () => {
+    const { repo } = makeRepo();
+    await repo.insert(doc({ threadId: "10", supplier: "Ромашка", total: 100 }));
+    await repo.insert(doc({ threadId: "11", supplier: "Ромашка", total: 500 }));
+
+    const inTopic = await expensesSumHandler(
+      { supplier: "Ромашка" },
+      { chatId: "-100", threadId: "10", userId: "42", canManage: async () => true },
+      repo,
+    );
+    assert.ok(inTopic.includes("100"), "в теме — только 100");
+    assert.ok(!inTopic.includes("500"));
+
+    const wholeGroup = await expensesSumHandler(
+      { supplier: "Ромашка", scope: "chat" },
+      { chatId: "-100", threadId: "10", userId: "42", canManage: async () => true },
+      repo,
+    );
+    assert.ok(wholeGroup.includes("600"), "scope=chat — по всей группе");
   });
 });

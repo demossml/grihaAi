@@ -278,6 +278,15 @@ await session.bindExtensions({ mode: "json" });
   Чужой chatId — только owner/admin. Пустой store → «Записей нет».
 - Skill: `packages/skills/skills/expenses/SKILL.md` (цифры только из tool, не из памяти чата).
 
+### Форумные темы (forum topics)
+
+- `message_thread_id` извлекается из входящего сообщения (fallback — reply_to_message),
+  идёт в контекст сессии и во **все** ответы бота (sendMessage `message_thread_id`) —
+  ответ всегда в ту же тему. Обычные группы/DM — без изменений (threadId = undefined).
+- Documents: ingest пишет `thread_id`; expenses_sum/list по умолчанию scope=**текущая тема**
+  (полная история темы), `scope=chat` — только по явному «по всей группе». Даты — только
+  по явной просьбе. Onboarding/ACL/rules остаются chat-level.
+
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
   polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:

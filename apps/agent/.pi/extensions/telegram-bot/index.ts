@@ -108,6 +108,7 @@ const realBotFactory: TelegramBotFactory = (token) => {
       sendMessage: (chatId, text, extra) =>
         bot.api.sendMessage(chatId, text, {
           ...(extra?.parseMode ? { parse_mode: extra.parseMode } : {}),
+          ...(extra?.messageThreadId ? { message_thread_id: extra.messageThreadId } : {}),
           ...(extra?.inlineButtons
             ? {
                 reply_markup: {
@@ -140,7 +141,7 @@ let pool: TelegramSessionPool | null = null;
 function grishaAgent(): GrishaAgent {
   return async (input) => {
     if (!pool) return { text: "Гриша временно недоступен." };
-    return pool.handleMessage(input.userId, input.chatId, input.message);
+    return pool.handleMessage(input.userId, input.chatId, input.message, input.threadId);
   };
 }
 

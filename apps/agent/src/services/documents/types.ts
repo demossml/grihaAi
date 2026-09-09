@@ -9,6 +9,8 @@ export type DocumentKind = "receipt" | "invoice" | "waybill" | "unknown";
 export interface ExpenseDocument {
   id: string;
   chatId: string;
+  /** Тема форума (message_thread_id); NULL/undefined = не тема. */
+  threadId?: string;
   messageId?: string;
   fromUserId?: string;
   fileId?: string;
@@ -33,6 +35,8 @@ export interface ExpenseDocument {
 export interface ExpensesQuery {
   /** default: текущий чат */
   chatId?: string;
+  /** NEW: если задан — только документы этой темы; иначе — весь чат. */
+  threadId?: string;
   /** подстрока, case-insensitive */
   supplier?: string;
   /** OPTIONAL YYYY-MM-DD inclusive */

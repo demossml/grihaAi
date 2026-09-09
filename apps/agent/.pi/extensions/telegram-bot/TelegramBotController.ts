@@ -11,6 +11,7 @@ import {
   type TgUpdate,
 } from "./TelegramBridge.js";
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
+import { normalizeThreadId } from "./threads.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -41,7 +42,11 @@ export interface TelegramBotLike {
     sendMessage(
       chatId: number,
       text: string,
-      extra?: { parseMode?: "HTML"; inlineButtons?: InlineButton[][] },
+      extra?: {
+        parseMode?: "HTML";
+        inlineButtons?: InlineButton[][];
+        messageThreadId?: number;
+      },
     ): Promise<unknown>;
     sendDocument(chatId: number, filePath: string, extra?: { caption?: string }): Promise<unknown>;
     sendChatAction(chatId: number, action: "typing" | "upload_document"): Promise<unknown>;
@@ -247,6 +252,9 @@ export class TelegramBotController {
                   parseMode: "HTML",
                   // Кнопки — только к последнему чанку, иначе продублируются в каждом.
                   inlineButtons: isLast ? extra?.inlineButtons : undefined,
+                  // Ответ в тему форума (message_thread_id) из входящего сообщения.
+                  messageThreadId:
+                    extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
                 }),
               "sendMessage",
             );
@@ -463,12 +471,13 @@ export class TelegramBotController {
       update?: { update_id?: number };
       message?: {
         from?: { id?: number; first_name?: string; is_bot?: boolean };
-        chat?: { id?: number; type?: string };
+        chat?: { id?: number; type?: string; is_forum?: boolean };
         message_id?: number;
+        message_thread_id?: number;
+        reply_to_message?: { from?: { id?: number }; message_thread_id?: number };
         text?: string;
         caption?: string;
         entities?: Array<{ type?: string; offset?: number; length?: number; user?: { id?: number } }>;
-        reply_to_message?: { from?: { id?: number } };
         voice?: { file_id?: string };
         document?: {
           file_id?: string;
@@ -492,6 +501,12 @@ export class TelegramBotController {
     };
     const m = c.message;
     if (!m?.chat) return null;
+
+    // Тема форума: из message_thread_id или fallback reply_to_message.
+    const threadId = normalizeThreadId(
+      m.message_thread_id ?? m.reply_to_message?.message_thread_id,
+    );
+    const isForum = m.chat.is_forum === true;
 
     // ── Pre-filter флаги (structured rules §9): mention/reply/bot/service. ──
     const self = this.options?.getBotSelf?.();
@@ -535,6 +550,8 @@ export class TelegramBotController {
         from: m.from ? { id: m.from.id ?? 0, firstName: m.from.first_name } : undefined,
         chat: { id: m.chat.id ?? 0, type: m.chat.type },
         messageId: m.message_id,
+        threadId,
+        isForum,
         text: m.text,
         caption: m.caption,
         voice: m.voice as { file_id?: string } | undefined,

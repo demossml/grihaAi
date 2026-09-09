@@ -17,6 +17,13 @@ const PERIOD = Type.Optional(Type.Union([Type.Literal("7d"), Type.Literal("14d")
 
 const ExpensesSchema = Type.Object({
   chatId: Type.Optional(Type.String({ description: "Default: current chat" })),
+  scope: Type.Optional(
+    Type.Union([Type.Literal("thread"), Type.Literal("chat")], {
+      description:
+        "thread = current topic only (default when message is in a forum topic). chat = entire group across all topics. Use chat only if user asks for whole group.",
+    }),
+  ),
+  threadId: Type.Optional(Type.String({ description: "Optional override; normally from context" })),
   supplier: Type.Optional(Type.String({ description: "Optional supplier substring" })),
   fromDate: Type.Optional(Type.String({ description: "Optional YYYY-MM-DD; omit for full history" })),
   toDate: Type.Optional(Type.String({ description: "Optional YYYY-MM-DD; omit for full history" })),
@@ -25,12 +32,14 @@ const ExpensesSchema = Type.Object({
 
 function toolContext(ctx: ExtensionContext): {
   chatId?: string;
+  threadId?: string;
   userId?: string;
   canManage: (userId: string) => Promise<boolean>;
 } {
   const tctx = getSessionContext(ctx.sessionManager.getSessionId());
   return {
     chatId: tctx?.chatId,
+    threadId: tctx?.threadId,
     userId: tctx?.userId,
     canManage: (userId) => getUsersService().canManage(userId),
   };
@@ -41,9 +50,9 @@ export default function documents(pi: ExtensionAPI): void {
     name: "expenses_sum",
     label: "Sum expenses",
     description:
-      "Sum stored expense documents for the chat. Default = FULL chat history. " +
-      "Pass fromDate/toDate ONLY if the user explicitly asked for a period. " +
-      "Filter by supplier substring if given. Never invent numbers.",
+      "Sum stored expense documents. Default scope: if the user message is in a forum topic, " +
+      "aggregate THAT topic's full history (unless user asks for the whole group); if not in a topic, " +
+      "aggregate the whole chat. Date filters only when user explicitly asks for a period. Never invent numbers.",
     parameters: ExpensesSchema,
     async execute(
       _id: string,
@@ -61,9 +70,9 @@ export default function documents(pi: ExtensionAPI): void {
     name: "expenses_list",
     label: "List expenses",
     description:
-      "List stored expense documents for the chat. Default = FULL chat history. " +
-      "Pass fromDate/toDate/period ONLY if the user explicitly asked for a period. " +
-      "Filter by supplier substring if given. Never invent numbers.",
+      "List stored expense documents. Default scope: if the user message is in a forum topic, " +
+      "list THAT topic's full history (unless user asks for the whole group); if not in a topic, " +
+      "list the whole chat. Date filters only when user explicitly asks for a period. Never invent numbers.",
     parameters: ExpensesSchema,
     async execute(
       _id: string,

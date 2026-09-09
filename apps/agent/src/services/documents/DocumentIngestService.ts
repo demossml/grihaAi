@@ -4,6 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { todayYmd } from "./extractors/parsers.js";
+import { normalizeThreadId } from "../../../.pi/extensions/telegram-bot/threads.js";
 import type { DocumentExtractor } from "./extractors/types.js";
 import type { DocumentsRepository } from "./DocumentsRepository.js";
 import type { ExpenseDocument } from "./types.js";
@@ -13,6 +14,8 @@ export interface TelegramFileMessage {
   chat: { id: number; type?: string };
   from?: { id?: number };
   messageId?: number;
+  /** Тема форума (message_thread_id). */
+  threadId?: string | number;
   caption?: string;
   photo?: Array<{ file_id?: string; file_unique_id?: string }>;
   document?: {
@@ -100,6 +103,7 @@ export class DocumentIngestService {
       const doc: ExpenseDocument = {
         id: randomUUID(),
         chatId,
+        threadId: normalizeThreadId(message.threadId),
         messageId: message.messageId !== undefined ? String(message.messageId) : undefined,
         fromUserId: message.from?.id !== undefined ? String(message.from.id) : undefined,
         fileId: file.fileId,

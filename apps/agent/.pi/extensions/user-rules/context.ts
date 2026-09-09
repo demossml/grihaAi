@@ -10,6 +10,8 @@
 export interface SessionChatContext {
   chatId: string;
   userId: string;
+  /** Тема форума (message_thread_id); отсутствует в обычных группах/DM. */
+  threadId?: string;
 }
 
 const registry = new Map<string, SessionChatContext>();

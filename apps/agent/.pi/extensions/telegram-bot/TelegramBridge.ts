@@ -18,6 +18,9 @@ export interface TgMessage {
   from?: TgUser;
   chat?: { id: number; type?: string };
   messageId?: number;
+  /** Тема форума (message_thread_id); undefined в обычных группах/DM. */
+  threadId?: string;
+  isForum?: boolean;
   text?: string;
   caption?: string;
   voice?: { file_id?: string };
@@ -60,6 +63,8 @@ export interface GrishaAgent {
     platform: "telegram";
     sessionKey: string;
     chatId?: string;
+    /** Тема форума, в которой пришло сообщение (для контекста/scope). */
+    threadId?: string;
   }): Promise<GrishaAgentReply>;
 }
 
@@ -97,6 +102,8 @@ export interface TelegramApprovalHandler {
 export interface TelegramSendExtra {
   inlineButtons?: InlineButton[][];
   documentCaption?: string;
+  /** Тема форума, в которую слать ответ (из входящего сообщения). */
+  threadId?: string;
 }
 
 export interface TelegramReplySender {
@@ -165,11 +172,18 @@ export class TelegramBridge {
   ) {}
 
   /** Send a reply with all attached extras (file, caption, buttons). */
-  private async sendReply(chatId: number, reply: GrishaAgentReply): Promise<void> {
-    await this.sender(chatId, reply.text, reply.filePath, {
+  private sendReply(chatId: number, reply: GrishaAgentReply, threadId?: string): Promise<void> {
+    return this.sender(chatId, reply.text, reply.filePath, {
       inlineButtons: reply.inlineButtons,
       documentCaption: reply.documentCaption,
+      threadId,
     });
+  }
+
+  /** Sender, привязанный к теме входящего сообщения (ответ — в ту же тему). */
+  private makeSender(threadId?: string): TelegramReplySender {
+    return (chatId, text, filePath, extra) =>
+      this.sender(chatId, text, filePath, { ...extra, threadId });
   }
 
   private isProcessable(text: string, userId: number, chatId: number, msg: TgMessage, chatType: string): boolean {
@@ -202,6 +216,8 @@ export class TelegramBridge {
     const chatId = msg.chat.id;
     const chatType = msg.chat.type ?? "private";
     const text = msg.text ?? "";
+    // Все ответы этого апдейта уходят в тему входящего сообщения.
+    const send = this.makeSender(msg.threadId);
 
     // ── Early ACL: как можно раньше, ДО prefilter/агента (п.3 спеки). ────────
     if (this.options?.aclCheck) {
@@ -210,7 +226,7 @@ export class TelegramBridge {
         // Политика v1: private → короткий отказ (если не ACL_DENY_REPLY=0);
         // группа — молча. LLM не вызывается.
         if (chatType === "private" && process.env.ACL_DENY_REPLY !== "0") {
-          await this.sender(chatId, "Нет доступа.");
+          await send(chatId, "Нет доступа.");
         }
         return { handled: true, reason: "acl-denied" };
       }
@@ -219,18 +235,18 @@ export class TelegramBridge {
     }
 
     if (text === "/start") {
-      await this.sender(chatId, "Привет! Я Гриша — твой офисный ассистент.");
+      await send(chatId, "Привет! Я Гриша — твой офисный ассистент.");
       return { handled: true };
     }
     if (text === "/new") {
       // Real session reset: dispose the current AgentSession and start a fresh
       // one on the next message. Profile/memory/rules are not touched.
       await this.options?.resetHandler?.(userId, String(chatId));
-      await this.sender(chatId, "Новая сессия начата.");
+      await send(chatId, "Новая сессия начата.");
       return { handled: true };
     }
     if (text === "/status") {
-      await this.sender(chatId, "Гриша работает.");
+      await send(chatId, "Гриша работает.");
       return { handled: true };
     }
     if (text.startsWith("/rules")) {
@@ -238,7 +254,7 @@ export class TelegramBridge {
       if (handler) {
         const args = text.slice("/rules".length).trim();
         const reply = handler(args, { chatId: String(chatId), userId: String(userId) });
-        await this.sender(chatId, reply);
+        await send(chatId, reply);
         return { handled: true };
       }
     }
@@ -247,14 +263,14 @@ export class TelegramBridge {
     if (approvalMatch) {
       const handler = this.options?.approvalHandler;
       if (!handler) {
-        await this.sender(chatId, "Подтверждения недоступны.");
+        await send(chatId, "Подтверждения недоступны.");
         return { handled: true };
       }
       const id = approvalMatch[2]?.trim();
       const reply = id
         ? handler(approvalMatch[1] as "approve" | "deny", id)
         : `Укажите id: /${approvalMatch[1]} <id>`;
-      await this.sender(chatId, reply);
+      await send(chatId, reply);
       return { handled: true };
     }
     // /users ... — прямой handler без LLM (guard canManage внутри handler'а).
@@ -263,7 +279,7 @@ export class TelegramBridge {
       if (handler) {
         const args = text.slice("/users".length).trim();
         const reply = await handler(args, { chatId: String(chatId), userId: String(userId) });
-        await this.sender(chatId, reply);
+        await send(chatId, reply);
         return { handled: true };
       }
     }
@@ -273,7 +289,7 @@ export class TelegramBridge {
       if (handler) {
         const args = text.slice("/setup".length).trim();
         const reply = await handler(args, { chatId: String(chatId), userId: String(userId) });
-        await this.sender(chatId, reply);
+        await send(chatId, reply);
         return { handled: true };
       }
     }
@@ -289,7 +305,7 @@ export class TelegramBridge {
             text,
             isPrivate: chatType === "private",
           },
-          this.sender,
+          send,
         );
         if (intercepted) return { handled: true, reason: "setup-custom-text" };
       }
@@ -307,8 +323,9 @@ export class TelegramBridge {
         platform: "telegram",
         sessionKey: `tg:${userId}`,
         chatId: String(chatId),
+        threadId: msg.threadId,
       });
-      await this.sendReply(chatId, response);
+      await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
     }
     if (msg.photo && msg.photo.length > 0) {
@@ -317,7 +334,7 @@ export class TelegramBridge {
       if (ingest) {
         const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
         if (ingested?.ack) {
-          await this.sender(chatId, ingested.ack);
+          await send(chatId, ingested.ack);
           return { handled: true, reason: "document-ingested" };
         }
       }
@@ -330,8 +347,9 @@ export class TelegramBridge {
         platform: "telegram",
         sessionKey: `tg:${userId}`,
         chatId: String(chatId),
+        threadId: msg.threadId,
       });
-      await this.sendReply(chatId, response);
+      await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
     }
     if (msg.document?.file_id) {
@@ -339,7 +357,7 @@ export class TelegramBridge {
       if (ingest) {
         const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
         if (ingested?.ack) {
-          await this.sender(chatId, ingested.ack);
+          await send(chatId, ingested.ack);
           return { handled: true, reason: "document-ingested" };
         }
       }
@@ -352,8 +370,9 @@ export class TelegramBridge {
         platform: "telegram",
         sessionKey: `tg:${userId}`,
         chatId: String(chatId),
+        threadId: msg.threadId,
       });
-      await this.sendReply(chatId, response);
+      await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
     }
     if (msg.contact) {
@@ -371,8 +390,9 @@ export class TelegramBridge {
         platform: "telegram",
         sessionKey: `tg:${userId}`,
         chatId: String(chatId),
+        threadId: msg.threadId,
       });
-      await this.sendReply(chatId, response);
+      await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
     }
     if (msg.location) {
@@ -387,8 +407,9 @@ export class TelegramBridge {
         platform: "telegram",
         sessionKey: `tg:${userId}`,
         chatId: String(chatId),
+        threadId: msg.threadId,
       });
-      await this.sendReply(chatId, response);
+      await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
     }
     if (!text) return { handled: false, reason: "empty" };
@@ -402,8 +423,9 @@ export class TelegramBridge {
       platform: "telegram",
       sessionKey: `tg:${userId}`,
       chatId: String(chatId),
+      threadId: msg.threadId,
     });
-    await this.sendReply(chatId, response);
+    await this.sendReply(chatId, response, msg.threadId);
     return { handled: true };
   }
 }

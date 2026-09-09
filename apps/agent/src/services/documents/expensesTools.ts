@@ -4,11 +4,16 @@
  * fromDate/toDate/period. Никаких дефолтных «14 дней».
  */
 import { formatExpensesSum, resolvePeriod } from "./extractors/parsers.js";
+import { normalizeThreadId } from "../../../.pi/extensions/telegram-bot/threads.js";
 import type { DocumentsRepository } from "./DocumentsRepository.js";
 import type { ExpensesQuery, ExpensesQueryResult } from "./types.js";
 
 export interface ExpensesToolArgs {
   chatId?: string;
+  /** scope: thread = текущая тема (default в теме), chat = вся группа. */
+  scope?: "thread" | "chat";
+  /** Явный override темы (обычно из контекста). */
+  threadId?: string;
   supplier?: string;
   fromDate?: string;
   toDate?: string;
@@ -18,9 +23,31 @@ export interface ExpensesToolArgs {
 export interface ExpensesToolContext {
   /** Текущий чат сессии (default scope). */
   chatId?: string;
+  /** Текущая тема форума сессии. */
+  threadId?: string;
   /** Actor user id (owner/admin могут запрашивать чужие чаты). */
   userId?: string;
   canManage?: (userId: string) => Promise<boolean>;
+}
+
+/**
+ * Резолв scope темы (§8): явный scope/threadId побеждает; иначе — текущая тема;
+ * темы нет → весь чат.
+ */
+export function resolveExpensesScope(input: {
+  ctxThreadId?: string;
+  scopeArg?: "thread" | "chat";
+  threadIdArg?: string;
+}): { threadId?: string } {
+  if (input.threadIdArg !== undefined) {
+    const explicit = normalizeThreadId(input.threadIdArg);
+    return { threadId: explicit }; // пустая строка = весь чат
+  }
+  if (input.scopeArg === "chat") return { threadId: undefined };
+  if (input.scopeArg === "thread") return { threadId: input.ctxThreadId };
+  // default
+  if (input.ctxThreadId) return { threadId: input.ctxThreadId };
+  return { threadId: undefined };
 }
 
 async function resolveQuery(
@@ -44,8 +71,15 @@ async function resolveQuery(
     }
   }
 
+  const { threadId } = resolveExpensesScope({
+    ctxThreadId: ctx.threadId,
+    scopeArg: args.scope,
+    threadIdArg: args.threadId,
+  });
+
   return {
     chatId: requested ?? currentChat,
+    threadId,
     supplier: args.supplier,
     fromDate,
     toDate,

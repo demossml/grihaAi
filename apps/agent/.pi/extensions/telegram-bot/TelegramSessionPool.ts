@@ -172,11 +172,16 @@ export class TelegramSessionPool {
   }
 
   /** Send a message to a user's isolated session and return Grisha's reply. */
-  handleMessage(userId: number, chatId: string | undefined, message: string): Promise<TelegramReply> {
+  handleMessage(
+    userId: number,
+    chatId: string | undefined,
+    message: string,
+    threadId?: string,
+  ): Promise<TelegramReply> {
     const entry = this.getOrCreate(userId);
     const run = async (): Promise<TelegramReply> => {
       const session = await entry.sessionPromise;
-      return this.runPrompt(session, chatId, String(userId), message);
+      return this.runPrompt(session, chatId, String(userId), message, threadId);
     };
     entry.queue = entry.queue.then(run, run);
     return entry.queue;
@@ -187,6 +192,7 @@ export class TelegramSessionPool {
     chatId: string | undefined,
     userId: string,
     message: string,
+    threadId?: string,
   ): Promise<TelegramReply> {
     let settled = false;
     let resolveReply!: (value: TelegramReply) => void;
@@ -201,7 +207,7 @@ export class TelegramSessionPool {
     };
 
     const sessionId = session.sessionId;
-    setSessionContext(sessionId, chatId ? { chatId, userId } : undefined);
+    setSessionContext(sessionId, chatId ? { chatId, userId, threadId } : undefined);
 
     const unsubscribe = session.subscribe((event) => {
       if (event.type !== "agent_end") return;

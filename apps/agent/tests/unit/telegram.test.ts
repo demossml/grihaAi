@@ -384,6 +384,45 @@ describe("telegram bridge", () => {
     }
   });
 
+  it("reply goes to the same forum topic as the incoming message", async () => {
+    const sent: Array<{ text: string; threadId?: number }> = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async (input) => {
+        assert.equal(input.threadId, "42", "агент получает threadId");
+        return { text: "ответ в тему" };
+      },
+      async (_chatId, text, _filePath, extra) => {
+        sent.push({ text, threadId: extra?.threadId !== undefined ? Number(extra.threadId) : undefined });
+      },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 30,
+      message: { from: { id: 123 }, chat: { id: -100 }, messageId: 5, threadId: "42", isForum: true, text: "привет" },
+    });
+
+    assert.equal(res.handled, true);
+    assert.equal(sent[0].text, "ответ в тему");
+    assert.equal(sent[0].threadId, 42, "ответ уходит в ту же тему");
+  });
+
+  it("reply in a non-forum group carries no threadId", async () => {
+    const sent: Array<{ threadId?: number }> = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => ({ text: "ок" }),
+      async (_chatId, _text, _filePath, extra) => {
+        sent.push({ threadId: extra?.threadId !== undefined ? Number(extra.threadId) : undefined });
+      },
+    );
+    await bridge.handleUpdate({
+      updateId: 31,
+      message: { from: { id: 123 }, chat: { id: -100 }, text: "привет" },
+    });
+    assert.equal(sent[0].threadId, undefined);
+  });
+
   it("sends a document when the agent reply carries a file path", async () => {
     const sent: Array<{ chatId: number; text: string; filePath?: string }> = [];
     const bridge = new TelegramBridge(
@@ -410,7 +449,13 @@ class FakeBot implements TelegramBotLike {
   handler: ((ctx: unknown) => unknown) | null = null;
   callbackHandler: ((ctx: TelegramCallbackQueryContext) => unknown) | null = null;
   chatMemberHandler: ((ctx: unknown) => unknown) | null = null;
-  sent: Array<{ chatId: number; text: string; parseMode?: string; buttons?: InlineButton[][] }> = [];
+  sent: Array<{
+    chatId: number;
+    text: string;
+    parseMode?: string;
+    buttons?: InlineButton[][];
+    threadId?: number;
+  }> = [];
   docs: Array<{ chatId: number; filePath: string; caption?: string }> = [];
   chatActions: Array<{ chatId: number; action: string }> = [];
   reactions: Array<{ chatId: number; messageId: number; reaction: string }> = [];
@@ -447,13 +492,18 @@ class FakeBot implements TelegramBotLike {
     sendMessage: async (
       chatId: number,
       text: string,
-      extra?: { parseMode?: "HTML"; inlineButtons?: InlineButton[][] },
+      extra?: {
+        parseMode?: "HTML";
+        inlineButtons?: InlineButton[][];
+        messageThreadId?: number;
+      },
     ): Promise<unknown> => {
       this.sent.push({
         chatId,
         text,
         parseMode: extra?.parseMode,
         buttons: extra?.inlineButtons,
+        threadId: extra?.messageThreadId,
       });
       return undefined;
     },
@@ -583,6 +633,26 @@ describe("telegram bot controller", () => {
       text.replace(/\s/g, ""),
       "контент не должен теряться при разбивке",
     );
+  });
+
+  it("passes message_thread_id to sendMessage for forum messages", async () => {
+    const fake = new FakeBot();
+    const controller = new TelegramBotController(async () => ({ text: "в тему" }), [123], () => fake);
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: {
+        from: { id: 123 },
+        chat: { id: -100, is_forum: true },
+        message_id: 5,
+        message_thread_id: 42,
+        text: "привет",
+      },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(fake.sent[0].threadId, 42, "sendMessage должен нести message_thread_id");
   });
 
   it("sets a 👍 reaction on the original contact message", async () => {

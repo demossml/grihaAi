@@ -10,6 +10,7 @@ const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS expense_documents (
   id TEXT PRIMARY KEY,
   chat_id TEXT NOT NULL,
+  thread_id TEXT,
   message_id TEXT,
   from_user_id TEXT,
   file_id TEXT,
@@ -38,9 +39,17 @@ CREATE INDEX IF NOT EXISTS idx_expense_file_unique
   ON expense_documents(file_unique_id);
 `;
 
+/** Миграция форумных тем (ADD COLUMN thread_id). */
+const THREAD_MIGRATION_SQL = `
+ALTER TABLE expense_documents ADD COLUMN thread_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_expense_chat_thread_date
+  ON expense_documents(chat_id, thread_id, doc_date);
+`;
+
 interface DocRow {
   id: string;
   chat_id: string;
+  thread_id: string | null;
   message_id: string | null;
   from_user_id: string | null;
   file_id: string | null;
@@ -65,6 +74,7 @@ function rowToDoc(row: DocRow): ExpenseDocument {
   return {
     id: row.id,
     chatId: row.chat_id,
+    threadId: row.thread_id ?? undefined,
     messageId: row.message_id ?? undefined,
     fromUserId: row.from_user_id ?? undefined,
     fileId: row.file_id ?? undefined,
@@ -93,6 +103,20 @@ export class DocumentsRepository {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
+    // Миграция: forum topics (thread_id) для баз документов MVP.
+    const columns = new Set(
+      (this.db.pragma("table_info(expense_documents)") as Array<{ name: string }>).map(
+        (c) => c.name,
+      ),
+    );
+    if (!columns.has("thread_id")) {
+      this.db.exec(THREAD_MIGRATION_SQL);
+    } else {
+      this.db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_expense_chat_thread_date
+         ON expense_documents(chat_id, thread_id, doc_date);`,
+      );
+    }
   }
 
   close(): void {
@@ -110,14 +134,15 @@ export class DocumentsRepository {
     this.db
       .prepare(
         `INSERT INTO expense_documents
-         (id, chat_id, message_id, from_user_id, file_id, file_unique_id, file_name, mime_type,
+         (id, chat_id, thread_id, message_id, from_user_id, file_id, file_unique_id, file_name, mime_type,
           kind, doc_date, supplier, total, currency, raw_text, items_json,
           confidence, needs_review, source, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         doc.chatId,
+        doc.threadId ?? null,
         doc.messageId ?? null,
         doc.fromUserId ?? null,
         doc.fileId ?? null,
@@ -171,6 +196,7 @@ export class DocumentsRepository {
     }
     const fromDate = q.fromDate ?? null;
     const toDate = q.toDate ?? null;
+    const threadId = q.threadId ?? null;
     const supplierNeedle = q.supplier?.trim() ? q.supplier.trim().toLowerCase() : null;
     const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
 
@@ -179,12 +205,13 @@ export class DocumentsRepository {
       .prepare(
         `SELECT * FROM expense_documents
          WHERE chat_id = ?
+           AND (? IS NULL OR thread_id = ?)
            AND (? IS NULL OR doc_date >= ?)
            AND (? IS NULL OR doc_date <= ?)
          ORDER BY doc_date DESC, created_at DESC
          LIMIT ?`,
       )
-      .all(chatId, fromDate, fromDate, toDate, toDate, limit) as DocRow[];
+      .all(chatId, threadId, threadId, fromDate, fromDate, toDate, toDate, limit) as DocRow[];
 
     const docs = rows
       .map(rowToDoc)
