@@ -1,9 +1,16 @@
 import { Bot, InputFile } from "grammy";
+import os from "node:os";
+import path from "node:path";
 import { buildBotOptions, resolveProxyUrl } from "./proxy.js";
 import {
   sharedTelegramFetcher,
   startPeriodicIpRefresh,
 } from "./telegram-network.js";
+import {
+  getDocumentIngestService,
+  maybeIngestDocument,
+} from "../../../src/services/documents/index.js";
+import { downloadTelegramFileToDisk } from "../../../src/utils/telegram/telegram-files.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type GrishaAgent } from "./TelegramBridge.js";
 import {
@@ -168,6 +175,32 @@ function getController(): TelegramBotController {
             await send(chatId, text, undefined, extra);
           }),
         getBotSelf: () => botSelf,
+        // Чек/накладная: инжест в expenses store (mention-policy, ACL, дедуп).
+        documentIngest: (msg) =>
+          maybeIngestDocument(msg as unknown as Parameters<typeof maybeIngestDocument>[0], {
+            getIngestMode: (chatId) => {
+              const svc = getUserRulesService();
+              const rules = [...svc.getHardRules(chatId), ...svc.getSoftRules(chatId)];
+              const value = [...rules]
+                .reverse()
+                .find((r) => r.key === "ingest_mode")?.value;
+              return typeof value === "string" ? value : "mention";
+            },
+            isAllowed: (userId, chatId) => users.isAllowed(userId, chatId),
+            ingest: (m) => {
+              const token = loadConfig()?.telegram?.botToken;
+              if (!token) return Promise.reject(new Error("no botToken"));
+              return getDocumentIngestService().ingestFromTelegram(m, {
+                download: async (fileId) => {
+                  const dest = path.join(
+                    os.tmpdir(),
+                    `griha-doc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  );
+                  return downloadTelegramFileToDisk(token, fileId, dest);
+                },
+              });
+            },
+          }),
       },
     );
   }

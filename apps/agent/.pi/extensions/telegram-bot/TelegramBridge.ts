@@ -21,8 +21,13 @@ export interface TgMessage {
   text?: string;
   caption?: string;
   voice?: { file_id?: string };
-  document?: TgDocument;
-  photo?: Array<{ file_id?: string }>;
+  document?: {
+    file_id?: string;
+    file_unique_id?: string;
+    file_name?: string;
+    mime_type?: string;
+  };
+  photo?: Array<{ file_id?: string; file_unique_id?: string }>;
   contact?: { first_name?: string; last_name?: string; phone_number?: string };
   location?: { latitude?: number; longitude?: number };
   /** Pre-filter флаги (вычисляются в toTgUpdate из grammy-ctx). */
@@ -151,6 +156,11 @@ export class TelegramBridge {
         input: { userId: string; chatId: string; text: string; isPrivate: boolean },
         send: TelegramReplySender,
       ) => Promise<boolean>;
+      /** Инжест чеков/накладных (photo/document); ack → отправить и не звать агента. */
+      documentIngest?: (
+        msg: TgMessage,
+        ctx: { chatId: string; userId: string },
+      ) => Promise<{ ack?: string } | null>;
     },
   ) {}
 
@@ -302,6 +312,15 @@ export class TelegramBridge {
       return { handled: true };
     }
     if (msg.photo && msg.photo.length > 0) {
+      // Документ/чек: сначала попытка инжеста в expenses store (§12 порядок).
+      const ingest = this.options?.documentIngest;
+      if (ingest) {
+        const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
+        if (ingested?.ack) {
+          await this.sender(chatId, ingested.ack);
+          return { handled: true, reason: "document-ingested" };
+        }
+      }
       const message = `Пользователь прислал изображение.\nfile_id: ${lastPhotoFileId(msg.photo)}\nПодпись: ${msg.caption ?? "нет"}`;
       if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
@@ -316,6 +335,14 @@ export class TelegramBridge {
       return { handled: true };
     }
     if (msg.document?.file_id) {
+      const ingest = this.options?.documentIngest;
+      if (ingest) {
+        const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
+        if (ingested?.ack) {
+          await this.sender(chatId, ingested.ack);
+          return { handled: true, reason: "document-ingested" };
+        }
+      }
       const message = `Пользователь прислал документ.\nfile_id: ${msg.document.file_id}\nПодпись: ${msg.caption ?? "нет"}`;
       if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);

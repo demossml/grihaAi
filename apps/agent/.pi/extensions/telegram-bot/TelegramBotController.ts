@@ -7,6 +7,7 @@ import {
   type TelegramReplySender,
   type TelegramResetHandler,
   type TelegramRulesHandler,
+  type TgMessage,
   type TgUpdate,
 } from "./TelegramBridge.js";
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
@@ -99,6 +100,11 @@ export interface TelegramBotControllerOptions {
       ) => Promise<unknown>;
     },
   ) => Promise<void>;
+  /** Инжест чеков/накладных из photo/document сообщений. */
+  documentIngest?: (
+    msg: TgMessage,
+    ctx: { chatId: string; userId: string },
+  ) => Promise<{ ack?: string } | null>;
   /** self-инфо бота (id/username) для расчёта mention/reply флагов. */
   getBotSelf?: () => { id: number; username?: string } | undefined;
   /** Advertised bot commands (defaults to DEFAULT_TELEGRAM_COMMANDS). */
@@ -287,6 +293,7 @@ export class TelegramBotController {
           usersCommandHandler: this.options?.usersCommandHandler,
           setupCommandHandler: this.options?.setupCommandHandler,
           customSetupInterceptor: this.options?.customSetupInterceptor,
+          documentIngest: this.options?.documentIngest,
         },
       );
 
@@ -463,8 +470,13 @@ export class TelegramBotController {
         entities?: Array<{ type?: string; offset?: number; length?: number; user?: { id?: number } }>;
         reply_to_message?: { from?: { id?: number } };
         voice?: { file_id?: string };
-        document?: { file_id?: string };
-        photo?: Array<{ file_id?: string }>;
+        document?: {
+          file_id?: string;
+          file_unique_id?: string;
+          file_name?: string;
+          mime_type?: string;
+        };
+        photo?: Array<{ file_id?: string; file_unique_id?: string }>;
         contact?: { first_name?: string; last_name?: string; phone_number?: string };
         location?: { latitude?: number; longitude?: number };
         new_chat_members?: unknown;

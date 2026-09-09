@@ -266,6 +266,18 @@ await session.bindExtensions({ mode: "json" });
   soft-ключи (style/length/no_hallucinate_data/memory_write/language_mirror) подмешиваются
   в system prompt коротким блоком. `/setup` — список чатов в ожидании настройки.
 
+### Документы / расходы (MVP)
+
+- Фото/PDF чека или накладной (по policy `ingest_mode`: default `mention` — только при
+  @mention/reply/ключевых словах в caption) скачивается во временный файл, извлекаются
+  данные (StubExtractor: парсер caption, честный `needsReview`), запись сохраняется в
+  `~/.grish-ai/documents.sqlite` (отдельная БД, scope=chat, дедуп по `file_unique_id`),
+  temp удаляется. Короткий ack: «Сохранил: Ромашка — 15400 RUB (2026-09-01)».
+- Tools `expenses_sum` / `expenses_list`: **default = вся история чата**; fromDate/toDate/
+  period передаются ТОЛЬКО если пользователь явно сузил период (никаких дефолтных «14 дней»).
+  Чужой chatId — только owner/admin. Пустой store → «Записей нет».
+- Skill: `packages/skills/skills/expenses/SKILL.md` (цифры только из tool, не из памяти чата).
+
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
   polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:

@@ -61,6 +61,14 @@ export interface GrishAiConfig {
   };
   /** Embeddings for vector memory. Falls back to hashing embeddings when absent. */
   embedding?: EmbeddingConfig;
+  /** Documents/expenses MVP (чеки/накладные). provider=vision — будущая работа. */
+  documents?: {
+    provider?: "stub" | "vision";
+    /** Валюта по умолчанию. */
+    defaultCurrency?: string;
+    /** Путь documents.sqlite (default: ~/.grish-ai/documents.sqlite). */
+    dbPath?: string;
+  };
 }
 
 // --- User Rules ---
