@@ -6,9 +6,10 @@ import {
   sharedTelegramFetcher,
   startPeriodicIpRefresh,
 } from "./telegram-network.js";
+import { getDocumentIngestService, maybeIngestDocument } from "../../../src/services/documents/index.js";
 import {
-  getDocumentIngestService,
-  maybeIngestDocument,
+  archiveFromTelegram,
+  getChatArchiveService,
 } from "../../../src/services/documents/index.js";
 import { downloadTelegramFileToDisk } from "../../../src/utils/telegram/telegram-files.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -19,8 +20,7 @@ import {
 } from "./TelegramBotController.js";
 import { TelegramSessionPool } from "./TelegramSessionPool.js";
 import { loadConfig, saveConfig } from "@griha/config";
-import { shouldProcessMessage } from "../user-rules/prefilter.js";
-import { getUserRulesService } from "../user-rules/UserRulesService.js";
+import { evaluatePreFilter } from "../user-rules/prefilter.js";import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
 import { getUsersService, resolveOwnerId } from "../../../src/services/UsersService.js";
@@ -177,7 +177,7 @@ function getController(): TelegramBotController {
       realBotFactory,
       {
         prefilter: (input) =>
-          shouldProcessMessage(getUserRulesService().getHardRules(input.chatId), input),
+          evaluatePreFilter(getUserRulesService().getHardRules(input.chatId), input),
         rulesHandler: telegramRulesHandler,
         resetHandler: (sessionKey) => pool?.reset(sessionKey),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
@@ -266,6 +266,24 @@ function getController(): TelegramBotController {
               });
             },
           }),
+        // Архивариус (listen_only): тихое сохранение текста/медиа в chat_archive.
+        archiveHandler: async (msg, ctx) =>
+          archiveFromTelegram(
+            msg as unknown as Parameters<typeof archiveFromTelegram>[0],
+            { kind: ctx.kind },
+            getChatArchiveService(),
+            {
+              download: async (fileId) => {
+                const token = loadConfig()?.telegram?.botToken;
+                if (!token) throw new Error("no botToken");
+                const dest = path.join(
+                  os.tmpdir(),
+                  `griha-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                );
+                return downloadTelegramFileToDisk(token, fileId, dest);
+              },
+            },
+          ),
       },
     );
   }

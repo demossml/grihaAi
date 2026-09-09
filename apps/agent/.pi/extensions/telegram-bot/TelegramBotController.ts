@@ -150,6 +150,11 @@ export interface TelegramBotControllerOptions {
     msg: TgMessage,
     ctx: { chatId: string; userId: string },
   ) => Promise<{ ack?: string } | null>;
+  /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
+  archiveHandler?: (
+    msg: TgMessage,
+    ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" },
+  ) => Promise<{ stored: boolean }>;
   /** self-инфо бота (id/username) для расчёта mention/reply флагов. */
   getBotSelf?: () => { id: number; username?: string } | undefined;
   /** R1: false → pending-группа silent (ChatSetupService.isConfiguredSync). */
@@ -322,6 +327,7 @@ export class TelegramBotController {
           transcribeVoice: this.options?.transcribeVoice,
           customSetupInterceptor: this.options?.customSetupInterceptor,
           documentIngest: this.options?.documentIngest,
+          archiveHandler: this.options?.archiveHandler,
         },
       );
 

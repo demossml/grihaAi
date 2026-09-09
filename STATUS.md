@@ -275,6 +275,15 @@
 - [x] Не сломан report-generator (session-files.ts — отдельный путь); документы в форуме теперь тоже с message_thread_id
 - [x] Tests: 470 unit — зелёные; typecheck/build зелёные
 
+## Phase 29 — Слушатель-архивариус (listen_only)
+
+- [x] `listen_only` = «обрабатывать, но не отвечать»: все тексты/фото/документы группы обрабатываются, ответ подавляется без явного @mention (reply — не обращение)
+- [x] `evaluatePreFilter` → `{process, suppressReply, archive}`; `shouldProcessMessage` — совместимая обёртка; игнор ботов/сервисных сохранён, require_mention не блокирует обработку в режиме архива
+- [x] Таблица `chat_archive` в `documents.sqlite` (`ChatArchiveService`): текст (дедуп по chat+message_id), медиа (скачать → extract/OCR → дедуп по file_unique_id, сырой OCR + флаги); чеки дополнительно в `expense_documents` (одно скачивание)
+- [x] Bridge: архив тихий (без ack), ошибки архива не роняют обработку; индикатор «печатает…» сразу после приёма для всех обрабатываемых сообщений
+- [x] Прочие пресеты (team/secretary/shop/only_me/safe_default) не затронуты; pending-silent (R1) сохранён
+- [x] Tests: 483 unit — зелёные; отчёт `ARCHIVIST_MODE_REPORT.md`
+
 
 
 

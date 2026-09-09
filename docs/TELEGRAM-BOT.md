@@ -375,6 +375,23 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
   Ошибки — понятным текстом, без падения бота. Лог: кто/что/куда + file_id/message_id.
 - Не затрагивает доставку файлов report-generator (`session-files.ts`) — это отдельный путь.
 
+### Слушатель-архивариус (`listen_only`)
+
+- Пресет `listener` (и custom-правило `listen_only: true`) переведён в режим
+  «обрабатывать, но не отвечать»: **все** сообщения группы (текст, фото, документы)
+  доходят до обработки и архива, а текстовый ответ в чат подавляется без явного
+  `@mention` (решение: reply на бота обращением НЕ считается).
+- Pre-filter (`evaluatePreFilter`) возвращает `{process, suppressReply, archive}`;
+  при `listen_only` игнор ботов/сервисных сохраняется, `require_mention` не блокирует
+  обработку. Pending-группа по-прежнему молчит целиком (R1).
+- Архив — таблица `chat_archive` в `~/.grish-ai/documents.sqlite` (`ChatArchiveService`):
+  текст — дедуп по (chat_id, message_id); медиа — скачивание → extract (OCR/парсинг) →
+  дедуп по (chat_id, file_unique_id), сырой OCR-текст + флаги (`needs_review`/`confidence`).
+  Распознанные чеки/накладные дополнительно пишутся в `expense_documents` (одно
+  скачивание, расходы продолжают работать). Ошибки архива не роняют обработку.
+- Индикатор «печатает…» (`sendChatAction typing`) включается сразу после приёма
+  сообщения — в т.ч. в тихих режимах, где ответа не будет вовсе.
+
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
   polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:

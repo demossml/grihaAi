@@ -81,7 +81,7 @@ export const PRESETS: Record<PresetId, { title: string; description: string; rul
   },
   listener: {
     title: "Слушатель",
-    description: "Почти не отвечаю, могу учитывать контекст чата",
+    description: "Архивирую всё, отвечаю только по @mention",
     rules: [
       { key: "listen_only", value: true, kind: "hard" },
       { key: "require_mention", value: true, kind: "hard" },

@@ -8,7 +8,7 @@ import {
   presetRulesWithActor,
   type PresetId,
 } from "../../.pi/extensions/chat-setup/RulePresets.js";
-import { shouldProcessMessage } from "../../.pi/extensions/user-rules/prefilter.js";
+import { evaluatePreFilter, shouldProcessMessage } from "../../.pi/extensions/user-rules/prefilter.js";
 
 describe("RulePresets", () => {
   it("every PresetId exists and has non-empty rules", () => {
@@ -89,9 +89,45 @@ describe("pre-filter structured keys (§9)", () => {
     ...extra,
   });
 
-  it("listen_only → false", () => {
+  it("listen_only (архивариус): process=true, suppressReply без @mention, archive", () => {
     const rules = [rule("listen_only", true)];
-    assert.equal(shouldProcessMessage(rules, groupInput()), false);
+    assert.equal(shouldProcessMessage(rules, groupInput()), true, "сообщение обрабатывается");
+    const gate = evaluatePreFilter(rules, groupInput());
+    assert.equal(gate.process, true);
+    assert.equal(gate.suppressReply, true);
+    assert.equal(gate.archive, true);
+  });
+
+  it("listen_only + @mention → обрабатывается и ОТВЕЧАЕТ", () => {
+    const rules = [rule("listen_only", true)];
+    const gate = evaluatePreFilter(rules, groupInput({ botMentioned: true }));
+    assert.equal(gate.process, true);
+    assert.equal(gate.suppressReply, false);
+  });
+
+  it("listen_only: reply на бота НЕ считается обращением (только @mention)", () => {
+    const rules = [rule("listen_only", true)];
+    const gate = evaluatePreFilter(rules, groupInput({ repliedToBot: true }));
+    assert.equal(gate.process, true);
+    assert.equal(gate.suppressReply, true);
+  });
+
+  it("listen_only: боты и сервисные по-прежнему игнорируются", () => {
+    const rules = [rule("listen_only", true), rule("ignore_bots", true), rule("ignore_service", true)];
+    assert.equal(evaluatePreFilter(rules, groupInput({ fromIsBot: true })).process, false);
+    assert.equal(evaluatePreFilter(rules, groupInput({ isService: true })).process, false);
+    assert.equal(evaluatePreFilter(rules, groupInput()).process, true);
+  });
+
+  it("listen_only: require_mention не блокирует обработку без @mention", () => {
+    const rules = [
+      rule("listen_only", true),
+      rule("require_mention", true),
+      rule("reply_to_bot", false),
+    ];
+    const gate = evaluatePreFilter(rules, groupInput());
+    assert.equal(gate.process, true);
+    assert.equal(gate.suppressReply, true);
   });
 
   it("require_mention without mention → false", () => {

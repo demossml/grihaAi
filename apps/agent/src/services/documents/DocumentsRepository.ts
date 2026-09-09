@@ -5,6 +5,7 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { ExpenseDocument, ExpensesQuery, ExpensesQueryResult } from "./types.js";
+import type { ChatArchiveRecord } from "./chat-archive.js";
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS expense_documents (
@@ -37,6 +38,35 @@ CREATE INDEX IF NOT EXISTS idx_expense_supplier
   ON expense_documents(supplier);
 CREATE INDEX IF NOT EXISTS idx_expense_file_unique
   ON expense_documents(file_unique_id);
+
+CREATE TABLE IF NOT EXISTS chat_archive (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  thread_id TEXT,
+  message_id TEXT,
+  from_user_id TEXT,
+  kind TEXT NOT NULL DEFAULT 'text',
+  doc_date TEXT,
+  supplier TEXT,
+  total REAL,
+  currency TEXT,
+  raw_text TEXT,
+  file_id TEXT,
+  file_unique_id TEXT,
+  file_name TEXT,
+  mime_type TEXT,
+  items_json TEXT,
+  confidence REAL NOT NULL DEFAULT 0,
+  needs_review INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_archive_chat_msg
+  ON chat_archive(chat_id, message_id);
+CREATE INDEX IF NOT EXISTS idx_archive_chat_file
+  ON chat_archive(chat_id, file_unique_id);
+CREATE INDEX IF NOT EXISTS idx_archive_chat_date
+  ON chat_archive(chat_id, created_at);
 `;
 
 /** Миграция форумных тем (ADD COLUMN thread_id). */
@@ -68,6 +98,52 @@ interface DocRow {
   source: string;
   created_at: string;
   updated_at: string;
+}
+
+interface ArchiveRow {
+  id: string;
+  chat_id: string;
+  thread_id: string | null;
+  message_id: string | null;
+  from_user_id: string | null;
+  kind: string;
+  doc_date: string | null;
+  supplier: string | null;
+  total: number | null;
+  currency: string | null;
+  raw_text: string | null;
+  file_id: string | null;
+  file_unique_id: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  items_json: string | null;
+  confidence: number;
+  needs_review: number;
+  created_at: string;
+}
+
+function archiveRowToRecord(row: ArchiveRow): ChatArchiveRecord {
+  return {
+    id: row.id,
+    chatId: row.chat_id,
+    threadId: row.thread_id ?? undefined,
+    messageId: row.message_id ?? undefined,
+    fromUserId: row.from_user_id ?? undefined,
+    kind: row.kind as ChatArchiveRecord["kind"],
+    docDate: row.doc_date ?? undefined,
+    supplier: row.supplier ?? undefined,
+    total: row.total ?? undefined,
+    currency: row.currency ?? undefined,
+    rawText: row.raw_text ?? undefined,
+    fileId: row.file_id ?? undefined,
+    fileUniqueId: row.file_unique_id ?? undefined,
+    fileName: row.file_name ?? undefined,
+    mimeType: row.mime_type ?? undefined,
+    itemsJson: row.items_json ?? undefined,
+    confidence: row.confidence,
+    needsReview: row.needs_review !== 0,
+    createdAt: row.created_at,
+  };
 }
 
 function rowToDoc(row: DocRow): ExpenseDocument {
@@ -170,6 +246,67 @@ export class DocumentsRepository {
       .prepare(`SELECT * FROM expense_documents WHERE chat_id = ? AND file_unique_id = ?`)
       .get(chatId, fileUniqueId) as DocRow | undefined;
     return row ? rowToDoc(row) : null;
+  }
+
+  // ── chat_archive (архив всех сообщений/медиа группы) ────────────────────────
+
+  /** Вставка записи архива. Дедуп делает вызывающий (по message_id / file_unique_id). */
+  insertArchive(record: ChatArchiveRecord): ChatArchiveRecord {
+    this.db
+      .prepare(
+        `INSERT INTO chat_archive
+         (id, chat_id, thread_id, message_id, from_user_id, kind, doc_date, supplier, total,
+          currency, raw_text, file_id, file_unique_id, file_name, mime_type, items_json,
+          confidence, needs_review, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.id,
+        record.chatId,
+        record.threadId ?? null,
+        record.messageId ?? null,
+        record.fromUserId ?? null,
+        record.kind,
+        record.docDate ?? null,
+        record.supplier ?? null,
+        record.total ?? null,
+        record.currency ?? null,
+        record.rawText ?? null,
+        record.fileId ?? null,
+        record.fileUniqueId ?? null,
+        record.fileName ?? null,
+        record.mimeType ?? null,
+        record.itemsJson ?? null,
+        record.confidence ?? 0,
+        record.needsReview ? 1 : 0,
+        record.createdAt,
+      );
+    return record;
+  }
+
+  findArchiveByMessageId(chatId: string, messageId: string): ChatArchiveRecord | null {
+    const row = this.db
+      .prepare(`SELECT * FROM chat_archive WHERE chat_id = ? AND message_id = ?`)
+      .get(chatId, messageId) as ArchiveRow | undefined;
+    return row ? archiveRowToRecord(row) : null;
+  }
+
+  findArchiveByFileUniqueId(chatId: string, fileUniqueId: string): ChatArchiveRecord | null {
+    const row = this.db
+      .prepare(`SELECT * FROM chat_archive WHERE chat_id = ? AND file_unique_id = ?`)
+      .get(chatId, fileUniqueId) as ArchiveRow | undefined;
+    return row ? archiveRowToRecord(row) : null;
+  }
+
+  countArchive(chatId?: string): number {
+    if (!chatId) {
+      const row = this.db.prepare(`SELECT COUNT(*) AS n FROM chat_archive`).get() as { n: number };
+      return row.n;
+    }
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM chat_archive WHERE chat_id = ?`)
+      .get(chatId) as { n: number };
+    return row.n;
   }
 
   async getById(id: string): Promise<ExpenseDocument | null> {

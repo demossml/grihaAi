@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { UserRule } from "@griha/shared-types";
-import { shouldProcessMessage } from "../../.pi/extensions/user-rules/prefilter.js";
+import { evaluatePreFilter, shouldProcessMessage } from "../../.pi/extensions/user-rules/prefilter.js";
 import { TelegramBridge } from "../../.pi/extensions/telegram-bot/TelegramBridge.js";
 
 const hard = (key: string, value: string | boolean): UserRule => ({
@@ -60,9 +60,12 @@ describe("shouldProcessMessage: groupConfigured (R1/R6)", () => {
     );
   });
 
-  it("configured + listen_only → false", () => {
+  it("configured + listen_only → обрабатывается (архивариус), ответ подавлен", () => {
     const rules = [hard("listen_only", true)];
-    assert.equal(shouldProcessMessage(rules, groupInput({ groupConfigured: true })), false);
+    assert.equal(shouldProcessMessage(rules, groupInput({ groupConfigured: true })), true);
+    const gate = evaluatePreFilter(rules, groupInput({ groupConfigured: true }));
+    assert.equal(gate.suppressReply, true);
+    assert.equal(gate.archive, true);
   });
 });
 

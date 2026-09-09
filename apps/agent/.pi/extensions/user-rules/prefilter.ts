@@ -121,30 +121,71 @@ function evaluateStructuredRules(rules: UserRule[], input: RulePreFilterInput): 
 /**
  * Layer 1: decide whether a message should reach the agent at all.
  * Returns false → stay silent (0 tokens). Pure JS, no LLM.
+ *
+ * Архивариус (listen_only=true): сообщение ОБРАБАТЫВАЕТСЯ (доходит до агента и
+ * архива), но текстовый ответ подавляется без явного @mention — см.
+ * `evaluatePreFilter` (полная форма решения «обрабатывать, но не отвечать»).
  */
 export function shouldProcessMessage(
   hardRules: UserRule[],
   input: RulePreFilterInput,
 ): boolean {
+  return evaluatePreFilter(hardRules, input).process;
+}
+
+/** Полная форма решения Layer-1 (для TelegramBridge). */
+export interface PreFilterOutcome {
+  /** Пропустить сообщение к обработке (агент/архив). */
+  process: boolean;
+  /** Подавить текстовый ответ в чат (архивариус без @mention). */
+  suppressReply: boolean;
+  /** Архивный режим (listen_only): сохранять текст/медиа в chat_archive. */
+  archive: boolean;
+}
+
+const BLOCKED: PreFilterOutcome = { process: false, suppressReply: false, archive: false };
+
+export function evaluatePreFilter(
+  hardRules: UserRule[],
+  input: RulePreFilterInput,
+): PreFilterOutcome {
   // R1 / R6: pending-группа молчит (0 токенов LLM), даже на @mention.
-  // Private (isGroup=false) не блокируется по groupConfigured.
-  if (input.isGroup && input.groupConfigured === false) {
-    return false;
-  }
+  if (input.isGroup && input.groupConfigured === false) return BLOCKED;
 
   // Structured keys (пресеты) — в первую очередь.
-  const structured = evaluateStructuredRules(hardRules, input);
-  if (structured !== null) {
-    if (structured === false) return false;
-    // structured пропустил; legacy-эвристики всё ещё применяются ниже.
+  const keys = new Set(hardRules.map((r) => r.key));
+  const has = (key: string) => keys.has(key);
+
+  // ── Архивариус (listen_only): обрабатывать всё, отвечать только на @mention. ──
+  if (has("listen_only") && truthy(hardValue(hardRules, "listen_only"))) {
+    // Прочие фильтры сохраняются: игнор ботов и сервисных сообщений.
+    if (has("ignore_bots") && hardValue(hardRules, "ignore_bots") !== false && input.fromIsBot) {
+      return BLOCKED;
+    }
+    if (has("ignore_service") && hardValue(hardRules, "ignore_service") !== false && input.isService) {
+      return BLOCKED;
+    }
+    if (has("only_my_messages") && truthy(hardValue(hardRules, "only_my_messages"))) {
+      const onlyId = String(hardValue(hardRules, "only_my_messages_user_id") ?? "");
+      if (!onlyId || String(input.fromUserId) !== onlyId) return BLOCKED;
+    }
+    // require_mention/ignore_if_other_mention в режиме архива НЕ блокируют:
+    // сообщение без @mention должно быть сохранено; блокируется только ответ.
+    return {
+      process: true,
+      // Решение: только явный @mention считается обращением (reply — нет).
+      suppressReply: input.botMentioned !== true,
+      archive: input.isGroup === true,
+    };
   }
+
+  const structured = evaluateStructuredRules(hardRules, input);
+  if (structured === false) return BLOCKED;
 
   for (const rule of hardRules) {
     if (isOnlyOwnerRule(rule) && rule.ownerUserId) {
-      if (input.fromUserId !== rule.ownerUserId) {
-        return false;
-      }
+      if (input.fromUserId !== rule.ownerUserId) return BLOCKED;
     }
   }
-  return true;
+  return { process: true, suppressReply: false, archive: false };
 }
