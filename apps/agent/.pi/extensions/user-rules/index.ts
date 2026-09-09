@@ -18,6 +18,7 @@ import {
 import { getSessionContext } from "./context.js";
 import { getUserRulesService } from "./UserRulesService.js";
 import { runRulesCommand } from "./commands.js";
+import { formatSoftRulesForPrompt } from "../chat-setup/RulePresets.js";
 
 function formatRule(r: UserRule): string {
   const scope = r.scope === "chat" ? `chat:${r.chatId ?? "?"}` : "global";
@@ -47,6 +48,11 @@ export default function userRules(pi: ExtensionAPI): void {
     const blocks: string[] = [];
     if (soft.length > 0) {
       blocks.push(["## User Rules (must follow)", ...soft.map((r) => `- ${r.text}`)].join("\n"));
+    }
+    // Structured soft keys (пресеты чата): коротко, не простыня (§10).
+    const structuredSoft = formatSoftRulesForPrompt(soft);
+    if (structuredSoft) {
+      blocks.push(`## Chat mode\n${structuredSoft}`);
     }
     if (tctx) {
       blocks.push(`## Telegram context\n- chat_id: ${tctx.chatId}\n- user_id: ${tctx.userId}`);

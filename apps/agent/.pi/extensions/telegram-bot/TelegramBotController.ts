@@ -4,6 +4,7 @@ import {
   type GrishaAgent,
   type RulePreFilter,
   type TelegramApprovalHandler,
+  type TelegramReplySender,
   type TelegramResetHandler,
   type TelegramRulesHandler,
   type TgUpdate,
@@ -15,14 +16,22 @@ export interface TelegramCallbackQueryContext {
   from?: { id?: number };
   data?: string;
   message?: { chat?: { id?: number }; message_id?: number; text?: string };
-  answerCallbackQuery(text?: string): Promise<unknown>;
+  answerCallbackQuery(text?: string, extra?: { showAlert?: boolean }): Promise<unknown>;
   editMessageText(text: string, extra?: { removeKeyboard?: boolean }): Promise<unknown>;
+}
+
+/** Событие my_chat_member (бота добавили/кикнули). */
+export interface TelegramChatMemberEvent {
+  oldStatus: string;
+  newStatus: string;
+  chat: { id: number; type?: string; title?: string };
+  from: { id: number };
 }
 
 /** Minimal surface of a grammy Bot needed for long polling. */
 export interface TelegramBotLike {
   on(
-    filter: "message" | "callback_query:data",
+    filter: "message" | "callback_query:data" | "my_chat_member",
     handler: ((ctx: unknown) => unknown) | ((ctx: TelegramCallbackQueryContext) => unknown),
   ): void;
   start(): Promise<unknown>;
@@ -67,6 +76,31 @@ export interface TelegramBotControllerOptions {
     args: string,
     ctx: { chatId: string; userId: string },
   ) => string | Promise<string>;
+  /** Прямой handler /setup ... (список pending-чатов). */
+  setupCommandHandler?: (
+    args: string,
+    ctx: { chatId: string; userId: string },
+  ) => string | Promise<string>;
+  /** Перехват custom-текста онбординга в DM (true → не звать агента). */
+  customSetupInterceptor?: (
+    input: { userId: string; chatId: string; text: string; isPrivate: boolean },
+    send: TelegramReplySender,
+  ) => Promise<boolean>;
+  /** Обработчик cs:-callbacks (чат-онбординг). */
+  setupCallbackHandler?: (data: string, ctx: TelegramCallbackQueryContext) => Promise<boolean>;
+  /** Обработчик «бота добавили в чат» (онбординг). */
+  chatMemberHandler?: (
+    event: TelegramChatMemberEvent,
+    deps: {
+      sendMessage: (
+        chatId: number,
+        text: string,
+        extra?: { parseMode?: "HTML"; inlineButtons?: InlineButton[][] },
+      ) => Promise<unknown>;
+    },
+  ) => Promise<void>;
+  /** self-инфо бота (id/username) для расчёта mention/reply флагов. */
+  getBotSelf?: () => { id: number; username?: string } | undefined;
   /** Advertised bot commands (defaults to DEFAULT_TELEGRAM_COMMANDS). */
   commands?: Array<{ command: string; description: string }>;
   /** Send retry policy (injectable for tests). */
@@ -251,6 +285,8 @@ export class TelegramBotController {
           },
           aclCheck: this.options?.aclCheck,
           usersCommandHandler: this.options?.usersCommandHandler,
+          setupCommandHandler: this.options?.setupCommandHandler,
+          customSetupInterceptor: this.options?.customSetupInterceptor,
         },
       );
 
@@ -268,6 +304,27 @@ export class TelegramBotController {
             err instanceof Error ? err.message : err,
           );
         });
+      });
+
+      bot.on("my_chat_member", (ctx: unknown) => {
+        const event = this.toChatMemberEvent(ctx);
+        if (!event) return;
+        void (async () => {
+          try {
+            await this.options?.chatMemberHandler?.(event, {
+              sendMessage: (chatId, text, extra) =>
+                bot.api.sendMessage(chatId, text, {
+                  parseMode: "HTML",
+                  inlineButtons: extra?.inlineButtons,
+                }),
+            });
+          } catch (err: unknown) {
+            console.error(
+              "[telegram-bot] chat member handler failed:",
+              err instanceof Error ? err.message : err,
+            );
+          }
+        })();
       });
 
       bot.on("callback_query:data", (ctx: TelegramCallbackQueryContext) => {
@@ -320,6 +377,12 @@ export class TelegramBotController {
    * answerCallbackQuery + снятие клавиатуры с исходного сообщения.
    */
   private async handleCallbackQuery(ctx: TelegramCallbackQueryContext): Promise<void> {
+    // Chat-setup (cs:...) — пермишены внутри обработчика (canManage/addedBy),
+    // legacy-whitelist к ним не применяется.
+    if ((ctx.data ?? "").startsWith("cs:") && this.options?.setupCallbackHandler) {
+      const handled = await this.options.setupCallbackHandler(ctx.data as string, ctx);
+      if (handled) return;
+    }
     const userId = ctx.from?.id;
     if (userId === undefined || !this.allowedUserIds.includes(userId)) {
       await ctx.answerCallbackQuery("Недоступно.").catch(() => undefined);
@@ -392,20 +455,68 @@ export class TelegramBotController {
     const c = ctx as {
       update?: { update_id?: number };
       message?: {
-        from?: { id?: number; first_name?: string };
+        from?: { id?: number; first_name?: string; is_bot?: boolean };
         chat?: { id?: number; type?: string };
         message_id?: number;
         text?: string;
         caption?: string;
+        entities?: Array<{ type?: string; offset?: number; length?: number; user?: { id?: number } }>;
+        reply_to_message?: { from?: { id?: number } };
         voice?: { file_id?: string };
         document?: { file_id?: string };
         photo?: Array<{ file_id?: string }>;
         contact?: { first_name?: string; last_name?: string; phone_number?: string };
         location?: { latitude?: number; longitude?: number };
+        new_chat_members?: unknown;
+        left_chat_member?: unknown;
+        new_chat_title?: unknown;
+        new_chat_photo?: unknown;
+        delete_chat_photo?: unknown;
+        group_chat_created?: unknown;
+        supergroup_chat_created?: unknown;
+        channel_chat_created?: unknown;
+        pinned_message?: unknown;
       };
     };
     const m = c.message;
     if (!m?.chat) return null;
+
+    // ── Pre-filter флаги (structured rules §9): mention/reply/bot/service. ──
+    const self = this.options?.getBotSelf?.();
+    const textOrCaption = m.text ?? m.caption ?? "";
+    let botMentioned: boolean | undefined;
+    let startsWithOtherMention: boolean | undefined;
+    const entities = Array.isArray(m.entities) ? m.entities : [];
+    for (const e of entities) {
+      const mentionText = textOrCaption.slice(e.offset ?? 0, (e.offset ?? 0) + (e.length ?? 0));
+      if (e.type === "mention") {
+        const isSelf = self?.username
+          ? mentionText.toLowerCase() === `@${self.username}`.toLowerCase()
+          : false;
+        if (isSelf) botMentioned = true;
+        else if (e.offset === 0) startsWithOtherMention = true;
+      } else if (e.type === "text_mention") {
+        if (self && e.user?.id === self.id) botMentioned = true;
+        else if (e.offset === 0) startsWithOtherMention = true;
+      }
+    }
+    const replyFromId = m.reply_to_message?.from?.id;
+    const repliedToBot =
+      self && replyFromId !== undefined ? replyFromId === self.id : undefined;
+
+    const serviceFields = [
+      m.new_chat_members,
+      m.left_chat_member,
+      m.new_chat_title,
+      m.new_chat_photo,
+      m.delete_chat_photo,
+      m.group_chat_created,
+      m.supergroup_chat_created,
+      m.channel_chat_created,
+      m.pinned_message,
+    ];
+    const isService = serviceFields.some((f) => f !== undefined);
+
     return {
       updateId: c.update?.update_id ?? 0,
       message: {
@@ -419,7 +530,33 @@ export class TelegramBotController {
         photo: m.photo,
         contact: m.contact,
         location: m.location,
+        fromIsBot: m.from?.is_bot === true,
+        isService,
+        botMentioned,
+        repliedToBot,
+        startsWithOtherMention,
       },
+    };
+  }
+
+  private toChatMemberEvent(ctx: unknown): TelegramChatMemberEvent | null {
+    if (!ctx || typeof ctx !== "object") return null;
+    const c = ctx as {
+      my_chat_member?: {
+        old_chat_member?: { status?: string };
+        new_chat_member?: { status?: string };
+      };
+      chat?: { id?: number; type?: string; title?: string };
+      from?: { id?: number };
+    };
+    const oldStatus = c.my_chat_member?.old_chat_member?.status;
+    const newStatus = c.my_chat_member?.new_chat_member?.status;
+    if (!oldStatus || !newStatus || !c.chat || !c.from?.id) return null;
+    return {
+      oldStatus,
+      newStatus,
+      chat: { id: c.chat.id ?? 0, type: c.chat.type, title: c.chat.title },
+      from: { id: c.from.id },
     };
   }
 }

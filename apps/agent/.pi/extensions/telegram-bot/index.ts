@@ -18,11 +18,23 @@ import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
 import { getUsersService, resolveOwnerId } from "../../../src/services/UsersService.js";
 import { handleUsersCommand } from "../../../src/services/users-command.js";
+import {
+  getChatSetupService,
+} from "../chat-setup/ChatSetupService.js";
+import {
+  handleSetupCallback,
+  onChatMemberAdded,
+  setupCommandHandler as chatSetupCommand,
+  tryHandleCustomText,
+} from "../chat-setup/handlers.js";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
 // Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
 startPeriodicIpRefresh(sharedTelegramFetcher);
 void sharedTelegramFetcher.refreshIps().catch(() => {});
+
+// self-инфо бота (id/username) — для расчёта mention/reply флагов pre-filter'а.
+let botSelf: { id: number; username?: string } | undefined;
 
 /**
  * Adapts the real grammy Bot to the framework-free `TelegramBotLike` surface.
@@ -62,8 +74,8 @@ const realBotFactory: TelegramBotFactory = (token) => {
                   text: cbq.message.text,
                 }
               : undefined,
-            answerCallbackQuery: (text) =>
-              gctx.answerCallbackQuery(text !== undefined ? { text } : {}),
+            answerCallbackQuery: (text, extra) =>
+              gctx.answerCallbackQuery(text !== undefined ? { text, show_alert: extra?.showAlert } : {}),
             editMessageText: (text, extra) =>
               gctx.editMessageText(text, {
                 // Исходное сообщение отправлялось как HTML — редактируем в том же режиме.
@@ -76,7 +88,14 @@ const realBotFactory: TelegramBotFactory = (token) => {
       }
       void bot.on(filter, handler as never);
     },
-    start: () => bot.start(),
+    start: async () => {
+      // self-инфо для mention/reply-флагов pre-filter'а (до старта long polling).
+      if (!botSelf) {
+        const me = await bot.api.getMe().catch(() => undefined);
+        if (me) botSelf = { id: me.id, username: me.username };
+      }
+      return bot.start();
+    },
     stop: () => bot.stop(),
     api: {
       sendMessage: (chatId, text, extra) =>
@@ -124,6 +143,7 @@ function getController(): TelegramBotController {
     // Users ACL: единственный сервис на процесс; входящие апдейты проверяются
     // по нему на каждый апдейт (disk store + cache, writes — без рестарта).
     const users = getUsersService();
+    const setup = getChatSetupService();
     controller = new TelegramBotController(
       grishaAgent(),
       cfg?.telegram?.allowedUserIds ?? [],
@@ -136,6 +156,18 @@ function getController(): TelegramBotController {
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
         aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
         usersCommandHandler: (args, ctx) => handleUsersCommand(users, args, ctx),
+        // Chat-setup (онбординг групп): my_chat_member → DM, cs:-callbacks,
+        // custom-текст в DM, /setup.
+        chatMemberHandler: (event, deps) =>
+          onChatMemberAdded(event, { setup, users, sendMessage: deps.sendMessage }),
+        setupCallbackHandler: (data, ctx) =>
+          handleSetupCallback(data, ctx, { setup, users, sendMessage: async () => undefined }),
+        setupCommandHandler: (args, ctx) => chatSetupCommand(args, ctx, { setup, users }),
+        customSetupInterceptor: (input, send) =>
+          tryHandleCustomText(input, { setup }, async (chatId, text, extra) => {
+            await send(chatId, text, undefined, extra);
+          }),
+        getBotSelf: () => botSelf,
       },
     );
   }

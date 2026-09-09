@@ -25,6 +25,12 @@ export interface TgMessage {
   photo?: Array<{ file_id?: string }>;
   contact?: { first_name?: string; last_name?: string; phone_number?: string };
   location?: { latitude?: number; longitude?: number };
+  /** Pre-filter флаги (вычисляются в toTgUpdate из grammy-ctx). */
+  fromIsBot?: boolean;
+  isService?: boolean;
+  botMentioned?: boolean;
+  repliedToBot?: boolean;
+  startsWithOtherMention?: boolean;
 }
 
 export interface TgUpdate {
@@ -54,7 +60,17 @@ export interface GrishaAgent {
 
 /** Layer-1 pre-filter: return false to silently drop the message (0 tokens). */
 export interface RulePreFilter {
-  (input: { chatId: string; fromUserId: string; text: string }): boolean;
+  (input: {
+    chatId: string;
+    fromUserId: string;
+    text: string;
+    isGroup?: boolean;
+    fromIsBot?: boolean;
+    isService?: boolean;
+    botMentioned?: boolean;
+    repliedToBot?: boolean;
+    startsWithOtherMention?: boolean;
+  }): boolean;
 }
 
 /** Handles Telegram /rules commands (chat scope + owner auto-substituted). */
@@ -125,6 +141,16 @@ export class TelegramBridge {
         args: string,
         ctx: { chatId: string; userId: string },
       ) => string | Promise<string>;
+      /** Прямой handler /setup ... (список pending-чатов). */
+      setupCommandHandler?: (
+        args: string,
+        ctx: { chatId: string; userId: string },
+      ) => string | Promise<string>;
+      /** Перехват custom-текста онбординга в DM; true → сообщение обработано. */
+      customSetupInterceptor?: (
+        input: { userId: string; chatId: string; text: string; isPrivate: boolean },
+        send: TelegramReplySender,
+      ) => Promise<boolean>;
     },
   ) {}
 
@@ -136,10 +162,20 @@ export class TelegramBridge {
     });
   }
 
-  private isProcessable(text: string, userId: number, chatId: number): boolean {
+  private isProcessable(text: string, userId: number, chatId: number, msg: TgMessage, chatType: string): boolean {
     const prefilter = this.options?.prefilter;
     if (!prefilter) return true;
-    return prefilter({ chatId: String(chatId), fromUserId: String(userId), text });
+    return prefilter({
+      chatId: String(chatId),
+      fromUserId: String(userId),
+      text,
+      isGroup: chatType === "group" || chatType === "supergroup",
+      fromIsBot: msg.fromIsBot,
+      isService: msg.isService,
+      botMentioned: msg.botMentioned,
+      repliedToBot: msg.repliedToBot,
+      startsWithOtherMention: msg.startsWithOtherMention,
+    });
   }
 
   isAllowed(userId: number): boolean {
@@ -221,12 +257,39 @@ export class TelegramBridge {
         return { handled: true };
       }
     }
+    // /setup ... — статус онбординга чатов (без LLM).
+    if (text === "/setup" || text.startsWith("/setup ")) {
+      const handler = this.options?.setupCommandHandler;
+      if (handler) {
+        const args = text.slice("/setup".length).trim();
+        const reply = await handler(args, { chatId: String(chatId), userId: String(userId) });
+        await this.sender(chatId, reply);
+        return { handled: true };
+      }
+    }
+    // Custom-онбординг: текст от actor'а в DM (waitingCustom) перехватывается
+    // до агента — детерминированный парсер + кнопки подтверждения.
+    if (text && !text.startsWith("/")) {
+      const interceptor = this.options?.customSetupInterceptor;
+      if (interceptor) {
+        const intercepted = await interceptor(
+          {
+            userId: String(userId),
+            chatId: String(chatId),
+            text,
+            isPrivate: chatType === "private",
+          },
+          this.sender,
+        );
+        if (intercepted) return { handled: true, reason: "setup-custom-text" };
+      }
+    }
     if (msg.voice) {
       // Голосовое уходит агенту тем же паттерном, что фото/документ: агент сам
       // решит вызвать tool transcribe_voice с этим fileId (в т.ч. логику
       // переспроса при низкой confidence — см. voice-intake/SKILL.md).
       const message = `Пользователь прислал голосовое сообщение.\nfile_id: ${msg.voice.file_id ?? "unknown"}\nПодпись: ${msg.caption ?? "нет"}`;
-      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
       const response = await this.agent({
         message,
@@ -240,7 +303,7 @@ export class TelegramBridge {
     }
     if (msg.photo && msg.photo.length > 0) {
       const message = `Пользователь прислал изображение.\nfile_id: ${lastPhotoFileId(msg.photo)}\nПодпись: ${msg.caption ?? "нет"}`;
-      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
       const response = await this.agent({
         message,
@@ -254,7 +317,7 @@ export class TelegramBridge {
     }
     if (msg.document?.file_id) {
       const message = `Пользователь прислал документ.\nfile_id: ${msg.document.file_id}\nПодпись: ${msg.caption ?? "нет"}`;
-      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
       const response = await this.agent({
         message,
@@ -273,7 +336,7 @@ export class TelegramBridge {
       // сообщении (содержательный ответ всё равно приходит текстом от агента).
       if (msg.messageId !== undefined) this.options?.react?.(chatId, msg.messageId, "👍");
       const message = `Пользователь поделился контактом.\nИмя: ${msg.contact.first_name ?? ""} ${msg.contact.last_name ?? ""}\nТелефон: ${msg.contact.phone_number ?? "не указан"}`;
-      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
       const response = await this.agent({
         message,
@@ -289,7 +352,7 @@ export class TelegramBridge {
       // Геолокация — тот же путь через агента: он сам решит, вызывать ли
       // travel_item_add (travel) или ответить контекстно.
       const message = `Пользователь поделился геолокацией: ${msg.location.latitude ?? "?"}, ${msg.location.longitude ?? "?"}`;
-      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
       const response = await this.agent({
         message,
@@ -303,7 +366,7 @@ export class TelegramBridge {
     }
     if (!text) return { handled: false, reason: "empty" };
 
-    if (!this.isProcessable(text, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+    if (!this.isProcessable(text, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
 
     this.options?.beforeAgent?.(chatId);
     const response = await this.agent({

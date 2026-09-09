@@ -249,6 +249,23 @@ await session.bindExtensions({ mode: "json" });
   (прямой handler без LLM) и tools `users_list`/`users_add`/`users_set_role`/`users_remove`
   (для натурального языка). Оба пути — только owner/admin (`canManage`).
 
+### Chat onboarding + пресеты правил
+
+- При добавлении бота в группу (`my_chat_member`) сразу применяются **safe defaults** чата
+  (hard rules: `require_mention`, `reply_to_bot`, `ignore_bots`, `ignore_service`,
+  `ignore_if_other_mention`), а добавившему в DM уходит сообщение с кнопками пресетов.
+- Пресеты (`RulePresets.ts`): team / secretary / listener / shop / only_me + «Настроить самому»
+  (детерминированный парсер + кнопки confirm/cancel) и «Оставить как есть».
+  Callback-данные: `cs:{chatId}:{p:{preset}|custom|skip|confirm|cancel}` (≤64 байт).
+- Состояние онбординга — `~/.grish-ai/chat-setup.json` (pending/completed/skipped,
+  атомарная запись); правила пишутся в **тот же** User Rules store как structured
+  key/value (scope=chat, source `preset:*`/`custom`) через `replaceChatManagedRules` —
+  чужие custom-правила не трогаются. Повторный add не спамит онбордингом.
+- Pre-filter читает structured-ключи в первую очередь (§9: listen_only, ignore_bots/service,
+  only_my_messages[_user_id], require_mention/reply_to_bot, ignore_if_other_mention);
+  soft-ключи (style/length/no_hallucinate_data/memory_write/language_mirror) подмешиваются
+  в system prompt коротким блоком. `/setup` — список чатов в ожидании настройки.
+
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
   polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:

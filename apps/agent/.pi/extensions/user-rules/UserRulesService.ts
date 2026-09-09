@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS user_rules (
   text          TEXT NOT NULL,
   kind          TEXT NOT NULL DEFAULT 'soft',
   rule_class    TEXT,
+  rule_key      TEXT,
+  rule_value    TEXT,
+  source        TEXT,
+  created_by    TEXT,
+  priority      INTEGER NOT NULL DEFAULT 100,
   enabled       INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
@@ -33,6 +38,11 @@ interface RuleRow {
   text: string;
   kind: string;
   rule_class: string | null;
+  rule_key: string | null;
+  rule_value: string | null;
+  source: string | null;
+  created_by: string | null;
+  priority: number;
   enabled: number;
   created_at: string;
   updated_at: string;
@@ -53,6 +63,30 @@ export interface RuleEditPatch {
   kind?: RuleKind;
   ruleClass?: RuleClass;
 }
+
+/** Structured rule для managed-пресетов (chat onboarding). */
+export interface ManagedRuleInput {
+  key: string;
+  value: string | boolean | number;
+  kind: RuleKind;
+}
+
+/** Managed-ключи, которыми управляет ChatSetup (presets). */
+export const MANAGED_RULE_KEYS: readonly string[] = [
+  "require_mention",
+  "reply_to_bot",
+  "ignore_bots",
+  "ignore_service",
+  "ignore_if_other_mention",
+  "listen_only",
+  "only_my_messages",
+  "only_my_messages_user_id",
+  "language_mirror",
+  "style",
+  "length",
+  "memory_write",
+  "no_hallucinate_data",
+];
 
 export interface RuleListFilter {
   scope?: RuleScope;
@@ -94,6 +128,21 @@ export class UserRulesService {
     );
     if (!columns.has("rule_class")) {
       db.exec(`ALTER TABLE user_rules ADD COLUMN rule_class TEXT`);
+    }
+    if (!columns.has("rule_key")) {
+      db.exec(`ALTER TABLE user_rules ADD COLUMN rule_key TEXT`);
+    }
+    if (!columns.has("rule_value")) {
+      db.exec(`ALTER TABLE user_rules ADD COLUMN rule_value TEXT`);
+    }
+    if (!columns.has("source")) {
+      db.exec(`ALTER TABLE user_rules ADD COLUMN source TEXT`);
+    }
+    if (!columns.has("created_by")) {
+      db.exec(`ALTER TABLE user_rules ADD COLUMN created_by TEXT`);
+    }
+    if (!columns.has("priority")) {
+      db.exec(`ALTER TABLE user_rules ADD COLUMN priority INTEGER NOT NULL DEFAULT 100`);
     }
   }
 
@@ -166,13 +215,18 @@ export class UserRulesService {
       text: input.text,
       kind: input.kind ?? detectKind(input.text),
       rule_class: input.ruleClass ?? defaultRuleClass(input.kind ?? detectKind(input.text)),
+      rule_key: null,
+      rule_value: null,
+      source: null,
+      created_by: null,
+      priority: 100,
       enabled: 1,
       created_at: now,
       updated_at: now,
     };
     db.prepare(
-      `INSERT INTO user_rules (id, scope, chat_id, owner_user_id, text, kind, rule_class, enabled, created_at, updated_at)
-       VALUES (@id, @scope, @chat_id, @owner_user_id, @text, @kind, @rule_class, @enabled, @created_at, @updated_at)`,
+      `INSERT INTO user_rules (id, scope, chat_id, owner_user_id, text, kind, rule_class, rule_key, rule_value, source, created_by, priority, enabled, created_at, updated_at)
+       VALUES (@id, @scope, @chat_id, @owner_user_id, @text, @kind, @rule_class, @rule_key, @rule_value, @source, @created_by, @priority, @enabled, @created_at, @updated_at)`,
     ).run(row);
     this.rebuildCache();
     return this.rowToRule(row);
@@ -211,6 +265,14 @@ export class UserRulesService {
   }
 
   private rowToRule(row: RuleRow): UserRule {
+    let value: string | boolean | number | null = null;
+    if (row.rule_value !== null) {
+      try {
+        value = JSON.parse(row.rule_value) as string | boolean | number;
+      } catch {
+        value = row.rule_value;
+      }
+    }
     return {
       id: row.id,
       scope: row.scope as RuleScope,
@@ -222,7 +284,54 @@ export class UserRulesService {
       enabled: row.enabled !== 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      key: row.rule_key,
+      value,
+      source: row.source,
+      createdBy: row.created_by,
+      priority: row.priority,
     };
+  }
+
+  /**
+   * Заменяет managed-правила чата (structured keys из пресета).
+   * Чужие custom-правила с ключами вне managed set НЕ трогаются.
+   */
+  replaceChatManagedRules(
+    chatId: string,
+    rules: ManagedRuleInput[],
+    meta: { source: string; actorId: string },
+  ): void {
+    const db = this.requireDb();
+    const now = new Date().toISOString();
+
+    const placeholders = MANAGED_RULE_KEYS.map(() => "?").join(",");
+    db.prepare(
+      `DELETE FROM user_rules WHERE scope = 'chat' AND chat_id = ?
+       AND (rule_key IN (${placeholders}) OR source LIKE 'preset:%' OR source = 'custom')`,
+    ).run(chatId, ...MANAGED_RULE_KEYS);
+
+    const insert = db.prepare(
+      `INSERT INTO user_rules (id, scope, chat_id, text, kind, rule_class, rule_key, rule_value, source, created_by, priority, enabled, created_at, updated_at)
+       VALUES (?, 'chat', ?, ?, ?, ?, ?, ?, ?, ?, 100, 1, ?, ?)`,
+    );
+
+    for (const rule of rules) {
+      const id = randomUUID();
+      insert.run(
+        id,
+        chatId,
+        `${rule.key} = ${String(rule.value)}`,
+        rule.kind,
+        defaultRuleClass(rule.kind),
+        rule.key,
+        JSON.stringify(rule.value),
+        meta.source,
+        meta.actorId,
+        now,
+        now,
+      );
+    }
+    this.rebuildCache();
   }
 }
 

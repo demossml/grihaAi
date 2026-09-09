@@ -87,6 +87,16 @@ export interface UserRule {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Structured preset key (managed rules); pre-filter читает его в первую очередь. */
+  key?: string | null;
+  /** Structured value (boolean | number | string). */
+  value?: string | boolean | number | null;
+  /** Источник: preset:<id> | custom | правила через /rules. */
+  source?: string | null;
+  /** Кто создал (actor user id). */
+  createdBy?: string | null;
+  /** Приоритет (managed rules = 100). */
+  priority?: number;
 }
 
 // --- Voice transcription (STT) ---

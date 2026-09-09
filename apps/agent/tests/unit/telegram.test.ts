@@ -409,6 +409,7 @@ class FakeBot implements TelegramBotLike {
   stopped = 0;
   handler: ((ctx: unknown) => unknown) | null = null;
   callbackHandler: ((ctx: TelegramCallbackQueryContext) => unknown) | null = null;
+  chatMemberHandler: ((ctx: unknown) => unknown) | null = null;
   sent: Array<{ chatId: number; text: string; parseMode?: string; buttons?: InlineButton[][] }> = [];
   docs: Array<{ chatId: number; filePath: string; caption?: string }> = [];
   chatActions: Array<{ chatId: number; action: string }> = [];
@@ -417,11 +418,13 @@ class FakeBot implements TelegramBotLike {
   private stopResolve: (() => void) | null = null;
 
   on(
-    filter: "message" | "callback_query:data",
+    filter: "message" | "callback_query:data" | "my_chat_member",
     handler: ((ctx: unknown) => unknown) | ((ctx: TelegramCallbackQueryContext) => unknown),
   ): void {
     if (filter === "message") this.handler = handler as (ctx: unknown) => unknown;
-    else this.callbackHandler = handler as (ctx: TelegramCallbackQueryContext) => unknown;
+    else if (filter === "callback_query:data")
+      this.callbackHandler = handler as (ctx: TelegramCallbackQueryContext) => unknown;
+    else this.chatMemberHandler = handler as (ctx: unknown) => unknown;
   }
 
   async start(): Promise<unknown> {
