@@ -50,8 +50,13 @@ export async function assertCanConfigureGroup(input: {
     return { ok: false, reason: "Не удалось проверить права, попробуйте позже." };
   }
 
-  // STRICT: только creator/administrator этой группы. Глобальный owner,
-  // не являющийся админом группы, применять пресеты НЕ может.
+  // FR-4: creator/administrator этой группы ИЛИ пользователь с ролью
+  // owner/admin в ACL бота (canManage) может настраивать группу.
   if (isGroupAdminStatus(status)) return { ok: true };
+  try {
+    if (await input.users.canManage(input.userId)) return { ok: true };
+  } catch {
+    /* canManage упал → трактуем как false */
+  }
   return { ok: false, reason: "Нужны права администратора группы." };
 }

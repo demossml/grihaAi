@@ -313,6 +313,14 @@ export class TelegramBotController {
         const update = this.toTgUpdate(ctx);
         if (!update) return;
         const msg = update.message;
+        // FR-6: сервисные сообщения (new_chat_members/left_chat_member,
+        // new_chat_title, pinned_message и т.п.) — НЕ ввод для агента.
+        if (msg?.isService) {
+          console.log(
+            `[telegram-bot] service message chat=${msg.chat?.id ?? "?"} ignored (not agent input)`,
+          );
+          return;
+        }
         console.log(
           `[telegram-bot] incoming message from user=${msg?.from?.id ?? "?"} chat=${msg?.chat?.id ?? "?"} ` +
             `kind=${msg?.text ? "text" : msg?.photo?.length ? "photo" : msg?.document ? "document" : msg?.voice ? "voice" : msg?.contact ? "contact" : msg?.location ? "location" : "other"}`,
@@ -327,7 +335,15 @@ export class TelegramBotController {
 
       bot.on("my_chat_member", (ctx: unknown) => {
         const event = this.toChatMemberEvent(ctx);
-        if (!event) return;
+        if (!event) {
+          console.log("[telegram-bot] my_chat_member: unparseable update (ignored)");
+          return;
+        }
+        // FR-9: лог события ДО обработки (отладка онбординга без «вслепую»).
+        console.log(
+          `[telegram-bot] my_chat_member: old=${event.oldStatus} new=${event.newStatus} ` +
+            `chat=${event.chat.id} actor=${event.from.id}`,
+        );
         void (async () => {
           try {
             await this.options?.chatMemberHandler?.(event, {
@@ -340,6 +356,7 @@ export class TelegramBotController {
                   });
                 }),
             });
+            console.log(`[telegram-bot] my_chat_member handled for chat ${event.chat.id}`);
           } catch (err: unknown) {
             console.error(
               "[telegram-bot] chat member handler failed:",
@@ -666,15 +683,30 @@ export class TelegramBotController {
   private toChatMemberEvent(ctx: unknown): TelegramChatMemberEvent | null {
     if (!ctx || typeof ctx !== "object") return null;
     const c = ctx as {
+      // P0-фикс: grammy отдаёт событие через getter myChatMember (camelCase),
+      // а плоское snake_case ctx.my_chat_member отсутствует — всегда undefined.
+      myChatMember?: {
+        old_chat_member?: { status?: string };
+        new_chat_member?: { status?: string };
+      };
+      // Сырой update (совместимость с фейками и прямым прогоном update-объекта).
       my_chat_member?: {
         old_chat_member?: { status?: string };
         new_chat_member?: { status?: string };
       };
+      update?: {
+        my_chat_member?: {
+          old_chat_member?: { status?: string };
+          new_chat_member?: { status?: string };
+        };
+      };
       chat?: { id?: number; type?: string; title?: string };
       from?: { id?: number };
     };
-    const oldStatus = c.my_chat_member?.old_chat_member?.status;
-    const newStatus = c.my_chat_member?.new_chat_member?.status;
+    const cu = c.myChatMember ?? c.my_chat_member ?? c.update?.my_chat_member;
+    if (!cu) return null;
+    const oldStatus = cu.old_chat_member?.status;
+    const newStatus = cu.new_chat_member?.status;
     if (!oldStatus || !newStatus || !c.chat || !c.from?.id) return null;
     return {
       oldStatus,

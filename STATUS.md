@@ -256,12 +256,14 @@
 
 ## Phase 27 — Telegram Groups Rewrite (онбординг в группе)
 
-- [x] Риск A: онбординг-сообщение с кнопками пресетов уходит **в саму группу** (бот в группе не ограничен «первым /start») + DM добавившему
-- [x] Ограничение D (согласовано с заказчиком): тишина только по контенту — онбординг и `/setup` в pending-группе разрешены; LLM-ответы по-прежнему блокируются (R1)
-- [x] `/setup` в группе: только для этой группы, только от creator/administrator (getChatMember); в DM — как раньше (≤5 pending + `/setup <chatId>`)
+- [x] P0: `toChatMemberEvent` читает grammy-getter `ctx.myChatMember` (camelCase) / `ctx.update.my_chat_member` — раньше плоское snake_case поле отсутствовало и онбординг не запускался никогда (FR-1)
+- [x] Риск A: онбординг-сообщение с кнопками пресетов уходит **в саму группу** (бот в группе не ограничен «первым /start») + DM добавившему (FR-2, FR-3)
+- [x] Ограничение D (согласовано с заказчиком): тишина только по контенту — онбординг и `/setup` в pending-группе разрешены; LLM-ответы по-прежнему блокируются (FR-5)
+- [x] `/setup` в группе: только для этой группы; право настройки — creator/administrator группы ИЛИ owner/admin ACL бота (FR-4); в DM — как раньше
+- [x] FR-6: сервисные сообщения (new_chat_members/left_chat_member и т.п.) отсекаются до агента с отдельным логом
+- [x] FR-8: повторный add при pending не дублирует онбординг; FR-9: логирование my_chat_member (событие/chat/actor/результат)
 - [x] Риск B уже закрыт Пакетом B (getChatMember, fail closed); Риск C — callback_data ≤64 байт (уже учтено)
-- [x] Удалён старый R3-фоллбэк «откройте DM…» — теперь полное меню в группе
-- [x] Tests: 452 unit — зелёные; docs/TELEGRAM-BOT.md обновлён; отчёт `TELEGRAM_GROUPS_REWRITE_REPORT.md`
+- [x] Tests: 458 unit — зелёные; docs/TELEGRAM-BOT.md обновлён; отчёт `TELEGRAM_GROUPS_REWRITE_REPORT.md`
 
 
 

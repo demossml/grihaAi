@@ -13,6 +13,7 @@ import {
   splitTelegramText,
   type TelegramBotLike,
   type TelegramCallbackQueryContext,
+  type TelegramChatMemberEvent,
 } from "../../.pi/extensions/telegram-bot/TelegramBotController.js";
 import { TelegramSessionPool } from "../../.pi/extensions/telegram-bot/TelegramSessionPool.js";
 import {
@@ -780,6 +781,92 @@ describe("telegram bot controller", () => {
 
     assert.deepEqual(handledBy, []);
     assert.deepEqual(answers, ["Недоступно."]);
+  });
+
+  it("P0: my_chat_member читается через camelCase getter myChatMember", async () => {
+    const fake = new FakeBot();
+    const events: TelegramChatMemberEvent[] = [];
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake, {
+      chatMemberHandler: async (event) => {
+        events.push(event);
+      },
+    });
+    controller.start("token");
+
+    await fake.chatMemberHandler?.({
+      // grammy: getter myChatMember (camelCase) — плоского my_chat_member нет.
+      myChatMember: {
+        old_chat_member: { status: "left" },
+        new_chat_member: { status: "member" },
+      },
+      chat: { id: -100, type: "supergroup", title: "Отдел" },
+      from: { id: 42 },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(events.length, 1, "событие дошло до chatMemberHandler");
+    assert.equal(events[0].oldStatus, "left");
+    assert.equal(events[0].newStatus, "member");
+    assert.equal(events[0].chat.id, -100);
+    assert.equal(events[0].from.id, 42);
+    await controller.stop();
+  });
+
+  it("my_chat_member: сырое update.my_chat_member (snake) тоже парсится", async () => {
+    const fake = new FakeBot();
+    const events: TelegramChatMemberEvent[] = [];
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake, {
+      chatMemberHandler: async (event) => {
+        events.push(event);
+      },
+    });
+    controller.start("token");
+
+    await fake.chatMemberHandler?.({
+      update: {
+        my_chat_member: {
+          old_chat_member: { status: "kicked" },
+          new_chat_member: { status: "administrator" },
+        },
+      },
+      chat: { id: -200, type: "group", title: "G" },
+      from: { id: 7 },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0].oldStatus, "kicked");
+    assert.equal(events[0].newStatus, "administrator");
+    await controller.stop();
+  });
+
+  it("FR-6: сервисное сообщение (new_chat_members) не идёт в агента", async () => {
+    const fake = new FakeBot();
+    let agentCalls = 0;
+    const controller = new TelegramBotController(
+      async () => {
+        agentCalls++;
+        return { text: "x" };
+      },
+      [123],
+      () => fake,
+    );
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: {
+        from: { id: 42 },
+        chat: { id: -100, type: "supergroup" },
+        new_chat_members: [{ id: 999 }],
+        text: "привет",
+      },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(agentCalls, 0, "агент не вызывается на сервисное сообщение");
+    assert.equal(fake.sent.length, 0, "ответа нет");
+    await controller.stop();
   });
 
   it("D7: HTML-сбой → plain-text фолбэк того же чанка", async () => {

@@ -262,8 +262,8 @@ await session.bindExtensions({ mode: "json" });
   `/setup <chatId>` (та же проверка прав через getChatMember).
 - `safe_default` пишется при add (silent, R4), но status остаётся pending — настройка
   завершается только preset/skip (R5). Личные чаты не блокируются (R6). Callback
-  пресетов — canManage/addedBy + реальный admin-статус группы (R7). Никаких LLM-ответов
-  «я пока не настроен» в pending-группе (R8).
+  пресетов — canManage/addedBy + групповой admin-статус или owner/admin бота (R7, FR-4).
+  Никаких LLM-ответов «я пока не настроен» в pending-группе (R8).
 - При добавлении бота в группу (`my_chat_member`) сразу применяются **safe defaults** чата
   (hard rules: `require_mention`, `reply_to_bot`, `ignore_bots`, `ignore_service`,
   `ignore_if_other_mention`), а в группу и добавившему в DM уходит сообщение с кнопками пресетов.
@@ -349,13 +349,19 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
 
 ### Group configuration authority (Пакет B)
 
-- **Только Telegram creator/administrator группы** может применить пресет
-  (callback `cs:...:p|skip|custom|confirm|cancel`) или получить keyboard по
-  `/setup <chatId>` — проверка через реальный `getChatMember` в момент действия
-  (`chat-auth.ts` — `assertCanConfigureGroup`, fail closed: 400/403 → «нет прав»,
-  сетевой сбой → «не удалось проверить права»). Глобальный owner, не являющийся
-  админом группы, пресеты применить не может. Private `/setup` список — по
-  `canManage` (DM UX), без getChatMember до действия над конкретной группой.
+- **Кто может настроить группу** (FR-4): creator/administrator этой группы
+  (проверка через реальный `getChatMember` в момент действия) **или** пользователь
+  с ролью owner/admin в ACL бота (`canManage`). Fail closed: 400/403 → «нет прав»,
+  сетевой сбой → «не удалось проверить права». Проверка — на мутирующих
+  callback-действиях (`cs:...:p|skip|custom|confirm|cancel`) и `/setup <chatId>` /
+  `/setup` в группе.
+- `toChatMemberEvent` читает событие через grammy-getter `ctx.myChatMember`
+  (camelCase) или `ctx.update.my_chat_member` — плоское snake_case поле в
+  контексте отсутствует (P0-фикс: раньше онбординг не запускался никогда).
+- Сервисные сообщения (`new_chat_members`/`left_chat_member`, `new_chat_title`,
+  `pinned_message` и т.п.) отсекаются в контроллере ДО агента (FR-6) с отдельным логом.
+- Онбординг идемпотентен: повторный add при pending не дублирует онбординг-сообщение
+  (FR-8); completed/skipped — no-op. Логи `my_chat_member` — событие/chat/actor/результат.
 
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long

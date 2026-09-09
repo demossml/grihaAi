@@ -29,12 +29,22 @@ describe("assertCanConfigureGroup (Пакет B)", () => {
     assert.deepEqual(res, { ok: true });
   });
 
-  it("member → deny (даже если canManage)", async () => {
+  it("member + canManage (owner/admin бота) → ok (FR-4)", async () => {
     const res = await assertCanConfigureGroup({
       chatId: "-100",
       userId: "42",
       getChatMember: async () => "member",
-      users,
+      users: { canManage: async () => true },
+    });
+    assert.deepEqual(res, { ok: true });
+  });
+
+  it("member без canManage → deny", async () => {
+    const res = await assertCanConfigureGroup({
+      chatId: "-100",
+      userId: "42",
+      getChatMember: async () => "member",
+      users: { canManage: async () => false },
     });
     assert.deepEqual(res, { ok: false, reason: "Нужны права администратора группы." });
   });

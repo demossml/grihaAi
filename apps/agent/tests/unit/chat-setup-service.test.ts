@@ -226,6 +226,34 @@ describe("onboarding handlers", () => {
     assert.equal(setup.isConfiguredSync("-100"), false, "онбординг не завершает настройку");
   });
 
+  it("FR-8: повторный add при pending не дублирует онбординг", async () => {
+    const { setup, rules } = makeSetup();
+    const sent: number[] = [];
+    const depsLocal = {
+      setup,
+      users: { canManage: async () => true },
+      sendMessage: async (chatId: number) => {
+        sent.push(chatId);
+      },
+    };
+    const base = {
+      oldStatus: "left",
+      newStatus: "member",
+      chat: { id: -100, type: "group", title: "T" },
+      from: { id: 42 },
+    };
+    await onChatMemberAdded(base, depsLocal);
+    assert.equal(sent.length, 2, "первый add: группа + DM");
+
+    // Бота кикнули и вернули (статус всё ещё pending) — онбординг не дублируется.
+    await onChatMemberAdded(
+      { ...base, oldStatus: "kicked", newStatus: "administrator" },
+      depsLocal,
+    );
+    assert.equal(sent.length, 2, "повторный add при pending не спамит");
+    assert.equal(rules.replaced.length, 2, "safe_default переприменён идемпотентно");
+  });
+
   it("callback p:team от canManage-actor применяет пресет и редактирует сообщение", async () => {
     const { setup, rules } = makeSetup();
     await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "42" });
@@ -271,7 +299,7 @@ describe("onboarding handlers", () => {
     assert.deepEqual(alerts, ["alert"]);
   });
 
-  it("Пакет B: member (не админ) → alert 'Нужны права администратора', пресет НЕ применён", async () => {
+  it("Пакет B: member (не админ, не canManage) → alert 'Нужны права администратора', пресет НЕ применён", async () => {
     const { setup, rules } = makeSetup();
     await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "42" });
     const alerts: Array<{ text: string; alert: boolean }> = [];
@@ -287,7 +315,7 @@ describe("onboarding handlers", () => {
       },
       {
         setup,
-        users: { canManage: async () => true },
+        users: { canManage: async () => false },
         sendMessage: async () => undefined,
         getChatMember: async (chatId, userId) => {
           memberChecked++;
@@ -324,6 +352,27 @@ describe("onboarding handlers", () => {
       },
     );
     assert.equal(rules.replaced[0].meta.source, "preset:secretary");
+  });
+
+  it("FR-4: member, но canManage (owner/admin бота) → пресет применяется", async () => {
+    const { setup, rules } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "42" });
+    await handleSetupCallback(
+      "cs:-100:p:team",
+      {
+        from: { id: 42 },
+        answerCallbackQuery: async () => undefined,
+        editMessageText: async () => undefined,
+      },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async () => undefined,
+        getChatMember: async () => "member",
+      },
+    );
+    assert.equal(rules.replaced[0].meta.source, "preset:team");
+    assert.equal((await setup.get("-100"))?.status, "completed");
   });
 
   it("Пакет B: getChatMember бросил (сеть) → fail closed, пресет НЕ применён", async () => {

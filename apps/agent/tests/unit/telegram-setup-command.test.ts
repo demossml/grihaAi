@@ -72,13 +72,18 @@ describe("runSetupCommand (D5 + группы)", () => {
     assert.ok(sent[0].buttons![0][0].callbackData === "cs:-1001:p:team");
   });
 
-  it("/setup в группе: non-admin → отказ, keyboard не отправлен", async () => {
+  it("/setup в группе: non-admin (не canManage) → отказ, keyboard не отправлен", async () => {
     const setup = await makeSetup(1);
     const sent: Array<{ chatId: number }> = [];
     const text = await runSetupCommand(
       "",
       { chatId: "-1001", userId: "42", isPrivate: false },
-      deps(setup, sent, async () => "member"),
+      {
+        setup,
+        users: { canManage: async () => false },
+        sendMessage: async () => undefined,
+        getChatMember: async () => "member",
+      },
     );
     assert.ok(text.includes("администратора"));
     assert.equal(sent.length, 0);
@@ -116,16 +121,21 @@ describe("runSetupCommand (D5 + группы)", () => {
     assert.ok(sent[0].buttons![0][0].callbackData === "cs:-1002:p:team");
   });
 
-  it("Пакет B: /setup <chatId> для non-admin → отказ, keyboard не отправлен", async () => {
+  it("Пакет B: /setup <chatId> от чужого пользователя → «Недостаточно прав»", async () => {
     const setup = await makeSetup(3);
     const sent: Array<{ chatId: number }> = [];
     const text = await runSetupCommand(
       "-1002",
-      { chatId: "42", userId: "42", isPrivate: true },
-      deps(setup, sent, async () => "member"),
+      { chatId: "99", userId: "99", isPrivate: true },
+      {
+        setup,
+        users: { canManage: async () => false },
+        sendMessage: async () => undefined,
+        getChatMember: async () => "member",
+      },
     );
-    assert.ok(text.includes("администратора"));
-    assert.equal(sent.length, 0, "keyboard не должен уйти non-admin");
+    assert.ok(text.includes("Недостаточно прав"));
+    assert.equal(sent.length, 0, "keyboard не должен уйти чужому");
   });
 
   it("не canManage → отказ", async () => {

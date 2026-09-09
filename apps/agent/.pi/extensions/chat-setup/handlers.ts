@@ -105,6 +105,12 @@ export async function onChatMemberAdded(
     addedByUserId: actorId,
   });
 
+  // FR-8: группа уже была pending → онбординг уже отправлялся, не спамим дублями.
+  if (existing?.status === "pending") {
+    console.log(`[chat-setup] chat ${chatId} already pending — onboarding dedupe`);
+    return;
+  }
+
   const title = event.chat.title ?? chatId;
 
   // Риск A: бот в группе шлёт сообщения без «первого /start» (в отличие от DM) —
