@@ -296,6 +296,39 @@ await session.bindExtensions({ mode: "json" });
   (полная история темы), `scope=chat` — только по явному «по всей группе». Даты — только
   по явной просьбе. Onboarding/ACL/rules остаются chat-level.
 
+### Hardening P0+P1 (D1–D10)
+
+Патч устойчивости/безопасности бота (см. `TELEGRAM_HARDENING_REPORT.md`). Не меняет
+silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
+
+- **D1 Mentions**: `mentions.ts` — `collectMentionFlags(text, entities, self?)` учитывает
+  и `entities` (текст), и `caption_entities` (подпись фото/документа); `mergeMentionFlags`
+  — ИЛИ по обоим источникам. `botMentioned`/`startsWithOtherMention` идут в pre-filter.
+  Без `username` обычный `@` не матчится (documented), `text_mention` по id — всегда.
+- **D2 Session keys**: `session-key.ts` — `buildTelegramSessionKey({userId, chatId?, threadId?})`
+  → `tg:{uid}:{chat}[:t:{threadId}]` (без chatId — `dm`). Ключ сквозной: bridge, pool,
+  sessions-директория (`sanitizeDirSegment` против traversal), `/new` сбрасывает
+  только один ключ.
+- **D3 Voice/STT**: в DM голосовое → `transcribeVoice` (`@griha/stt`, temp-файл через
+  telegram file API, удаляется в finally). Нет опции STT → «Голосовые пока недоступны.»
+  (reason `stt-unavailable`); ошибка → «Не удалось распознать голос.» (`stt-failed`);
+  пустой текст → переспрос (`stt-empty`). Агенту уходит только текст.
+- **D4 Callback ACL**: `handleCallbackQuery` проверяет ACL через
+  `options.aclCheck(userId, chatId)` (единый источник — UsersService) с fallback на
+  legacy `allowedUserIds`; неавторизованный callback не исполняется.
+- **D5 `/setup`**: `runSetupCommand` — в не-private «только в DM»; в DM `/setup <chatId>`
+  → один inline-keyboard, без аргумента — до 5 keyboard'ов по pending-группам
+  (D9-хинт «Есть группы без настройки: N»).
+- **D6 getMe**: `pollLoop` вызывает `getMe` с try/catch-логом перед каждым bot instance.
+- **D7 Plain fallback**: если HTML `sendMessage` не ушёл после ретраев, **один**
+  plain-text фолбэк того же чанка (без parseMode, без ретраев) — пользователь не теряет
+  ответ из-за невалидного HTML.
+- **D8 Reload**: `ChatSetupService.loadSync(force)`/`reload()` — повторное чтение
+  `chat-setup.json` без рестарта.
+- **D9 `/start` hint**: в DM добавляет строку про pending-группы (`pendingGroupsHint`).
+- **D10 Tests/docs**: 420 unit-тестов, обновлены `docs/TELEGRAM-BOT.md`, `STATUS.md`,
+  `README.md`, `TELEGRAM_HARDENING_REPORT.md`.
+
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
   polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:

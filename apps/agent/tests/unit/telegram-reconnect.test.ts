@@ -125,7 +125,8 @@ describe("telegram sendWithRetry (через публичный путь соо�
     c.start("t");
     fake.handler?.(update);
     await tick();
-    assert.equal(fake.sendCalls, 3);
+    // 3 попытки HTML + 1 plain-text фолбэк (D7) — ретраев на фолбэке нет.
+    assert.equal(fake.sendCalls, 4);
     assert.equal(fake.sent.length, 0);
     await c.stop();
   });

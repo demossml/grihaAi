@@ -26,6 +26,7 @@ import crmExtension from "../crm/index.js";
 import travelExtension from "../travel/index.js";
 import connector from "../connector/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
+import { sanitizeDirSegment } from "./session-key.js";
 
 /**
  * Inline extension for isolated Telegram sub-sessions: registers the provider
@@ -71,8 +72,18 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   providerBootstrap,
 ];
 
-/** Creates an isolated AgentSession for a Telegram user. */
-export type TelegramSessionFactory = (userId: number) => Promise<AgentSession>;
+/** Creates an isolated AgentSession for a Telegram session key (D2). */
+export type TelegramSessionFactory = (
+  sessionKey: string,
+  userId: number,
+  meta: TelegramSessionMeta,
+) => Promise<AgentSession>;
+
+/** Контекст сессии: чат + тема форума (для каталога сессий на диске). */
+export interface TelegramSessionMeta {
+  chatId?: string;
+  threadId?: string;
+}
 
 export interface TelegramSessionPoolOptions {
   /** Working directory for the sub-sessions. Defaults to process.cwd(). */
@@ -97,21 +108,37 @@ export interface TelegramReply {
 }
 
 /**
- * One isolated AgentSession (its own sessionId + conversation history) per
- * Telegram user, with per-user message serialization.
+ * Одна изолированная AgentSession (свой sessionId + история) на session key:
+ * `tg:{userId}:{chatId}[:t:{threadId}]` — DM/группы/темы не смешиваются (D2).
+ * Сериализация сообщений — по ключу.
  */
 export class TelegramSessionPool {
-  private readonly sessions = new Map<number, SessionEntry>();
+  private readonly sessions = new Map<string, SessionEntry>();
   private readonly sessionFactory: TelegramSessionFactory;
   private readonly cwd: string;
 
   constructor(options: TelegramSessionPoolOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
-    this.sessionFactory = options.sessionFactory ?? ((userId) => this.createSession(userId));
+    this.sessionFactory =
+      options.sessionFactory ??
+      ((sessionKey, userId, meta) => this.createSession(sessionKey, userId, meta));
   }
 
-  private async createSession(userId: number): Promise<AgentSession> {
-    const sessionsDir = path.join(getConfigDir(), "telegram", String(userId), "sessions");
+  private async createSession(
+    sessionKey: string,
+    userId: number,
+    meta: TelegramSessionMeta,
+  ): Promise<AgentSession> {
+    // D2: сессии на диске разведены по чатам/темам.
+    const sessionsDir = path.join(
+      getConfigDir(),
+      "telegram",
+      String(userId),
+      "chats",
+      sanitizeDirSegment(meta.chatId ?? "dm"),
+      meta.threadId ? `t-${sanitizeDirSegment(meta.threadId)}` : "main",
+      "sessions",
+    );
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: getAgentDir(),
@@ -131,57 +158,58 @@ export class TelegramSessionPool {
     return session;
   }
 
-  private getOrCreate(userId: number): SessionEntry {
-    let entry = this.sessions.get(userId);
+  private getOrCreate(
+    sessionKey: string,
+    userId: number,
+    meta: TelegramSessionMeta,
+  ): SessionEntry {
+    let entry = this.sessions.get(sessionKey);
     if (!entry) {
       entry = {
-        sessionPromise: this.sessionFactory(userId),
+        sessionPromise: this.sessionFactory(sessionKey, userId, meta),
         queue: Promise.resolve({ text: "" }),
       };
-      this.sessions.set(userId, entry);
+      this.sessions.set(sessionKey, entry);
     }
     return entry;
   }
 
-  /** Number of currently pooled user sessions. */
+  /** Number of currently pooled sessions. */
   activeCount(): number {
     return this.sessions.size;
   }
 
-  /** Telegram user ids with a currently pooled session (for admin status). */
-  listActiveUserIds(): number[] {
+  /** Session keys с активной сессией (для admin status). */
+  listActiveSessionKeys(): string[] {
     return [...this.sessions.keys()];
   }
 
   /**
-   * Reset the isolated session for a user (`/new`). The current AgentSession
-   * is disposed (its session files stay on disk — nothing is deleted), and a
-   * fresh one with a new sessionId is created lazily on the next message.
-   *
-   * Only the conversation session is reset; cross-session state (personal
-   * learning, user rules, memory) lives outside this pool and is untouched.
+   * Reset сессии по ключу (`/new` в конкретном чате/теме). Текущий AgentSession
+   * закрывается (файлы сессии остаются на диске), новый создаётся лениво.
+   * Другие чаты пользователя НЕ затрагиваются (D2).
    */
-  async reset(userId: number): Promise<void> {
-    const entry = this.sessions.get(userId);
+  async reset(sessionKey: string): Promise<void> {
+    const entry = this.sessions.get(sessionKey);
     if (!entry) return;
-    this.sessions.delete(userId);
+    this.sessions.delete(sessionKey);
     const session = await entry.sessionPromise.catch(() => null);
     if (session) {
       session.dispose();
     }
   }
 
-  /** Send a message to a user's isolated session and return Grisha's reply. */
+  /** Send a message into a session key and return Grisha's reply. */
   handleMessage(
+    sessionKey: string,
     userId: number,
-    chatId: string | undefined,
     message: string,
-    threadId?: string,
+    meta: TelegramSessionMeta = {},
   ): Promise<TelegramReply> {
-    const entry = this.getOrCreate(userId);
+    const entry = this.getOrCreate(sessionKey, userId, meta);
     const run = async (): Promise<TelegramReply> => {
       const session = await entry.sessionPromise;
-      return this.runPrompt(session, chatId, String(userId), message, threadId);
+      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId);
     };
     entry.queue = entry.queue.then(run, run);
     return entry.queue;

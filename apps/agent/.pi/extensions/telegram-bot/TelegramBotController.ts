@@ -12,6 +12,7 @@ import {
 } from "./TelegramBridge.js";
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import { normalizeThreadId } from "./threads.js";
+import { collectMentionFlags } from "./mentions.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -82,11 +83,19 @@ export interface TelegramBotControllerOptions {
     args: string,
     ctx: { chatId: string; userId: string },
   ) => string | Promise<string>;
-  /** Прямой handler /setup ... (список pending-чатов). */
+  /** Прямой handler /setup ... (DM-only, шлёт keyboard). */
   setupCommandHandler?: (
     args: string,
-    ctx: { chatId: string; userId: string },
+    ctx: { chatId: string; userId: string; isPrivate: boolean },
+    send: TelegramReplySender,
   ) => string | Promise<string>;
+  /** D9: подсказка в /start про pending-группы. */
+  pendingGroupsHint?: (userId: string) => string | Promise<string>;
+  /** D3: STT-транскрипция голосового до агента. */
+  transcribeVoice?: (
+    fileId: string,
+    meta: { chatId: string; userId: string },
+  ) => Promise<string>;
   /** Перехват custom-текста онбординга в DM (true → не звать агента). */
   customSetupInterceptor?: (
     input: { userId: string; chatId: string; text: string; isPrivate: boolean },
@@ -248,18 +257,29 @@ export class TelegramBotController {
           for (let i = 0; i < rawChunks.length; i++) {
             const chunkHtml = formatTelegramHtml(rawChunks[i]);
             const isLast = i === rawChunks.length - 1;
-            const ok = await this.sendWithRetry(
-              () =>
-                bot.api.sendMessage(chatId, chunkHtml, {
-                  parseMode: "HTML",
-                  // Кнопки — только к последнему чанку, иначе продублируются в каждом.
+            const sendHtml = () =>
+              bot.api.sendMessage(chatId, chunkHtml, {
+                parseMode: "HTML",
+                // Кнопки — только к последнему чанку, иначе продублируются в каждом.
+                inlineButtons: isLast ? extra?.inlineButtons : undefined,
+                // Ответ в тему форума (message_thread_id) из входящего сообщения.
+                messageThreadId:
+                  extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
+              });
+            let ok = await this.sendWithRetry(sendHtml, "sendMessage");
+            // D7: HTML не ушёл → ОДИН plain-text фолбэк того же чанка (без ретраев).
+            if (!ok) {
+              try {
+                await bot.api.sendMessage(chatId, rawChunks[i], {
                   inlineButtons: isLast ? extra?.inlineButtons : undefined,
-                  // Ответ в тему форума (message_thread_id) из входящего сообщения.
                   messageThreadId:
                     extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
-                }),
-              "sendMessage",
-            );
+                });
+                ok = true;
+              } catch (err) {
+                console.error("[telegram-bot] plain fallback send failed:", err);
+              }
+            }
             if (!ok) textOk = false;
           }
           let docOk = true;
@@ -302,6 +322,8 @@ export class TelegramBotController {
           aclCheck: this.options?.aclCheck,
           usersCommandHandler: this.options?.usersCommandHandler,
           setupCommandHandler: this.options?.setupCommandHandler,
+          pendingGroupsHint: this.options?.pendingGroupsHint,
+          transcribeVoice: this.options?.transcribeVoice,
           customSetupInterceptor: this.options?.customSetupInterceptor,
           documentIngest: this.options?.documentIngest,
         },
@@ -401,7 +423,17 @@ export class TelegramBotController {
       if (handled) return;
     }
     const userId = ctx.from?.id;
-    if (userId === undefined || !this.allowedUserIds.includes(userId)) {
+    if (userId === undefined) {
+      await ctx.answerCallbackQuery("Недоступно.").catch(() => undefined);
+      return;
+    }
+    // D4: единый источник ACL — UsersService (aclCheck). allowedUserIds —
+    // только legacy fallback, когда aclCheck не настроен.
+    const callbackChatId = String(ctx.message?.chat?.id ?? userId);
+    const allowed = this.options?.aclCheck
+      ? await this.options.aclCheck(String(userId), callbackChatId)
+      : this.allowedUserIds.includes(userId);
+    if (!allowed) {
       await ctx.answerCallbackQuery("Недоступно.").catch(() => undefined);
       return;
     }
@@ -480,6 +512,7 @@ export class TelegramBotController {
         text?: string;
         caption?: string;
         entities?: Array<{ type?: string; offset?: number; length?: number; user?: { id?: number } }>;
+        caption_entities?: Array<{ type?: string; offset?: number; length?: number; user?: { id?: number } }>;
         voice?: { file_id?: string };
         document?: {
           file_id?: string;
@@ -519,22 +552,13 @@ export class TelegramBotController {
     // ── Pre-filter флаги (structured rules §9): mention/reply/bot/service. ──
     const self = this.options?.getBotSelf?.();
     const textOrCaption = m.text ?? m.caption ?? "";
-    let botMentioned: boolean | undefined;
-    let startsWithOtherMention: boolean | undefined;
-    const entities = Array.isArray(m.entities) ? m.entities : [];
-    for (const e of entities) {
-      const mentionText = textOrCaption.slice(e.offset ?? 0, (e.offset ?? 0) + (e.length ?? 0));
-      if (e.type === "mention") {
-        const isSelf = self?.username
-          ? mentionText.toLowerCase() === `@${self.username}`.toLowerCase()
-          : false;
-        if (isSelf) botMentioned = true;
-        else if (e.offset === 0) startsWithOtherMention = true;
-      } else if (e.type === "text_mention") {
-        if (self && e.user?.id === self.id) botMentioned = true;
-        else if (e.offset === 0) startsWithOtherMention = true;
-      }
-    }
+    // D1: entities (текст) + caption_entities (подпись к фото/документу).
+    const fromText = collectMentionFlags(textOrCaption, m.entities ?? [], self);
+    const fromCaption = collectMentionFlags(m.caption ?? "", m.caption_entities ?? [], self);
+    const botMentioned =
+      fromText.botMentioned || fromCaption.botMentioned ? true : undefined;
+    const startsWithOtherMention =
+      fromText.startsWithOtherMention || fromCaption.startsWithOtherMention ? true : undefined;
     const replyFromId = m.reply_to_message?.from?.id;
     const repliedToBot =
       self && replyFromId !== undefined ? replyFromId === self.id : undefined;

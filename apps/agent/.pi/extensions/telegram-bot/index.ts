@@ -31,9 +31,10 @@ import {
 import {
   handleSetupCallback,
   onChatMemberAdded,
-  setupCommandHandler as chatSetupCommand,
+  runSetupCommand,
   tryHandleCustomText,
 } from "../chat-setup/handlers.js";
+import { transcribeVoice } from "@griha/stt";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
 // Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
@@ -96,10 +97,18 @@ const realBotFactory: TelegramBotFactory = (token) => {
       void bot.on(filter, handler as never);
     },
     start: async () => {
-      // self-инфо для mention/reply-флагов pre-filter'а (до старта long polling).
+      // D6: self-инфо для mention/reply-флагов — до group traffic; retry при
+      // каждом новом bot instance (pollLoop), с логом ошибки.
       if (!botSelf) {
-        const me = await bot.api.getMe().catch(() => undefined);
-        if (me) botSelf = { id: me.id, username: me.username };
+        try {
+          const me = await bot.api.getMe();
+          botSelf = { id: me.id, username: me.username };
+        } catch (err: unknown) {
+          console.error(
+            "[telegram-bot] getMe failed:",
+            err instanceof Error ? err.message : err,
+          );
+        }
       }
       return bot.start();
     },
@@ -141,7 +150,11 @@ let pool: TelegramSessionPool | null = null;
 function grishaAgent(): GrishaAgent {
   return async (input) => {
     if (!pool) return { text: "Гриша временно недоступен." };
-    return pool.handleMessage(input.userId, input.chatId, input.message, input.threadId);
+    // D2: пул ключуется sessionKey (чай/тема), не только userId.
+    return pool.handleMessage(input.sessionKey, input.userId, input.message, {
+      chatId: input.chatId,
+      threadId: input.threadId,
+    });
   };
 }
 
@@ -160,17 +173,51 @@ function getController(): TelegramBotController {
         prefilter: (input) =>
           shouldProcessMessage(getUserRulesService().getHardRules(input.chatId), input),
         rulesHandler: telegramRulesHandler,
-        resetHandler: (userId) => pool?.reset(userId),
+        resetHandler: (sessionKey) => pool?.reset(sessionKey),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
         aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
         usersCommandHandler: (args, ctx) => handleUsersCommand(users, args, ctx),
         // Chat-setup (онбординг групп): my_chat_member → DM, cs:-callbacks,
-        // custom-текст в DM, /setup.
+        // custom-текст в DM, /setup с keyboard'ами (D5).
         chatMemberHandler: (event, deps) =>
           onChatMemberAdded(event, { setup, users, sendMessage: deps.sendMessage }),
         setupCallbackHandler: (data, ctx) =>
           handleSetupCallback(data, ctx, { setup, users, sendMessage: async () => undefined }),
-        setupCommandHandler: (args, ctx) => chatSetupCommand(args, ctx, { setup, users }),
+        setupCommandHandler: (args, ctx, send) =>
+          runSetupCommand(args, ctx, {
+            setup,
+            users,
+            sendMessage: async (chatId, text, extra) => {
+              await send(chatId, text, undefined, extra);
+            },
+          }),
+        pendingGroupsHint: async (userId) => {
+          // D9: только группы, добавленные этим пользователем.
+          const pending = (await setup.list()).filter(
+            (c) => c.status === "pending" && c.addedByUserId === userId,
+          );
+          return pending.length > 0
+            ? `\n\nЕсть группы без настройки: ${pending.length}. Отправьте /setup чтобы получить кнопки.`
+            : "";
+        },
+        // D3: голос транскрибируется до агента (STT через @griha/stt).
+        transcribeVoice: async (fileId) => {
+          const token = loadConfig()?.telegram?.botToken;
+          if (!token) throw new Error("STT not configured");
+          const dest = path.join(
+            os.tmpdir(),
+            `griha-voice-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          );
+          const filePath = await downloadTelegramFileToDisk(token, fileId, dest);
+          try {
+            const result = await transcribeVoice(filePath, {});
+            if (!result.ok || !result.text.trim()) throw new Error("empty transcription");
+            return result.text;
+          } finally {
+            const fs = await import("node:fs/promises");
+            await fs.rm(filePath, { force: true }).catch(() => undefined);
+          }
+        },
         customSetupInterceptor: (input, send) =>
           tryHandleCustomText(input, { setup }, async (chatId, text, extra) => {
             await send(chatId, text, undefined, extra);

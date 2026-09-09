@@ -46,7 +46,7 @@ describe("telegram bridge", () => {
 
     assert.equal(res.handled, true);
     assert.equal(calls[0].message, "привет");
-    assert.equal(calls[0].sessionKey, "tg:123");
+    assert.equal(calls[0].sessionKey, "tg:123:999");
     assert.equal(sent[0].text, "ответ Гриши");
     assert.equal(sent[0].chatId, 999);
   });
@@ -299,7 +299,7 @@ describe("telegram bridge", () => {
     assert.equal(reactions.length, 0, "геолокация — без реакции, ответ приходит текстом");
   });
 
-  it("routes voice messages to the agent with the voice file_id", async () => {
+  it("routes voice messages through STT to the agent", async () => {
     const calls: Array<{ message: string; sessionKey: string }> = [];
     const sent: string[] = [];
     const bridge = new TelegramBridge(
@@ -311,6 +311,7 @@ describe("telegram bridge", () => {
       async (_chatId, text) => {
         sent.push(text);
       },
+      { transcribeVoice: async () => "послушай это сообщение" },
     );
 
     const res = await bridge.handleUpdate({
@@ -325,13 +326,60 @@ describe("telegram bridge", () => {
 
     assert.equal(res.handled, true);
     assert.equal(calls.length, 1, "голосовое должно дойти до агента");
-    assert.equal(calls[0].sessionKey, "tg:123");
-    assert.ok(calls[0].message.includes("голосовое сообщение"));
-    assert.ok(calls[0].message.includes("file_id: voice-file-1"));
-    assert.ok(calls[0].message.includes("Подпись: послушай"));
-    // Это ответ агента, а не canned-заглушка.
+    assert.equal(calls[0].message, "послушай это сообщение", "агенту идёт транскрипция, не file_id");
+    // D2: sessionKey = tg:{userId}:{chatId}
+    assert.equal(calls[0].sessionKey, "tg:123:999");
     assert.equal(sent[0], "транскрипция: ...");
-    assert.ok(!sent.some((t) => t.includes("транскрипция пока не поддерживается")));
+  });
+
+  it("voice without STT → сообщение о недоступности, агент не вызван", async () => {
+    let agentCalled = false;
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => {
+        agentCalled = true;
+        return { text: "x" };
+      },
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 11,
+      message: { from: { id: 123 }, chat: { id: 999 }, voice: { file_id: "v1" } },
+    });
+
+    assert.equal(res.handled, true);
+    assert.equal(res.reason, "stt-unavailable");
+    assert.equal(agentCalled, false);
+    assert.deepEqual(sent, ["Голосовые пока недоступны."]);
+  });
+
+  it("STT упал → ошибка пользователю, агент не вызван", async () => {
+    let agentCalled = false;
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => {
+        agentCalled = true;
+        return { text: "x" };
+      },
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+      { transcribeVoice: async () => Promise.reject(new Error("stt down")) },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 12,
+      message: { from: { id: 123 }, chat: { id: 999 }, voice: { file_id: "v1" } },
+    });
+
+    assert.equal(res.reason, "stt-failed");
+    assert.equal(agentCalled, false);
+    assert.deepEqual(sent, ["Не удалось распознать голос."]);
   });
 
   it("routes /rules commands to the handler with chat context", async () => {
@@ -680,6 +728,124 @@ describe("telegram bot controller", () => {
     assert.equal(fake.sent.length, 1);
     assert.equal(fake.sent[0].text, "Контакт сохранён");
   });
+
+  it("D4: aclCheck true → approval callback разрешён, даже если id не в allowedUserIds", async () => {
+    const fake = new FakeBot();
+    const handledBy: string[] = [];
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [1], () => fake, {
+      aclCheck: async () => true,
+      approvalHandler: (_action, id) => {
+        handledBy.push(id);
+        return "ok";
+      },
+    });
+    controller.start("token");
+
+    await fake.callbackHandler?.({
+      from: { id: 999 },
+      data: "approve:abc",
+      message: { chat: { id: 999 }, message_id: 1, text: "t" },
+      answerCallbackQuery: async () => undefined,
+      editMessageText: async () => undefined,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(handledBy, ["abc"], "ACL — единый источник, не allowedUserIds");
+  });
+
+  it("D4: aclCheck false → callback отклонён, даже если id в allowedUserIds", async () => {
+    const fake = new FakeBot();
+    const handledBy: string[] = [];
+    const answers: string[] = [];
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake, {
+      aclCheck: async () => false,
+      approvalHandler: (_action, id) => {
+        handledBy.push(id);
+        return "ok";
+      },
+    });
+    controller.start("token");
+
+    await fake.callbackHandler?.({
+      from: { id: 123 },
+      data: "approve:abc",
+      message: { chat: { id: 123 }, message_id: 1, text: "t" },
+      answerCallbackQuery: async (text) => {
+        answers.push(text ?? "");
+      },
+      editMessageText: async () => undefined,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(handledBy, []);
+    assert.deepEqual(answers, ["Недоступно."]);
+  });
+
+  it("D7: HTML-сбой → plain-text фолбэк того же чанка", async () => {
+    const sent: Array<{ text: string; parseMode?: string }> = [];
+    let messageHandler: ((ctx: unknown) => unknown) | null = null;
+    const fakeBot: TelegramBotLike = {
+      on: (filter, h) => {
+        if (filter === "message") messageHandler = h as (ctx: unknown) => unknown;
+      },
+      start: async () => undefined,
+      stop: async () => undefined,
+      api: {
+        sendMessage: async (chatId, text, extra) => {
+          if (extra?.parseMode === "HTML") throw new Error("can't parse entities");
+          sent.push({ text, parseMode: extra?.parseMode });
+        },
+        sendDocument: async () => undefined,
+        sendChatAction: async () => undefined,
+        setMyCommands: async () => undefined,
+        setMessageReaction: async () => undefined,
+      },
+    };
+    const controller = new TelegramBotController(
+      async () => ({ text: "**жирный** текст" }),
+      [123],
+      () => fakeBot,
+      { sendRetry: { maxAttempts: 1, delayMs: () => 0 } },
+    );
+    controller.start("token");
+
+    const handler = messageHandler as ((ctx: unknown) => unknown) | null;
+    if (!handler) throw new Error("handler not wired");
+    await handler({
+      update: { update_id: 1 },
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "привет" },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(sent.length, 1, "один plain-фолбэк");
+    assert.equal(sent[0].text, "**жирный** текст", "plain — сырой чанк без HTML");
+    assert.equal(sent[0].parseMode, undefined);
+  });
+
+  it("D9: /start в DM добавляет hint про pending-группы", async () => {
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async () => ({ text: "x" }),
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+      {
+        pendingGroupsHint: async (userId) =>
+          userId === "123"
+            ? "\n\nЕсть группы без настройки: 2. Отправьте /setup чтобы получить кнопки."
+            : "",
+      },
+    );
+
+    await bridge.handleUpdate({
+      updateId: 60,
+      message: { from: { id: 123 }, chat: { id: 123, type: "private" }, text: "/start" },
+    });
+
+    assert.ok(sent[0].includes("Привет! Я Гриша"));
+    assert.ok(sent[0].includes("Есть группы без настройки: 2"));
+  });
 });
 
 class FakeAgentSession {
@@ -735,42 +901,60 @@ class FakeAgentSession {
 
 describe("telegram session pool", () => {
   function makePool() {
-    const sessions = new Map<number, FakeAgentSession>();
+    const sessions = new Map<string, FakeAgentSession>();
     const pool = new TelegramSessionPool({
-      sessionFactory: async (userId) => {
+      sessionFactory: async (sessionKey) => {
         const s = new FakeAgentSession();
-        sessions.set(userId, s);
+        sessions.set(sessionKey, s);
         return s as unknown as AgentSession;
       },
     });
     return { pool, sessions };
   }
 
-  it("creates one isolated session per user", async () => {
+  it("creates one isolated session per session key", async () => {
     const { pool, sessions } = makePool();
-    const a = await pool.handleMessage(1, undefined, "привет");
-    const b = await pool.handleMessage(2, undefined, "hi");
+    const a = await pool.handleMessage("tg:1:1", 1, "привет", { chatId: "1" });
+    const b = await pool.handleMessage("tg:2:2", 2, "hi", { chatId: "2" });
     assert.equal(a.text, "ответ на: привет");
     assert.equal(b.text, "ответ на: hi");
     assert.equal(pool.activeCount(), 2);
     assert.equal(sessions.size, 2);
-    assert.deepEqual(sessions.get(1)!.prompts, ["привет"]);
-    assert.deepEqual(sessions.get(2)!.prompts, ["hi"]);
+    assert.deepEqual(sessions.get("tg:1:1")!.prompts, ["привет"]);
+    assert.deepEqual(sessions.get("tg:2:2")!.prompts, ["hi"]);
   });
 
-  it("reuses the same session for the same user", async () => {
+  it("reuses the same session for the same key", async () => {
     const { pool, sessions } = makePool();
-    await pool.handleMessage(1, undefined, "первое");
-    await pool.handleMessage(1, undefined, "второе");
+    await pool.handleMessage("tg:1:1", 1, "первое", { chatId: "1" });
+    await pool.handleMessage("tg:1:1", 1, "второе", { chatId: "1" });
     assert.equal(sessions.size, 1);
-    assert.deepEqual(sessions.get(1)!.prompts, ["первое", "второе"]);
+    assert.deepEqual(sessions.get("tg:1:1")!.prompts, ["первое", "второе"]);
     assert.equal(pool.activeCount(), 1);
+  });
+
+  it("D2: один user в двух чатах → две изолированные сессии", async () => {
+    const { pool, sessions } = makePool();
+    await pool.handleMessage("tg:7:-100", 7, "группа", { chatId: "-100" });
+    await pool.handleMessage("tg:7:7", 7, "дм", { chatId: "7" });
+    assert.equal(sessions.size, 2);
+    assert.deepEqual(sessions.get("tg:7:-100")!.prompts, ["группа"]);
+    assert.deepEqual(sessions.get("tg:7:7")!.prompts, ["дм"]);
+  });
+
+  it("/new сбрасывает только один ключ (другие чаты живы)", async () => {
+    const { pool, sessions } = makePool();
+    await pool.handleMessage("tg:7:-100", 7, "группа", { chatId: "-100" });
+    await pool.handleMessage("tg:7:7", 7, "дм", { chatId: "7" });
+    await pool.reset("tg:7:7");
+    assert.equal(pool.activeCount(), 1);
+    assert.equal(sessions.get("tg:7:-100") !== undefined, true, "другой чат не тронут");
   });
 
   it("disposes all sessions on shutdown", async () => {
     const { pool, sessions } = makePool();
-    await pool.handleMessage(1, undefined, "x");
-    await pool.handleMessage(2, undefined, "y");
+    await pool.handleMessage("tg:1:1", 1, "x", { chatId: "1" });
+    await pool.handleMessage("tg:2:2", 2, "y", { chatId: "2" });
     await pool.disposeAll();
     assert.equal(pool.activeCount(), 0);
     for (const s of sessions.values()) assert.equal(s.disposed, true);
@@ -784,14 +968,14 @@ describe("telegram session pool", () => {
         return s as unknown as AgentSession;
       },
     });
-    const reply = await pool.handleMessage(1, undefined, "отчёт");
+    const reply = await pool.handleMessage("tg:1:1", 1, "отчёт", { chatId: "1" });
     assert.equal(reply.text, "ответ на: отчёт");
     assert.equal(reply.filePath, "/tmp/report.pdf");
   });
 
   it("returns no filePath when nothing was generated", async () => {
     const { pool } = makePool();
-    const reply = await pool.handleMessage(1, undefined, "привет");
+    const reply = await pool.handleMessage("tg:1:1", 1, "привет", { chatId: "1" });
     assert.equal(reply.filePath, undefined);
   });
 
@@ -811,7 +995,7 @@ describe("telegram session pool", () => {
         return s as unknown as AgentSession;
       },
     });
-    const reply = await pool.handleMessage(1, undefined, "отчёт");
+    const reply = await pool.handleMessage("tg:1:1", 1, "отчёт", { chatId: "1" });
     assert.equal(reply.filePath, "/tmp/report.pdf");
     assert.equal(reply.documentCaption, "Отчёт по продажам за март");
     assert.deepEqual(reply.inlineButtons, buttons);
@@ -825,9 +1009,9 @@ describe("telegram session pool", () => {
         return s as unknown as AgentSession;
       },
     });
-    const first = await pool.handleMessage(1, undefined, "нужно подтверждение");
+    const first = await pool.handleMessage("tg:1:1", 1, "нужно подтверждение", { chatId: "1" });
     assert.equal(first.inlineButtons?.length, 1);
-    const second = await pool.handleMessage(1, undefined, "спасибо");
+    const second = await pool.handleMessage("tg:1:1", 1, "спасибо", { chatId: "1" });
     assert.equal(second.inlineButtons, undefined);
   });
 });

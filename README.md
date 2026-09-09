@@ -128,7 +128,12 @@ npm test          # tsx --test tests/**/*.test.ts
 /telegram-stop         # остановить long polling
 ```
 
-В Telegram: `/start`, `/status`, `/new`. Каждый пользователь получает **изолированную сессию Гриши** (свой `sessionId`). Сгенерированные файлы (`generate_report`/`generate_presentation`) приходят обратно как документ (`sendDocument`). Разбор — [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md).
+В Telegram: `/start`, `/status`, `/new`, `/setup` (настройка групп — только в DM).
+Каждый пользователь получает **изолированную сессию Гриши** (свой `sessionId`). Голосовые
+в DM распознаются через STT, подписи к фото с @mention бота обрабатываются, ответы в темах
+форума уходят в ту же тему, HTML-ответы имеют plain-text фолбэк. Сгенерированные файлы
+(`generate_report`/`generate_presentation`) приходят обратно как документ (`sendDocument`).
+Разбор — [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md).
 
 ## Ограничения проекта
 

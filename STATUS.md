@@ -232,6 +232,18 @@
 - [x] `renderPdfReport` с DI (`pdfSpecRenderFn`); unit-тесты проверяют spec-дерево, integration-тест рендерит реальный PDF в обычном CI
 - [x] Презентации (pptxgenjs) — без изменений
 
+## Phase 25 — Telegram Hardening P0+P1 (D1–D10)
+
+- [x] D1: mentions — `entities` + `caption_entities` → `botMentioned`/`startsWithOtherMention` в pre-filter
+- [x] D2: сквозные session keys `tg:{uid}:{chat}[:t:{threadId}]` (bridge/pool/директории/`/new`), sanitize против traversal
+- [x] D3: голосовые в DM — STT через `@griha/stt` (stt-unavailable/stt-failed/stt-empty, temp-файл удаляется)
+- [x] D4: ACL callback-запросов — единый `UsersService.aclCheck` (fallback legacy whitelist)
+- [x] D5: `/setup` — только в DM; `/setup <chatId>` → один keyboard, пусто → до 5 keyboard'ов
+- [x] D6: `getMe` с try/catch-логом на каждом bot instance; D7: plain-text фолбэк чанка при сбое HTML
+- [x] D8: `ChatSetupService.reload()`; D9: `/start`-хинт про pending-группы
+- [x] Не сломаны: silent-until-configured (R1–R8), forum `message_thread_id`, изоляция сессий
+- [x] Tests: 420 unit — зелёные; typecheck/build зелёные; отчёт `TELEGRAM_HARDENING_REPORT.md`
+
 
 
 

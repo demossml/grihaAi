@@ -193,22 +193,52 @@ export async function tryHandleCustomText(
   return true;
 }
 
-/** §11 (minimal): /setup — список чатов в ожидании настройки. */
-export async function setupCommandHandler(
+/** §11 (D5): /setup — DM-only, пересылает keyboard пресетов. */
+export async function runSetupCommand(
   args: string,
-  ctx: { chatId: string; userId: string },
-  deps: { setup: ChatSetupService; users: { canManage(userId: string | number): Promise<boolean> } },
+  ctx: { chatId: string; userId: string; isPrivate: boolean },
+  deps: {
+    setup: ChatSetupService;
+    users: { canManage(userId: string | number): Promise<boolean> };
+    sendMessage: SetupSendMessage;
+  },
 ): Promise<string> {
+  if (!ctx.isPrivate) {
+    return "Настройка групп — только в личных сообщениях с ботом. Откройте DM и отправьте /setup.";
+  }
   if (!(await deps.users.canManage(ctx.userId))) {
     return "Недостаточно прав. Нужна роль owner или admin.";
   }
-  const chats = (await deps.setup.list()).filter((c) => c.status === "pending");
-  if (chats.length === 0) return "Нет групп, ожидающих настройки.";
+
+  const arg = args.trim();
+  const pending = (await deps.setup.list()).filter((c) => c.status === "pending");
+
+  if (arg) {
+    const chatId = arg.split(/\s+/)[0];
+    const rec = await deps.setup.get(chatId);
+    if (!rec || rec.status !== "pending") {
+      return `Чат ${chatId} не в статусе pending.`;
+    }
+    const title = rec.chatTitle ?? chatId;
+    await deps.sendMessage(Number(ctx.userId), buildOnboardingText(title), {
+      parseMode: "HTML",
+      inlineButtons: buildOnboardingKeyboard(chatId),
+    });
+    return `Отправил меню настройки для «${title}».`;
+  }
+
+  if (pending.length === 0) return "Нет групп, ожидающих настройки.";
+
+  // Отправляем keyboard'ы (лимит 5 — не спамить).
+  const batch = pending.slice(0, 5);
+  for (const c of batch) {
+    await deps.sendMessage(Number(ctx.userId), buildOnboardingText(c.chatTitle ?? c.chatId), {
+      parseMode: "HTML",
+      inlineButtons: buildOnboardingKeyboard(c.chatId),
+    });
+  }
   return (
-    "Группы, ожидающие настройки:\n" +
-    chats
-      .map((c) => `- ${c.chatId}${c.chatTitle ? ` («${c.chatTitle}»)` : ""} — pending`)
-      .join("\n") +
-    "\n\nКнопки выбора пришли в личные сообщения при добавлении бота."
+    `Групп в ожидании: ${pending.length}. Меню отправил в этот чат` +
+    (pending.length > 5 ? ` (первые 5). Остальные: /setup <chatId>` : ".")
   );
 }

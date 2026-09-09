@@ -66,9 +66,16 @@ export class ChatSetupService {
     return this.cache!.map((c) => ({ ...c }));
   }
 
-  /** Синхронно гидратировать cache с диска (вызывать на старте telegram). */
-  loadSync(): void {
-    if (!this.cache) this.cache = this.readStore().chats;
+  /** D8: force=false — hydrate если пуст; force=true — перечитать диск. */
+  loadSync(force = false): void {
+    if (force || !this.cache) {
+      this.cache = this.readStore().chats;
+    }
+  }
+
+  /** Принудительно перечитать с диска (admin/tests). */
+  reload(): void {
+    this.loadSync(true);
   }
 
   /**

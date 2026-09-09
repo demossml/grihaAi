@@ -4,6 +4,7 @@
  */
 
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
+import { buildTelegramSessionKey } from "./session-key.js";
 
 export interface TgUser {
   id: number;
@@ -95,9 +96,9 @@ export interface TelegramRulesHandler {
   (args: string, ctx: { chatId: string; userId: string }): string;
 }
 
-/** Resets the isolated session for a user (`/new`). */
+/** Resets the isolated session for a session key (`/new` в конкретном чате/теме). */
 export interface TelegramResetHandler {
-  (userId: number, chatId: string): Promise<void> | void;
+  (sessionKey: string, userId: number, chatId: string): Promise<void> | void;
 }
 
 /** Shared approval decision (approve/deny by id) — business logic lives in approval-gate. */
@@ -160,11 +161,19 @@ export class TelegramBridge {
         args: string,
         ctx: { chatId: string; userId: string },
       ) => string | Promise<string>;
-      /** Прямой handler /setup ... (список pending-чатов). */
+      /** Прямой handler /setup ... — DM-only, сам шлёт keyboard через send. */
       setupCommandHandler?: (
         args: string,
-        ctx: { chatId: string; userId: string },
+        ctx: { chatId: string; userId: string; isPrivate: boolean },
+        send: TelegramReplySender,
       ) => string | Promise<string>;
+      /** D9: подсказка в /start про pending-группы (private). */
+      pendingGroupsHint?: (userId: string) => string | Promise<string>;
+      /** D3: STT-транскрипция голосового ДО агента. */
+      transcribeVoice?: (
+        fileId: string,
+        meta: { chatId: string; userId: string },
+      ) => Promise<string>;
       /** Перехват custom-текста онбординга в DM; true → сообщение обработано. */
       customSetupInterceptor?: (
         input: { userId: string; chatId: string; text: string; isPrivate: boolean },
@@ -245,13 +254,26 @@ export class TelegramBridge {
     }
 
     if (text === "/start") {
-      await send(chatId, "Привет! Я Гриша — твой офисный ассистент.");
+      // D9: в private — короткий hint про pending-группы, без спама клавиатурами.
+      let extra = "";
+      if (chatType === "private" && this.options?.pendingGroupsHint) {
+        try {
+          extra = await this.options.pendingGroupsHint(String(userId));
+        } catch {
+          /* ignore */
+        }
+      }
+      await send(chatId, `Привет! Я Гриша — твой офисный ассистент.${extra}`);
       return { handled: true };
     }
     if (text === "/new") {
-      // Real session reset: dispose the current AgentSession and start a fresh
-      // one on the next message. Profile/memory/rules are not touched.
-      await this.options?.resetHandler?.(userId, String(chatId));
+      // D2: /new сбрасывает ТОЛЬКО сессию текущего чата(+темы), не все чаты.
+      const sessionKey = buildTelegramSessionKey({
+        userId,
+        chatId,
+        threadId: msg.threadId,
+      });
+      await this.options?.resetHandler?.(sessionKey, userId, String(chatId));
       await send(chatId, "Новая сессия начата.");
       return { handled: true };
     }
@@ -293,12 +315,16 @@ export class TelegramBridge {
         return { handled: true };
       }
     }
-    // /setup ... — статус онбординга чатов (без LLM).
+    // /setup ... — настройка групп: ТОЛЬКО в DM (D5), handler сам шлёт keyboard.
     if (text === "/setup" || text.startsWith("/setup ")) {
       const handler = this.options?.setupCommandHandler;
       if (handler) {
         const args = text.slice("/setup".length).trim();
-        const reply = await handler(args, { chatId: String(chatId), userId: String(userId) });
+        const reply = await handler(
+          args,
+          { chatId: String(chatId), userId: String(userId), isPrivate: chatType === "private" },
+          send,
+        );
         await send(chatId, reply);
         return { handled: true };
       }
@@ -321,17 +347,49 @@ export class TelegramBridge {
       }
     }
     if (msg.voice) {
-      // Голосовое уходит агенту тем же паттерном, что фото/документ: агент сам
-      // решит вызвать tool transcribe_voice с этим fileId (в т.ч. логику
-      // переспроса при низкой confidence — см. voice-intake/SKILL.md).
-      const message = `Пользователь прислал голосовое сообщение.\nfile_id: ${msg.voice.file_id ?? "unknown"}\nПодпись: ${msg.caption ?? "нет"}`;
-      if (!this.isProcessable(message, userId, chatId, msg, chatType)) return { handled: true, reason: "blocked-by-rules" };
+      // D3: голос транскрибируется ДО агента (STT pipeline), агенту идёт текст.
+      const fileId = msg.voice.file_id;
+      if (!fileId) return { handled: false, reason: "empty" };
+      const placeholder = msg.caption ?? "voice";
+      if (!this.isProcessable(placeholder, userId, chatId, msg, chatType)) {
+        return { handled: true, reason: "blocked-by-rules" };
+      }
       this.options?.beforeAgent?.(chatId);
+
+      let transcript: string;
+      if (!this.options?.transcribeVoice) {
+        await send(chatId, "Голосовые пока недоступны.");
+        return { handled: true, reason: "stt-unavailable" };
+      }
+      try {
+        transcript = await this.options.transcribeVoice(fileId, {
+          chatId: String(chatId),
+          userId: String(userId),
+        });
+      } catch {
+        await send(chatId, "Не удалось распознать голос.");
+        return { handled: true, reason: "stt-failed" };
+      }
+      const text2 = transcript.trim();
+      if (!text2) {
+        await send(chatId, "Не удалось распознать голос.");
+        return { handled: true, reason: "stt-empty" };
+      }
+
+      // Повторный prefilter по РАСПОЗНАННОМУ тексту (mention-правила и т.д.).
+      if (!this.isProcessable(text2, userId, chatId, msg, chatType)) {
+        return { handled: true, reason: "blocked-by-rules" };
+      }
+
       const response = await this.agent({
-        message,
+        message: text2,
         userId,
         platform: "telegram",
-        sessionKey: `tg:${userId}`,
+        sessionKey: buildTelegramSessionKey({
+          userId,
+          chatId,
+          threadId: msg.threadId,
+        }),
         chatId: String(chatId),
         threadId: msg.threadId,
       });
@@ -356,7 +414,7 @@ export class TelegramBridge {
         message,
         userId,
         platform: "telegram",
-        sessionKey: `tg:${userId}`,
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
       });
@@ -379,7 +437,7 @@ export class TelegramBridge {
         message,
         userId,
         platform: "telegram",
-        sessionKey: `tg:${userId}`,
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
       });
@@ -399,7 +457,7 @@ export class TelegramBridge {
         message,
         userId,
         platform: "telegram",
-        sessionKey: `tg:${userId}`,
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
       });
@@ -416,7 +474,7 @@ export class TelegramBridge {
         message,
         userId,
         platform: "telegram",
-        sessionKey: `tg:${userId}`,
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
       });
@@ -432,7 +490,7 @@ export class TelegramBridge {
       message: text,
       userId,
       platform: "telegram",
-      sessionKey: `tg:${userId}`,
+      sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
       chatId: String(chatId),
       threadId: msg.threadId,
     });

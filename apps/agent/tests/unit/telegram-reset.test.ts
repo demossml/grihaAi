@@ -51,15 +51,15 @@ describe("telegram /new reset", () => {
       },
     });
 
-    await pool.handleMessage(1, undefined, "первое");
+    await pool.handleMessage("tg:1:1", 1, "первое", { chatId: "1" });
     assert.equal(created.length, 1);
     const first = created[0];
     assert.deepEqual(first.prompts, ["первое"]);
 
-    await pool.reset(1);
+    await pool.reset("tg:1:1");
     assert.equal(first.disposed, true, "old session should be disposed");
 
-    await pool.handleMessage(1, undefined, "второе");
+    await pool.handleMessage("tg:1:1", 1, "второе", { chatId: "1" });
     assert.equal(created.length, 2, "a new session should be created");
     const second = created[1];
     assert.notEqual(second, first);
@@ -67,8 +67,8 @@ describe("telegram /new reset", () => {
     assert.equal(pool.activeCount(), 1);
   });
 
-  it("/new in the bridge triggers the reset handler", async () => {
-    const resets: Array<{ userId: number; chatId: string }> = [];
+  it("/new in the bridge triggers the reset handler with the session key", async () => {
+    const resets: Array<{ sessionKey: string; userId: number; chatId: string }> = [];
     const sent: string[] = [];
     const bridge = new TelegramBridge(
       [123],
@@ -77,8 +77,8 @@ describe("telegram /new reset", () => {
         sent.push(text);
       },
       {
-        resetHandler: (userId, chatId) => {
-          resets.push({ userId, chatId });
+        resetHandler: (sessionKey, userId, chatId) => {
+          resets.push({ sessionKey, userId, chatId });
         },
       },
     );
@@ -89,7 +89,7 @@ describe("telegram /new reset", () => {
     });
 
     assert.equal(res.handled, true);
-    assert.deepEqual(resets, [{ userId: 123, chatId: "999" }]);
+    assert.deepEqual(resets, [{ sessionKey: "tg:123:999", userId: 123, chatId: "999" }]);
     assert.deepEqual(sent, ["Новая сессия начата."]);
   });
 });
