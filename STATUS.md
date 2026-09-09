@@ -244,6 +244,16 @@
 - [x] Не сломаны: silent-until-configured (R1–R8), forum `message_thread_id`, изоляция сессий
 - [x] Tests: 420 unit — зелёные; typecheck/build зелёные; отчёт `TELEGRAM_HARDENING_REPORT.md`
 
+## Phase 26 — Telegram Reliability + Group Admin Auth (Пакеты A+B)
+
+- [x] `telegram-errors.ts`: классификация ошибок (429/retry_after, retryable 5xx/сеть, 403/401/400, unknown) + `computeSendDelayMs` (retry_after → N секунд, retryable → экспонента+jitter) + `shouldRetrySend`
+- [x] `sendWithRetry` переписан: парсит ошибку, логирует retry_after, ретраит только retry_after/retryable; plain-фолбэк (D7) идёт через тот же retry (400 → сразу plain, без шторма)
+- [x] `send-queue.ts` — per-chat очередь исходящих sendMessage/sendDocument (разные чаты не блокируются)
+- [x] `chat-auth.ts` — `assertCanConfigureGroup`: пресет/keyboard для группы — только creator/administrator через getChatMember (fail closed: 400/403 → «нет прав», сеть → «попробуйте позже»)
+- [x] Wiring: real grammy `getChatMember` → setup-callbacks и `/setup <chatId>`; global owner без админства группы пресет применить не может
+- [x] Не откачено: silent-until-configured, caption_entities, session keys, STT, ACL callbacks, forum threads
+- [x] Tests: 450 unit — зелёные; отчёт `TELEGRAM_RELIABILITY_AUTH_REPORT.md`
+
 
 
 

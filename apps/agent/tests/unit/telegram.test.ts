@@ -581,6 +581,7 @@ class FakeBot implements TelegramBotLike {
       this.commands = commands;
       return undefined;
     },
+    getChatMember: async (): Promise<{ status: string }> => ({ status: "member" }),
   };
 }
 
@@ -799,6 +800,7 @@ describe("telegram bot controller", () => {
         sendChatAction: async () => undefined,
         setMyCommands: async () => undefined,
         setMessageReaction: async () => undefined,
+        getChatMember: async () => ({ status: "member" }),
       },
     };
     const controller = new TelegramBotController(

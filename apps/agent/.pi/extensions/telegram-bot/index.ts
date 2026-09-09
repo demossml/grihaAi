@@ -34,6 +34,7 @@ import {
   runSetupCommand,
   tryHandleCustomText,
 } from "../chat-setup/handlers.js";
+import { mapChatMemberStatus } from "./chat-auth.js";
 import { transcribeVoice } from "@griha/stt";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
@@ -140,6 +141,7 @@ const realBotFactory: TelegramBotFactory = (token) => {
       setMessageReaction: (chatId, messageId, reaction) =>
         // grammy типизирует emoji как литеральный union — здесь строка из бриджа.
         bot.api.setMessageReaction(chatId, messageId, [{ type: "emoji", emoji: reaction as never }]),
+      getChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
     },
   };
 };
@@ -181,15 +183,24 @@ function getController(): TelegramBotController {
         // custom-текст в DM, /setup с keyboard'ами (D5).
         chatMemberHandler: (event, deps) =>
           onChatMemberAdded(event, { setup, users, sendMessage: deps.sendMessage }),
-        setupCallbackHandler: (data, ctx) =>
-          handleSetupCallback(data, ctx, { setup, users, sendMessage: async () => undefined }),
-        setupCommandHandler: (args, ctx, send) =>
+        setupCallbackHandler: (data, ctx, deps) =>
+          handleSetupCallback(data, ctx, {
+            setup,
+            users,
+            sendMessage: async () => undefined,
+            // Пакет B: статус actor в группе — из реального getChatMember.
+            getChatMember: async (chatId, userId) =>
+              mapChatMemberStatus((await deps.getChatMember(Number(chatId), Number(userId))).status),
+          }),
+        setupCommandHandler: (args, ctx, send, deps) =>
           runSetupCommand(args, ctx, {
             setup,
             users,
             sendMessage: async (chatId, text, extra) => {
               await send(chatId, text, undefined, extra);
             },
+            getChatMember: async (chatId, userId) =>
+              mapChatMemberStatus((await deps.getChatMember(Number(chatId), Number(userId))).status),
           }),
         pendingGroupsHint: async (userId) => {
           // D9: только группы, добавленные этим пользователем.

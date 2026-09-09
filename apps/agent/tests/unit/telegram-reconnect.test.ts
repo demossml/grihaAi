@@ -15,6 +15,8 @@ class FakeBot implements TelegramBotLike {
   startRejections = 0;
   /** Сколько раз sendMessage падает, прежде чем успешно отправить. */
   sendFailures = 0;
+  /** Какая ошибка бросается при sendFailures > 0 (по умолчанию retryable 502). */
+  sendError: unknown = { error_code: 502, description: "Bad Gateway" };
   sendCalls = 0;
   sent: Array<{ chatId: number; text: string }> = [];
   private stopResolve: (() => void) | null = null;
@@ -55,7 +57,7 @@ class FakeBot implements TelegramBotLike {
       this.sendCalls++;
       if (this.sendFailures > 0) {
         this.sendFailures--;
-        throw new Error("502 Bad Gateway");
+        throw this.sendError;
       }
       this.sent.push({ chatId, text });
       return undefined;
@@ -75,6 +77,10 @@ class FakeBot implements TelegramBotLike {
       _messageId: number,
       _reaction: string,
     ): Promise<unknown> => undefined,
+    getChatMember: async (
+      _chatId: number,
+      _userId: number,
+    ): Promise<{ status: string }> => ({ status: "member" }),
   };
 }
 
@@ -125,8 +131,41 @@ describe("telegram sendWithRetry (через публичный путь соо�
     c.start("t");
     fake.handler?.(update);
     await tick();
-    // 3 попытки HTML + 1 plain-text фолбэк (D7) — ретраев на фолбэке нет.
-    assert.equal(fake.sendCalls, 4);
+    // 3 попытки HTML + 3 попытки plain-фолбэка (D7 через sendWithRetry).
+    assert.equal(fake.sendCalls, 6);
+    assert.equal(fake.sent.length, 0);
+    await c.stop();
+  });
+
+  it("429 с retry_after — пауза не меньше retry_after секунд", async () => {
+    const fake = new FakeBot();
+    fake.sendFailures = 1;
+    fake.sendError = { error_code: 429, parameters: { retry_after: 5 } };
+    const delays: number[] = [];
+    const c = makeController(fake, {
+      sendRetry: { maxAttempts: 5 },
+      sleep: async (ms) => {
+        delays.push(ms);
+      },
+    });
+    c.start("t");
+    fake.handler?.(update);
+    await tick();
+    assert.equal(fake.sent.length, 1, "после ожидания сообщение ушло");
+    assert.equal(delays.length, 1, "ровно одна пауза");
+    assert.ok(delays[0] >= 5000, `delay ${delays[0]} должен быть >= 5000ms (retry_after=5s)`);
+    await c.stop();
+  });
+
+  it("403 — без ретраев: по одной попытке на HTML и plain, без шторма", async () => {
+    const fake = new FakeBot();
+    fake.sendFailures = 99;
+    fake.sendError = { error_code: 403, description: "Forbidden: bot was kicked from the group" };
+    const c = makeController(fake, { sendRetry: { maxAttempts: 5, delayMs: () => 0 } });
+    c.start("t");
+    fake.handler?.(update);
+    await tick();
+    assert.equal(fake.sendCalls, 2, "HTML 1 + plain 1, ретраев нет");
     assert.equal(fake.sent.length, 0);
     await c.stop();
   });
@@ -136,7 +175,7 @@ describe("telegram sendWithRetry (через публичный путь соо�
     fake.sendFailures = 1;
     const delays: number[] = [];
     const c = makeController(fake, {
-      sendRetry: { maxAttempts: 5, delayMs: (a) => a * 10 },
+      sendRetry: { maxAttempts: 5, delayMs: (attempt, _parsed) => attempt * 10 },
       sleep: async (ms) => {
         delays.push(ms);
       },

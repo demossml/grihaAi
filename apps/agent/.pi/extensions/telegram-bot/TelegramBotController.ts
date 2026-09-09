@@ -7,12 +7,20 @@ import {
   type TelegramReplySender,
   type TelegramResetHandler,
   type TelegramRulesHandler,
+  type TelegramSendExtra,
   type TgMessage,
   type TgUpdate,
 } from "./TelegramBridge.js";
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import { normalizeThreadId } from "./threads.js";
 import { collectMentionFlags } from "./mentions.js";
+import {
+  computeSendDelayMs,
+  parseTelegramError,
+  shouldRetrySend,
+  type ParsedTelegramError,
+} from "./telegram-errors.js";
+import { ChatSendQueue } from "./send-queue.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -53,6 +61,7 @@ export interface TelegramBotLike {
     sendChatAction(chatId: number, action: "typing" | "upload_document"): Promise<unknown>;
     setMyCommands(commands: Array<{ command: string; description: string }>): Promise<unknown>;
     setMessageReaction(chatId: number, messageId: number, reaction: string): Promise<unknown>;
+    getChatMember(chatId: number, userId: number): Promise<{ status: string }>;
   };
 }
 
@@ -88,6 +97,10 @@ export interface TelegramBotControllerOptions {
     args: string,
     ctx: { chatId: string; userId: string; isPrivate: boolean },
     send: TelegramReplySender,
+    deps: {
+      /** Проверка реального статуса actor в чате (getChatMember). */
+      getChatMember: (chatId: number, userId: number) => Promise<{ status: string }>;
+    },
   ) => string | Promise<string>;
   /** D9: подсказка в /start про pending-группы. */
   pendingGroupsHint?: (userId: string) => string | Promise<string>;
@@ -102,7 +115,14 @@ export interface TelegramBotControllerOptions {
     send: TelegramReplySender,
   ) => Promise<boolean>;
   /** Обработчик cs:-callbacks (чат-онбординг). */
-  setupCallbackHandler?: (data: string, ctx: TelegramCallbackQueryContext) => Promise<boolean>;
+  setupCallbackHandler?: (
+    data: string,
+    ctx: TelegramCallbackQueryContext,
+    deps: {
+      /** Проверка реального статуса actor в чате (getChatMember). */
+      getChatMember: (chatId: number, userId: number) => Promise<{ status: string }>;
+    },
+  ) => Promise<boolean>;
   /** Обработчик «бота добавили в чат» (онбординг). */
   chatMemberHandler?: (
     event: TelegramChatMemberEvent,
@@ -128,7 +148,8 @@ export interface TelegramBotControllerOptions {
   /** Send retry policy (injectable for tests). */
   sendRetry?: {
     maxAttempts?: number;
-    delayMs?: (attempt: number) => number;
+    /** Optional override; receives attempt + parsed error. */
+    delayMs?: (attempt: number, parsed: ParsedTelegramError) => number;
   };
   /** Delay between long-polling reconnects. */
   reconnectDelayMs?: number;
@@ -210,6 +231,8 @@ export function splitTelegramText(text: string, target = SPLIT_TARGET_LENGTH): s
 export class TelegramBotController {
   private bot: TelegramBotLike | null = null;
   private running = false;
+  /** Per-chat очередь исходящих sendMessage/sendDocument (не глобальная). */
+  private readonly sendQueue = new ChatSendQueue();
 
   constructor(
     private readonly agent: GrishaAgent,
@@ -246,61 +269,10 @@ export class TelegramBotController {
       const bridge = new TelegramBridge(
         this.allowedUserIds,
         this.agent,
-        async (chatId, text, filePath, extra) => {
-          // Всё, что уходит пользователю, форматируется как HTML (escape + простой
-          // markdown-конвертер), чтобы **bold**/`code` отображались, а <&> — нет.
-          // Длинный ответ режется на чанки ПО СЫРОМУ тексту (по абзацам/
-          // предложениям) и форматируется по кускам — HTML-теги не разрываются,
-          // каждый отправленный чанк гарантированно влезает в лимит Telegram.
-          const rawChunks = splitTelegramText(text);
-          let textOk = true;
-          for (let i = 0; i < rawChunks.length; i++) {
-            const chunkHtml = formatTelegramHtml(rawChunks[i]);
-            const isLast = i === rawChunks.length - 1;
-            const sendHtml = () =>
-              bot.api.sendMessage(chatId, chunkHtml, {
-                parseMode: "HTML",
-                // Кнопки — только к последнему чанку, иначе продублируются в каждом.
-                inlineButtons: isLast ? extra?.inlineButtons : undefined,
-                // Ответ в тему форума (message_thread_id) из входящего сообщения.
-                messageThreadId:
-                  extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
-              });
-            let ok = await this.sendWithRetry(sendHtml, "sendMessage");
-            // D7: HTML не ушёл → ОДИН plain-text фолбэк того же чанка (без ретраев).
-            if (!ok) {
-              try {
-                await bot.api.sendMessage(chatId, rawChunks[i], {
-                  inlineButtons: isLast ? extra?.inlineButtons : undefined,
-                  messageThreadId:
-                    extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
-                });
-                ok = true;
-              } catch (err) {
-                console.error("[telegram-bot] plain fallback send failed:", err);
-              }
-            }
-            if (!ok) textOk = false;
-          }
-          let docOk = true;
-          if (filePath) {
-            // Индикатор загрузки документа перед отправкой файла.
-            void bot.api
-              .sendChatAction(chatId, "upload_document")
-              .catch((err: unknown) => console.error("[telegram-bot] sendChatAction failed:", err));
-            docOk = await this.sendWithRetry(
-              () => bot.api.sendDocument(chatId, filePath, { caption: extra?.documentCaption }),
-              "sendDocument",
-            );
-          }
-          if (textOk && docOk) {
-            console.log(
-              `[telegram-bot] reply sent to chat ${chatId}${filePath ? " (with document)" : ""}`,
-            );
-          } else {
-            console.error(`[telegram-bot] reply to chat ${chatId} failed`);
-          }
-        },
+        // Per-chat очередь: бурст в один chat_id сериализуется (меньше 429),
+        // разные чаты не блокируют друг друга.
+        async (chatId, text, filePath, extra) =>
+          this.sendQueue.enqueue(chatId, () => this.sendReply(bot, chatId, text, filePath, extra)),
         {
           prefilter: this.options?.prefilter,
           rulesHandler: this.options?.rulesHandler,
@@ -321,7 +293,15 @@ export class TelegramBotController {
           },
           aclCheck: this.options?.aclCheck,
           usersCommandHandler: this.options?.usersCommandHandler,
-          setupCommandHandler: this.options?.setupCommandHandler,
+          setupCommandHandler: this.options?.setupCommandHandler
+            ? (args, ctx, send) => {
+                const handler = this.options?.setupCommandHandler;
+                if (!handler) return "Настройка временно недоступна.";
+                return handler(args, ctx, send, {
+                  getChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
+                });
+              }
+            : undefined,
           pendingGroupsHint: this.options?.pendingGroupsHint,
           transcribeVoice: this.options?.transcribeVoice,
           customSetupInterceptor: this.options?.customSetupInterceptor,
@@ -351,10 +331,13 @@ export class TelegramBotController {
         void (async () => {
           try {
             await this.options?.chatMemberHandler?.(event, {
+              // Исходящий онбординг — тоже через per-chat очередь.
               sendMessage: (chatId, text, extra) =>
-                bot.api.sendMessage(chatId, text, {
-                  parseMode: "HTML",
-                  inlineButtons: extra?.inlineButtons,
+                this.sendQueue.enqueue(chatId, async () => {
+                  await bot.api.sendMessage(chatId, text, {
+                    parseMode: "HTML",
+                    inlineButtons: extra?.inlineButtons,
+                  });
                 }),
             });
           } catch (err: unknown) {
@@ -416,10 +399,16 @@ export class TelegramBotController {
    * answerCallbackQuery + снятие клавиатуры с исходного сообщения.
    */
   private async handleCallbackQuery(ctx: TelegramCallbackQueryContext): Promise<void> {
-    // Chat-setup (cs:...) — пермишены внутри обработчика (canManage/addedBy),
-    // legacy-whitelist к ним не применяется.
+    // Chat-setup (cs:...) — пермишены внутри обработчика (canManage/addedBy +
+    // getChatMember), legacy-whitelist к ним не применяется.
     if ((ctx.data ?? "").startsWith("cs:") && this.options?.setupCallbackHandler) {
-      const handled = await this.options.setupCallbackHandler(ctx.data as string, ctx);
+      const handled = await this.options.setupCallbackHandler(ctx.data as string, ctx, {
+        getChatMember: (chatId, userId) => {
+          const bot = this.bot;
+          if (!bot) return Promise.reject(new Error("bot not running"));
+          return bot.api.getChatMember(chatId, userId);
+        },
+      });
       if (handled) return;
     }
     const userId = ctx.from?.id;
@@ -477,26 +466,99 @@ export class TelegramBotController {
     label: string,
   ): Promise<boolean> {
     const maxAttempts = this.options?.sendRetry?.maxAttempts ?? DEFAULT_SEND_MAX_ATTEMPTS;
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await fn();
         return true;
       } catch (err: unknown) {
-        if (attempt === maxAttempts) {
+        const parsed = parseTelegramError(err);
+
+        if (!shouldRetrySend(parsed, attempt, maxAttempts)) {
           console.error(
-            `[telegram-bot] ${label} failed after ${maxAttempts} attempts:`,
-            err instanceof Error ? err.message : err,
+            `[telegram-bot] ${label} non-retryable or exhausted:`,
+            parsed.kind,
+            parsed.description ?? (err instanceof Error ? err.message : err),
           );
           return false;
         }
-        const delay = this.options?.sendRetry?.delayMs?.(attempt) ?? 3000 * attempt;
+
+        const delay =
+          this.options?.sendRetry?.delayMs?.(attempt, parsed) ??
+          computeSendDelayMs(parsed, attempt);
+
         console.error(
-          `[telegram-bot] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms`,
+          `[telegram-bot] ${label} ${parsed.kind} (attempt ${attempt}/${maxAttempts}), ` +
+            `waiting ${delay}ms` +
+            (parsed.retryAfterSec != null ? ` (retry_after=${parsed.retryAfterSec}s)` : ""),
         );
         await this.sleep(delay);
       }
     }
     return false;
+  }
+
+  /**
+   * Отправка ответа в чат: чанки (HTML с ретраями) + документ. Один чанк:
+   * 1) HTML через sendWithRetry; 2) при неудаче — plain без parseMode тоже
+   * через sendWithRetry (429 на plain не теряет сообщение). Невалидный HTML
+   * (bad_request) не ретраится — сразу plain.
+   */
+  private async sendReply(
+    bot: TelegramBotLike,
+    chatId: number,
+    text: string,
+    filePath?: string,
+    extra?: TelegramSendExtra,
+  ): Promise<void> {
+    const rawChunks = splitTelegramText(text);
+    let textOk = true;
+    for (let i = 0; i < rawChunks.length; i++) {
+      const chunkHtml = formatTelegramHtml(rawChunks[i]);
+      const isLast = i === rawChunks.length - 1;
+      let ok = await this.sendWithRetry(
+        () =>
+          bot.api.sendMessage(chatId, chunkHtml, {
+            parseMode: "HTML",
+            // Кнопки — только к последнему чанку, иначе продублируются в каждом.
+            inlineButtons: isLast ? extra?.inlineButtons : undefined,
+            // Ответ в тему форума (message_thread_id) из входящего сообщения.
+            messageThreadId: extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
+          }),
+        "sendMessage:html",
+      );
+      // D7 + спека Пакета A: HTML не ушёл → plain-фолбэк того же чанка
+      // (с ретраями только для retry_after/retryable).
+      if (!ok) {
+        ok = await this.sendWithRetry(
+          () =>
+            bot.api.sendMessage(chatId, rawChunks[i], {
+              inlineButtons: isLast ? extra?.inlineButtons : undefined,
+              messageThreadId: extra?.threadId !== undefined ? Number(extra.threadId) : undefined,
+            }),
+          "sendMessage:plain",
+        );
+      }
+      if (!ok) textOk = false;
+    }
+    let docOk = true;
+    if (filePath) {
+      // Индикатор загрузки документа перед отправкой файла.
+      void bot.api
+        .sendChatAction(chatId, "upload_document")
+        .catch((err: unknown) => console.error("[telegram-bot] sendChatAction failed:", err));
+      docOk = await this.sendWithRetry(
+        () => bot.api.sendDocument(chatId, filePath, { caption: extra?.documentCaption }),
+        "sendDocument",
+      );
+    }
+    if (textOk && docOk) {
+      console.log(
+        `[telegram-bot] reply sent to chat ${chatId}${filePath ? " (with document)" : ""}`,
+      );
+    } else {
+      console.error(`[telegram-bot] reply to chat ${chatId} failed`);
+    }
   }
 
   private toTgUpdate(ctx: unknown): TgUpdate | null {

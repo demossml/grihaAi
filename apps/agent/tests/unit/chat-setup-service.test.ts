@@ -237,7 +237,12 @@ describe("onboarding handlers", () => {
           edits.push(text);
         },
       },
-      { setup, users: { canManage: async () => true }, sendMessage: async () => undefined },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async () => undefined,
+        getChatMember: async () => "administrator",
+      },
     );
     assert.equal(handled, true);
     assert.equal(rules.replaced[0].meta.source, "preset:team");
@@ -262,6 +267,114 @@ describe("onboarding handlers", () => {
     );
     assert.equal(rules.replaced.length, 0);
     assert.deepEqual(alerts, ["alert"]);
+  });
+
+  it("Пакет B: member (не админ) → alert 'Нужны права администратора', пресет НЕ применён", async () => {
+    const { setup, rules } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "42" });
+    const alerts: Array<{ text: string; alert: boolean }> = [];
+    let memberChecked = 0;
+    const handled = await handleSetupCallback(
+      "cs:-100:p:team",
+      {
+        from: { id: 42 },
+        answerCallbackQuery: async (text, extra) => {
+          alerts.push({ text: text ?? "", alert: extra?.showAlert ?? false });
+        },
+        editMessageText: async () => undefined,
+      },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async () => undefined,
+        getChatMember: async (chatId, userId) => {
+          memberChecked++;
+          assert.equal(chatId, "-100");
+          assert.equal(userId, "42");
+          return "member";
+        },
+      },
+    );
+    assert.equal(handled, true);
+    assert.equal(memberChecked, 1, "getChatMember был вызван");
+    assert.equal(rules.replaced.length, 0, "правила не менялись");
+    assert.equal((await setup.get("-100"))?.status, "pending");
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].alert, true);
+    assert.ok(alerts[0].text.includes("администратора"));
+  });
+
+  it("Пакет B: creator → пресет применяется", async () => {
+    const { setup, rules } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "42" });
+    await handleSetupCallback(
+      "cs:-100:p:secretary",
+      {
+        from: { id: 42 },
+        answerCallbackQuery: async () => undefined,
+        editMessageText: async () => undefined,
+      },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async () => undefined,
+        getChatMember: async () => "creator",
+      },
+    );
+    assert.equal(rules.replaced[0].meta.source, "preset:secretary");
+  });
+
+  it("Пакет B: getChatMember бросил (сеть) → fail closed, пресет НЕ применён", async () => {
+    const { setup, rules } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "42" });
+    const alerts: string[] = [];
+    await handleSetupCallback(
+      "cs:-100:p:team",
+      {
+        from: { id: 42 },
+        answerCallbackQuery: async (text) => {
+          alerts.push(text ?? "");
+        },
+        editMessageText: async () => undefined,
+      },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async () => undefined,
+        getChatMember: async () => {
+          throw new Error("ETIMEDOUT");
+        },
+      },
+    );
+    assert.equal(rules.replaced.length, 0);
+    assert.equal(alerts.length, 1);
+    assert.ok(alerts[0].includes("Не удалось проверить права"));
+  });
+
+  it("Пакет B: getChatMember 403 (бот кикнут) → 'Нужны права администратора'", async () => {
+    const { setup, rules } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "42" });
+    const alerts: string[] = [];
+    await handleSetupCallback(
+      "cs:-100:p:team",
+      {
+        from: { id: 42 },
+        answerCallbackQuery: async (text) => {
+          alerts.push(text ?? "");
+        },
+        editMessageText: async () => undefined,
+      },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async () => undefined,
+        getChatMember: async () => {
+          throw { error_code: 403, description: "Forbidden: bot was kicked" };
+        },
+      },
+    );
+    assert.equal(rules.replaced.length, 0);
+    assert.ok(alerts[0].includes("администратора"));
   });
 
   it("custom text в DM: parse + pendingRules + кнопки confirm", async () => {

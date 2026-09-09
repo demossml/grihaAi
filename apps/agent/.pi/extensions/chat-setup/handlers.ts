@@ -6,6 +6,10 @@
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import type { ChatSetupService } from "./ChatSetupService.js";
 import {
+  assertCanConfigureGroup,
+  type ChatMemberStatus,
+} from "../telegram-bot/chat-auth.js";
+import {
   buildConfirmKeyboard,
   buildOnboardingKeyboard,
   buildOnboardingText,
@@ -39,6 +43,32 @@ export interface SetupDeps {
   setup: ChatSetupService;
   users: { canManage(userId: string | number): Promise<boolean> };
   sendMessage: SetupSendMessage;
+  /** Пакет B: реальный статус actor в чате (getChatMember). Отсутствует → fail closed. */
+  getChatMember?: (chatId: string, userId: string) => Promise<ChatMemberStatus>;
+}
+
+/** Группа ли это: по chatType записи или по отрицательному chatId. */
+function isGroupChat(rec: { chatType?: string } | null | undefined, chatId: string): boolean {
+  return rec?.chatType === "group" || rec?.chatType === "supergroup" || chatId.startsWith("-");
+}
+
+/** Пакет B: мутирующие действия над ГРУППОЙ требуют creator/administrator. */
+async function checkGroupAuthority(
+  chatId: string,
+  actorId: string,
+  rec: { chatType?: string } | null | undefined,
+  deps: SetupDeps,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!isGroupChat(rec, chatId)) return { ok: true };
+  if (!deps.getChatMember) {
+    return { ok: false, reason: "Не удалось проверить права, попробуйте позже." };
+  }
+  return assertCanConfigureGroup({
+    chatId,
+    userId: actorId,
+    getChatMember: deps.getChatMember,
+    users: deps.users,
+  });
 }
 
 function wasAddedToChat(event: MyChatMemberEvent): boolean {
@@ -123,6 +153,17 @@ export async function handleSetupCallback(
     return true;
   }
 
+  // Пакет B: мутирующие действия над группой (p/skip/custom/confirm/cancel) —
+  // строгая проверка реального статуса actor в чате (creator/administrator).
+  const MUTATING_ACTIONS = new Set(["p", "skip", "custom", "confirm", "cancel"]);
+  if (MUTATING_ACTIONS.has(action)) {
+    const check = await checkGroupAuthority(chatId, actorId, rec, deps);
+    if (!check.ok) {
+      await ctx.answerCallbackQuery(check.reason, { showAlert: true });
+      return true;
+    }
+  }
+
   if (action === "p" && presetId && presetId in PRESETS) {
     await deps.setup.applyPreset(chatId, presetId as PresetId, { actorId });
     await ctx.answerCallbackQuery("Применено");
@@ -197,11 +238,7 @@ export async function tryHandleCustomText(
 export async function runSetupCommand(
   args: string,
   ctx: { chatId: string; userId: string; isPrivate: boolean },
-  deps: {
-    setup: ChatSetupService;
-    users: { canManage(userId: string | number): Promise<boolean> };
-    sendMessage: SetupSendMessage;
-  },
+  deps: SetupDeps,
 ): Promise<string> {
   if (!ctx.isPrivate) {
     return "Настройка групп — только в личных сообщениях с ботом. Откройте DM и отправьте /setup.";
@@ -219,6 +256,10 @@ export async function runSetupCommand(
     if (!rec || rec.status !== "pending") {
       return `Чат ${chatId} не в статусе pending.`;
     }
+    // Пакет B: отправка keyboard для конкретной группы — только если actor
+    // сейчас creator/administrator этой группы (getChatMember).
+    const check = await checkGroupAuthority(chatId, ctx.userId, rec, deps);
+    if (!check.ok) return check.reason;
     const title = rec.chatTitle ?? chatId;
     await deps.sendMessage(Number(ctx.userId), buildOnboardingText(title), {
       parseMode: "HTML",

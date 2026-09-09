@@ -75,6 +75,7 @@ describe("toTgUpdate: caption_entities (D1 integration)", () => {
         sendChatAction: async () => undefined,
         setMyCommands: async () => undefined,
         setMessageReaction: async () => undefined,
+        getChatMember: async () => ({ status: "member" }),
       },
     };
     const controller = new TelegramBotController(

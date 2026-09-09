@@ -6,6 +6,7 @@ import path from "node:path";
 import type { UserRulesService } from "../../.pi/extensions/user-rules/UserRulesService.js";
 import { ChatSetupService } from "../../.pi/extensions/chat-setup/ChatSetupService.js";
 import { runSetupCommand } from "../../.pi/extensions/chat-setup/handlers.js";
+import type { ChatMemberStatus } from "../../.pi/extensions/telegram-bot/chat-auth.js";
 import type { InlineButton } from "../../src/utils/telegram/session-files.js";
 
 const tmpDirs: string[] = [];
@@ -42,6 +43,7 @@ afterEach(() => {
 const deps = (
   setup: ChatSetupService,
   sent: Array<{ chatId: number; text?: string; buttons?: InlineButton[][] }>,
+  getChatMember?: (chatId: string, userId: string) => Promise<ChatMemberStatus>,
 ) => ({
   setup,
   users: { canManage: async () => true },
@@ -52,6 +54,7 @@ const deps = (
   ) => {
     sent.push({ chatId, text, buttons: extra?.inlineButtons });
   },
+  getChatMember: getChatMember ?? (async () => "administrator"),
 });
 
 describe("runSetupCommand (D5)", () => {
@@ -81,6 +84,18 @@ describe("runSetupCommand (D5)", () => {
     assert.ok(text.includes("«Группа 2»"));
     assert.equal(sent.length, 1);
     assert.ok(sent[0].buttons![0][0].callbackData === "cs:-1002:p:team");
+  });
+
+  it("Пакет B: /setup <chatId> для non-admin → отказ, keyboard не отправлен", async () => {
+    const setup = await makeSetup(3);
+    const sent: Array<{ chatId: number }> = [];
+    const text = await runSetupCommand(
+      "-1002",
+      { chatId: "42", userId: "42", isPrivate: true },
+      deps(setup, sent, async () => "member"),
+    );
+    assert.ok(text.includes("администратора"));
+    assert.equal(sent.length, 0, "keyboard не должен уйти non-admin");
   });
 
   it("не canManage → отказ", async () => {

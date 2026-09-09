@@ -329,6 +329,30 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
 - **D10 Tests/docs**: 420 unit-тестов, обновлены `docs/TELEGRAM-BOT.md`, `STATUS.md`,
   `README.md`, `TELEGRAM_HARDENING_REPORT.md`.
 
+### Send reliability (Пакет A)
+
+- **429 с retry_after уважается**: `telegram-errors.ts` — `parseTelegramError`
+  (классы: `retry_after`/`retryable`/`forbidden`/`bad_request`/`unauthorized`/`unknown`),
+  `computeSendDelayMs` (retry_after → ровно N секунд, retryable → экспонента с jitter,
+  прочее → 0), `shouldRetrySend`. Ретраятся только `retry_after`/`retryable`;
+  403/401/400 и unknown — без повторов (кроме HTML→plain на верхнем уровне).
+- `sendWithRetry` парсит ошибку перед каждой паузой и логирует `retry_after`
+  явно. HTML-чанк при неудаче (в т.ч. 400 bad_request — сразу, без шторма) уходит
+  plain-фолбэком через тот же `sendWithRetry`.
+- **Per-chat send queue** (`send-queue.ts`): исходящие sendMessage/sendDocument
+  сериализуются в рамках одного chat_id (меньше 429 в активных группах),
+  разные чаты не блокируют друг друга.
+
+### Group configuration authority (Пакет B)
+
+- **Только Telegram creator/administrator группы** может применить пресет
+  (callback `cs:...:p|skip|custom|confirm|cancel`) или получить keyboard по
+  `/setup <chatId>` — проверка через реальный `getChatMember` в момент действия
+  (`chat-auth.ts` — `assertCanConfigureGroup`, fail closed: 400/403 → «нет прав»,
+  сетевой сбой → «не удалось проверить права»). Глобальный owner, не являющийся
+  админом группы, пресеты применить не может. Private `/setup` список — по
+  `canManage` (DM UX), без getChatMember до действия над конкретной группой.
+
 - **Headless-запуск**: `node_modules/.bin/tsx src/bot.ts` (из `apps/agent`) — полный набор
   расширений через `DefaultResourceLoader`, `bindExtensions({ mode: "json" })`; long
   polling стартует на `session_start`. `script`/TUI не нужны; systemd-юнит:
