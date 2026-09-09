@@ -17,11 +17,14 @@ export interface TgDocument {
 export interface TgMessage {
   from?: TgUser;
   chat?: { id: number };
+  messageId?: number;
   text?: string;
   caption?: string;
-  voice?: unknown;
+  voice?: { file_id?: string };
   document?: TgDocument;
   photo?: Array<{ file_id?: string }>;
+  contact?: { first_name?: string; last_name?: string; phone_number?: string };
+  location?: { latitude?: number; longitude?: number };
 }
 
 export interface TgUpdate {
@@ -185,7 +188,20 @@ export class TelegramBridge {
       return { handled: true };
     }
     if (msg.voice) {
-      await this.sender(chatId, "Голос получен (транскрипция пока не поддерживается).");
+      // Голосовое уходит агенту тем же паттерном, что фото/документ: агент сам
+      // решит вызвать tool transcribe_voice с этим fileId (в т.ч. логику
+      // переспроса при низкой confidence — см. voice-intake/SKILL.md).
+      const message = `Пользователь прислал голосовое сообщение.\nfile_id: ${msg.voice.file_id ?? "unknown"}\nПодпись: ${msg.caption ?? "нет"}`;
+      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      this.options?.beforeAgent?.(chatId);
+      const response = await this.agent({
+        message,
+        userId,
+        platform: "telegram",
+        sessionKey: `tg:${userId}`,
+        chatId: String(chatId),
+      });
+      await this.sendReply(chatId, response);
       return { handled: true };
     }
     if (msg.photo && msg.photo.length > 0) {

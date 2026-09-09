@@ -75,6 +75,64 @@ export interface TelegramBotControllerOptions {
 const DEFAULT_RECONNECT_DELAY_MS = 10_000;
 const DEFAULT_SEND_MAX_ATTEMPTS = 5;
 
+/** Telegram-лимит sendMessage: текст длиннее 4096 отклоняется API. */
+export const MAX_TELEGRAM_MESSAGE_LENGTH = 4096;
+/** Целевой размер чанка сырого текста — с запасом на HTML-теги после форматирования. */
+export const SPLIT_TARGET_LENGTH = 4000;
+
+/**
+ * Разбивает СЫРОЙ (до formatTelegramHtml) текст на чанки по границам абзацев,
+ * затем предложений. Критерий — длина УЖЕ ОТФОРМАТИРОВАННОГО кандидата ≤
+ * Telegram-лимита, поэтому добавление тегов разметки не выталкивает чанк за
+ * 4096. Слишком длинное предложение режется жёстко по `target` сырых символов
+ * (патологический случай; в обычном тексте не встречается).
+ */
+export function splitTelegramText(text: string, target = SPLIT_TARGET_LENGTH): string[] {
+  if (formatTelegramHtml(text).length <= MAX_TELEGRAM_MESSAGE_LENGTH) return [text];
+
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  const units: string[] = [];
+  for (const paragraph of paragraphs) {
+    if (paragraph.length <= target) {
+      units.push(paragraph);
+      continue;
+    }
+    const sentences =
+      paragraph.match(/[^.!?…]+[.!?…]+\s*|[^.!?…]+$/g)?.map((s) => s.trim()).filter((s) => s.length > 0) ??
+      [paragraph];
+    for (const sentence of sentences) {
+      if (formatTelegramHtml(sentence).length <= MAX_TELEGRAM_MESSAGE_LENGTH) {
+        units.push(sentence);
+      } else {
+        for (let i = 0; i < sentence.length; i += target) {
+          units.push(sentence.slice(i, i + target));
+        }
+      }
+    }
+  }
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const unit of units) {
+    const candidate = current.length === 0 ? unit : `${current}\n\n${unit}`;
+    if (
+      current.length === 0 ||
+      formatTelegramHtml(candidate).length <= MAX_TELEGRAM_MESSAGE_LENGTH
+    ) {
+      current = candidate;
+    } else {
+      chunks.push(current);
+      current = unit;
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 /**
  * Owns a long-polling Telegram bot: wires incoming messages to the bridge,
  * starts/stops polling. The bot is created via an injected factory so the
@@ -127,15 +185,25 @@ export class TelegramBotController {
         async (chatId, text, filePath, extra) => {
           // Всё, что уходит пользователю, форматируется как HTML (escape + простой
           // markdown-конвертер), чтобы **bold**/`code` отображались, а <&> — нет.
-          const html = formatTelegramHtml(text);
-          const textOk = await this.sendWithRetry(
-            () =>
-              bot.api.sendMessage(chatId, html, {
-                parseMode: "HTML",
-                inlineButtons: extra?.inlineButtons,
-              }),
-            "sendMessage",
-          );
+          // Длинный ответ режется на чанки ПО СЫРОМУ тексту (по абзацам/
+          // предложениям) и форматируется по кускам — HTML-теги не разрываются,
+          // каждый отправленный чанк гарантированно влезает в лимит Telegram.
+          const rawChunks = splitTelegramText(text);
+          let textOk = true;
+          for (let i = 0; i < rawChunks.length; i++) {
+            const chunkHtml = formatTelegramHtml(rawChunks[i]);
+            const isLast = i === rawChunks.length - 1;
+            const ok = await this.sendWithRetry(
+              () =>
+                bot.api.sendMessage(chatId, chunkHtml, {
+                  parseMode: "HTML",
+                  // Кнопки — только к последнему чанку, иначе продублируются в каждом.
+                  inlineButtons: isLast ? extra?.inlineButtons : undefined,
+                }),
+              "sendMessage",
+            );
+            if (!ok) textOk = false;
+          }
           let docOk = true;
           if (filePath) {
             // Индикатор загрузки документа перед отправкой файла.
@@ -309,11 +377,14 @@ export class TelegramBotController {
       message?: {
         from?: { id?: number; first_name?: string };
         chat?: { id?: number };
+        message_id?: number;
         text?: string;
         caption?: string;
-        voice?: unknown;
+        voice?: { file_id?: string };
         document?: { file_id?: string };
         photo?: Array<{ file_id?: string }>;
+        contact?: { first_name?: string; last_name?: string; phone_number?: string };
+        location?: { latitude?: number; longitude?: number };
       };
     };
     const m = c.message;
@@ -323,11 +394,14 @@ export class TelegramBotController {
       message: {
         from: m.from ? { id: m.from.id ?? 0, firstName: m.from.first_name } : undefined,
         chat: { id: m.chat.id ?? 0 },
+        messageId: m.message_id,
         text: m.text,
         caption: m.caption,
-        voice: m.voice,
+        voice: m.voice as { file_id?: string } | undefined,
         document: m.document,
         photo: m.photo,
+        contact: m.contact,
+        location: m.location,
       },
     };
   }

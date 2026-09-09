@@ -9,6 +9,8 @@ import {
 } from "../../.pi/extensions/telegram-bot/TelegramBridge.js";
 import {
   TelegramBotController,
+  MAX_TELEGRAM_MESSAGE_LENGTH,
+  splitTelegramText,
   type TelegramBotLike,
   type TelegramCallbackQueryContext,
 } from "../../.pi/extensions/telegram-bot/TelegramBotController.js";
@@ -115,6 +117,41 @@ describe("telegram bridge", () => {
     assert.equal(res.reason, "blocked-by-rules");
     assert.equal(agentCalled, false);
     assert.equal(sent.length, 0);
+  });
+
+  it("routes voice messages to the agent with the voice file_id", async () => {
+    const calls: Array<{ message: string; sessionKey: string }> = [];
+    const sent: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async (input) => {
+        calls.push({ message: input.message, sessionKey: input.sessionKey });
+        return { text: "транскрипция: ..." };
+      },
+      async (_chatId, text) => {
+        sent.push(text);
+      },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 10,
+      message: {
+        from: { id: 123 },
+        chat: { id: 999 },
+        voice: { file_id: "voice-file-1" },
+        caption: "послушай",
+      },
+    });
+
+    assert.equal(res.handled, true);
+    assert.equal(calls.length, 1, "голосовое должно дойти до агента");
+    assert.equal(calls[0].sessionKey, "tg:123");
+    assert.ok(calls[0].message.includes("голосовое сообщение"));
+    assert.ok(calls[0].message.includes("file_id: voice-file-1"));
+    assert.ok(calls[0].message.includes("Подпись: послушай"));
+    // Это ответ агента, а не canned-заглушка.
+    assert.equal(sent[0], "транскрипция: ...");
+    assert.ok(!sent.some((t) => t.includes("транскрипция пока не поддерживается")));
   });
 
   it("routes /rules commands to the handler with chat context", async () => {
@@ -303,6 +340,57 @@ describe("telegram bot controller", () => {
     assert.equal(fake.docs.length, 1);
     assert.equal(fake.docs[0].chatId, 999);
     assert.equal(fake.docs[0].filePath, "/tmp/report.pdf");
+  });
+
+  it("splits replies longer than 4096 into balanced-HTML messages", async () => {
+    const fake = new FakeBot();
+    const longText = Array.from(
+      { length: 160 },
+      (_, i) =>
+        `Пункт ${i}. Это предложение содержит **жирный текст** и \`inline\` код для проверки целостности разметки.`,
+    ).join("\n\n");
+    assert.ok(longText.length > MAX_TELEGRAM_MESSAGE_LENGTH);
+
+    const controller = new TelegramBotController(async () => ({ text: longText }), [123], () => fake);
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: { from: { id: 123 }, chat: { id: 999 }, text: "длинный ответ" },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.ok(fake.sent.length > 1, `ожидалось несколько сообщений, получено ${fake.sent.length}`);
+    const count = (s: string, sub: string) => s.split(sub).length - 1;
+    for (const m of fake.sent) {
+      assert.ok(
+        m.text.length <= MAX_TELEGRAM_MESSAGE_LENGTH,
+        `чанк длиной ${m.text.length} превышает лимит Telegram`,
+      );
+      assert.equal(count(m.text, "<b>"), count(m.text, "</b>"), "тег <b> разорван между чанками");
+      assert.equal(count(m.text, "<code>"), count(m.text, "</code>"), "тег <code> разорван между чанками");
+      assert.equal(m.parseMode, "HTML");
+    }
+  });
+
+  it("splitTelegramText keeps every chunk within the target and loses no content", () => {
+    const para = "Первое предложение. Второе предложение! Третье предложение? ";
+    const text = para.repeat(600);
+    const chunks = splitTelegramText(text);
+    assert.ok(chunks.length > 1);
+    for (const c of chunks) {
+      // Критерий сплиттера — длина ПОСЛЕ форматирования: каждый отправляемый
+      // чанк обязан влезать в лимит Telegram.
+      assert.ok(
+        formatTelegramHtml(c).length <= MAX_TELEGRAM_MESSAGE_LENGTH,
+        `чанк длиной ${formatTelegramHtml(c).length}`,
+      );
+    }
+    assert.equal(
+      chunks.join("").replace(/\s/g, ""),
+      text.replace(/\s/g, ""),
+      "контент не должен теряться при разбивке",
+    );
   });
 });
 
