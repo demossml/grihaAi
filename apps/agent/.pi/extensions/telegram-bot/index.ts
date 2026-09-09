@@ -99,6 +99,9 @@ const realBotFactory: TelegramBotFactory = (token) => {
         }),
       sendChatAction: (chatId, action) => bot.api.sendChatAction(chatId, action),
       setMyCommands: (commands) => bot.api.setMyCommands(commands),
+      setMessageReaction: (chatId, messageId, reaction) =>
+        // grammy типизирует emoji как литеральный union — здесь строка из бриджа.
+        bot.api.setMessageReaction(chatId, messageId, [{ type: "emoji", emoji: reaction as never }]),
     },
   };
 };

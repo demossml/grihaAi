@@ -116,6 +116,8 @@ export class TelegramBridge {
       approvalHandler?: TelegramApprovalHandler;
       /** Fired right before the agent is asked to reply (chat action signal). */
       beforeAgent?: (chatId: number) => void;
+      /** Реакция на исходное сообщение (лёгкое подтверждение «принято»). */
+      react?: (chatId: number, messageId: number, emoji: string) => void;
     },
   ) {}
 
@@ -220,6 +222,41 @@ export class TelegramBridge {
     }
     if (msg.document?.file_id) {
       const message = `Пользователь прислал документ.\nfile_id: ${msg.document.file_id}\nПодпись: ${msg.caption ?? "нет"}`;
+      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      this.options?.beforeAgent?.(chatId);
+      const response = await this.agent({
+        message,
+        userId,
+        platform: "telegram",
+        sessionKey: `tg:${userId}`,
+        chatId: String(chatId),
+      });
+      await this.sendReply(chatId, response);
+      return { handled: true };
+    }
+    if (msg.contact) {
+      // Контакт уходит агенту как текст: агент сам решит, вызвать ли
+      // contact_upsert (crm) через обычный tool-цикл — approval/rules-логику
+      // не обходим. Реакция 👍 — тривиальное подтверждение приёма на исходном
+      // сообщении (содержательный ответ всё равно приходит текстом от агента).
+      if (msg.messageId !== undefined) this.options?.react?.(chatId, msg.messageId, "👍");
+      const message = `Пользователь поделился контактом.\nИмя: ${msg.contact.first_name ?? ""} ${msg.contact.last_name ?? ""}\nТелефон: ${msg.contact.phone_number ?? "не указан"}`;
+      if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
+      this.options?.beforeAgent?.(chatId);
+      const response = await this.agent({
+        message,
+        userId,
+        platform: "telegram",
+        sessionKey: `tg:${userId}`,
+        chatId: String(chatId),
+      });
+      await this.sendReply(chatId, response);
+      return { handled: true };
+    }
+    if (msg.location) {
+      // Геолокация — тот же путь через агента: он сам решит, вызывать ли
+      // travel_item_add (travel) или ответить контекстно.
+      const message = `Пользователь поделился геолокацией: ${msg.location.latitude ?? "?"}, ${msg.location.longitude ?? "?"}`;
       if (!this.isProcessable(message, userId, chatId)) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
       const response = await this.agent({

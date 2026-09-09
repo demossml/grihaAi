@@ -70,6 +70,11 @@ class FakeBot implements TelegramBotLike {
     setMyCommands: async (
       _commands: Array<{ command: string; description: string }>,
     ): Promise<unknown> => undefined,
+    setMessageReaction: async (
+      _chatId: number,
+      _messageId: number,
+      _reaction: string,
+    ): Promise<unknown> => undefined,
   };
 }
 

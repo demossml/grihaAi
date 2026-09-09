@@ -119,6 +119,87 @@ describe("telegram bridge", () => {
     assert.equal(sent.length, 0);
   });
 
+  it("routes contact messages to the agent and reacts 👍 on the original message", async () => {
+    const calls: string[] = [];
+    const reactions: Array<{ chatId: number; messageId: number; emoji: string }> = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async (input) => {
+        calls.push(input.message);
+        return { text: "Контакт сохранён" };
+      },
+      async () => {},
+      { react: (chatId, messageId, emoji) => reactions.push({ chatId, messageId, emoji }) },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 11,
+      message: {
+        from: { id: 123 },
+        chat: { id: 999 },
+        messageId: 77,
+        contact: { first_name: "Иван", last_name: "Петров", phone_number: "+79990001122" },
+      },
+    });
+
+    assert.equal(res.handled, true);
+    assert.ok(calls[0].includes("Пользователь поделился контактом."));
+    assert.ok(calls[0].includes("Имя: Иван Петров"));
+    assert.ok(calls[0].includes("Телефон: +79990001122"));
+    assert.deepEqual(reactions, [{ chatId: 999, messageId: 77, emoji: "👍" }]);
+  });
+
+  it("routes contact messages without a react hook (no crash, agent still called)", async () => {
+    const calls: string[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async (input) => {
+        calls.push(input.message);
+        return { text: "ok" };
+      },
+      async () => {},
+    );
+    const res = await bridge.handleUpdate({
+      updateId: 12,
+      message: {
+        from: { id: 123 },
+        chat: { id: 999 },
+        messageId: 78,
+        contact: { first_name: "Мария" },
+      },
+    });
+    assert.equal(res.handled, true);
+    assert.ok(calls[0].includes("Имя: Мария"));
+  });
+
+  it("routes location messages to the agent (no reaction)", async () => {
+    const calls: string[] = [];
+    const reactions: unknown[] = [];
+    const bridge = new TelegramBridge(
+      [123],
+      async (input) => {
+        calls.push(input.message);
+        return { text: "ok" };
+      },
+      async () => {},
+      { react: (...args) => reactions.push(args) },
+    );
+
+    const res = await bridge.handleUpdate({
+      updateId: 13,
+      message: {
+        from: { id: 123 },
+        chat: { id: 999 },
+        messageId: 79,
+        location: { latitude: 55.7558, longitude: 37.6173 },
+      },
+    });
+
+    assert.equal(res.handled, true);
+    assert.ok(calls[0].includes("Пользователь поделился геолокацией: 55.7558, 37.6173"));
+    assert.equal(reactions.length, 0, "геолокация — без реакции, ответ приходит текстом");
+  });
+
   it("routes voice messages to the agent with the voice file_id", async () => {
     const calls: Array<{ message: string; sessionKey: string }> = [];
     const sent: string[] = [];
@@ -232,6 +313,7 @@ class FakeBot implements TelegramBotLike {
   sent: Array<{ chatId: number; text: string; parseMode?: string; buttons?: InlineButton[][] }> = [];
   docs: Array<{ chatId: number; filePath: string; caption?: string }> = [];
   chatActions: Array<{ chatId: number; action: string }> = [];
+  reactions: Array<{ chatId: number; messageId: number; reaction: string }> = [];
   commands: Array<{ command: string; description: string }> | null = null;
   private stopResolve: (() => void) | null = null;
 
@@ -283,6 +365,14 @@ class FakeBot implements TelegramBotLike {
     },
     sendChatAction: async (chatId: number, action: "typing" | "upload_document"): Promise<unknown> => {
       this.chatActions.push({ chatId, action });
+      return undefined;
+    },
+    setMessageReaction: async (
+      chatId: number,
+      messageId: number,
+      reaction: string,
+    ): Promise<unknown> => {
+      this.reactions.push({ chatId, messageId, reaction });
       return undefined;
     },
     setMyCommands: async (
@@ -391,6 +481,32 @@ describe("telegram bot controller", () => {
       text.replace(/\s/g, ""),
       "контент не должен теряться при разбивке",
     );
+  });
+
+  it("sets a 👍 reaction on the original contact message", async () => {
+    const fake = new FakeBot();
+    const controller = new TelegramBotController(
+      async () => ({ text: "Контакт сохранён" }),
+      [123],
+      () => fake,
+    );
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: {
+        from: { id: 123 },
+        chat: { id: 999 },
+        message_id: 77,
+        contact: { first_name: "Иван" },
+      },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(fake.reactions, [{ chatId: 999, messageId: 77, reaction: "👍" }]);
+    // Содержательный ответ агента остаётся текстовым сообщением.
+    assert.equal(fake.sent.length, 1);
+    assert.equal(fake.sent[0].text, "Контакт сохранён");
   });
 });
 

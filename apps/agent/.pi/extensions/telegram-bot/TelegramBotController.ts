@@ -36,6 +36,7 @@ export interface TelegramBotLike {
     sendDocument(chatId: number, filePath: string, extra?: { caption?: string }): Promise<unknown>;
     sendChatAction(chatId: number, action: "typing" | "upload_document"): Promise<unknown>;
     setMyCommands(commands: Array<{ command: string; description: string }>): Promise<unknown>;
+    setMessageReaction(chatId: number, messageId: number, reaction: string): Promise<unknown>;
   };
 }
 
@@ -234,6 +235,13 @@ export class TelegramBotController {
               .sendChatAction(chatId, "typing")
               .catch((err: unknown) => console.error("[telegram-bot] sendChatAction failed:", err));
           },
+          // Реакция на исходное сообщение — только тривиальные подтверждения
+          // (например, 👍 на принятом контакте), не заменяет ответы агента.
+          react: (chatId, messageId, emoji) => {
+            void bot.api
+              .setMessageReaction(chatId, messageId, emoji)
+              .catch((err: unknown) => console.error("[telegram-bot] setMessageReaction failed:", err));
+          },
         },
       );
 
@@ -243,7 +251,7 @@ export class TelegramBotController {
         const msg = update.message;
         console.log(
           `[telegram-bot] incoming message from user=${msg?.from?.id ?? "?"} chat=${msg?.chat?.id ?? "?"} ` +
-            `kind=${msg?.text ? "text" : msg?.photo?.length ? "photo" : msg?.document ? "document" : msg?.voice ? "voice" : "other"}`,
+            `kind=${msg?.text ? "text" : msg?.photo?.length ? "photo" : msg?.document ? "document" : msg?.voice ? "voice" : msg?.contact ? "contact" : msg?.location ? "location" : "other"}`,
         );
         void bridge.handleUpdate(update).catch((err: unknown) => {
           console.error(
