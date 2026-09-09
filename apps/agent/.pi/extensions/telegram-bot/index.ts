@@ -1,5 +1,10 @@
 import { Bot, InputFile } from "grammy";
 import { buildBotOptions, resolveProxyUrl } from "./proxy.js";
+import { discoverTelegramIps } from "./telegram-ips.js";
+import {
+  TelegramResilientFetcher,
+  startPeriodicIpRefresh,
+} from "./telegram-network.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type GrishaAgent } from "./TelegramBridge.js";
 import {
@@ -17,13 +22,32 @@ import { applyApprovalDecision } from "../approval-gate/index.js";
  * Adapts the real grammy Bot to the framework-free `TelegramBotLike` surface.
  * Document delivery wraps the path in grammy's `InputFile` (a raw string would
  * be treated as a remote file_id, not a local file).
+ *
+ * Сеть: по умолчанию Telegram ходит напрямую через кастомную fetch поверх
+ * node:https (DoH-обнаружение + мульти-IP sticky + keep-alive) — Telegram из РФ
+ * блокируется по отдельным IP, поэтому один прокси с захардкоженным IP ненадёжен.
+ * Legacy-путь через HTTPS_PROXY включается только TELEGRAM_USE_PROXY=1.
  */
 const realBotFactory: TelegramBotFactory = (token) => {
-  // Telegram из РФ недоступен напрямую — ходим через прокси, если задан HTTPS_PROXY.
   const proxyUrl = resolveProxyUrl();
-  if (proxyUrl) console.log("[telegram-bot] using HTTPS proxy for Telegram API");
-  const proxyOptions = buildBotOptions(proxyUrl);
-  const bot = proxyOptions ? new Bot(token, proxyOptions) : new Bot(token);
+  let bot: Bot;
+  if (process.env.TELEGRAM_USE_PROXY === "1" && proxyUrl) {
+    console.log("[telegram-bot] using HTTPS proxy for Telegram API (legacy TELEGRAM_USE_PROXY=1)");
+    bot = new Bot(token, buildBotOptions(proxyUrl)!);
+  } else {
+    const fetcher = new TelegramResilientFetcher({
+      discoverIps: () => discoverTelegramIps(),
+      logger: (message) => console.log(message),
+    });
+    // Периодическое переобнаружение IP (10 минут) + первичное обнаружение с логом.
+    startPeriodicIpRefresh(fetcher);
+    void fetcher.refreshIps().catch(() => {});
+    bot = new Bot(token, {
+      // Типы fetch в grammy (node-fetch) и @types/node (undici) несовместимы
+      // номинально; сигнатура нашей реализации соответствует им обоим.
+      client: { fetch: fetcher.fetch as never },
+    });
+  }
   return {
     on: (filter, handler) => {
       if (filter === "callback_query:data") {

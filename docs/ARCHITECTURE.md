@@ -161,6 +161,15 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 
 Полный разбор бота — в [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md).
 
+Транспорт к Telegram устойчив к блокировкам отдельных IP РКН: кастомная `fetch`
+(`apps/agent/.pi/extensions/telegram-bot/telegram-network.ts`) ходит на
+`api.telegram.org` напрямую через keep-alive `https.Agent`, `createConnection`
+которого перебирает IP (порядок: sticky → системный DNS → DoH-обнаруженные) и
+запоминает рабочий (sticky). Переобнаружение IP — каждые 10 минут
+(`telegram-ips.ts`: системный DNS + DoH Google/Cloudflare + seed-фолбэк); SNI и
+`Host` сохраняются как `api.telegram.org`. Старый прокси-путь доступен только при
+`TELEGRAM_USE_PROXY=1`.
+
 ---
 
 ## 5. Конфигурация и секреты

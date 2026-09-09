@@ -238,8 +238,22 @@ await session.bindExtensions({ mode: "json" });
 - **Модель**: `first-run-setup` (основная сессия) и `providerBootstrap` (субсессии)
   применяют `~/.grish-ai/config.json` через `applyConfig`; результат и причина неудачи
   логируются (`[provider-bootstrap] model activated: ...` / `setModel failed ...`).
-- **Сеть (РКН)**: при заданном `HTTPS_PROXY` grammy создаётся с `HttpsProxyAgent`
-  (`proxy.ts`). `pollLoop` пересоздаёт бота через 10с после сбоя long polling; отправка
+- **Сеть (РКН)**: по умолчанию Telegram ходит **напрямую, без прокси**, через кастомную
+  `fetch` (`telegram-network.ts`, `TelegramResilientFetcher` поверх `node:https`):
+  - IP `api.telegram.org` переобнаруживаются каждые 10 минут (системный DNS + DoH Google +
+    DoH Cloudflare, валидация/дедуп; при недоступности всех источников — seed-список
+    `149.154.167.220`, `149.154.166.110`);
+  - при установке соединения IP перебираются по порядку **sticky → системный DNS →
+    остальные IP**; успешный IP запоминается (sticky), при connect-сбое sticky
+    сбрасывается; ретраится **только connect-уровень** (ECONNREFUSED/ETIMEDOUT/…),
+    HTTP 4xx/5xx IP не меняет;
+  - TLS SNI и HTTP `Host` при подключении к IP остаются `api.telegram.org`;
+  - keep-alive: живой сокет переиспользуется между запросами (в т.ч. соседними
+    long polling), новые TCP-коннекты не создаются;
+  - логи: обнаруженные IP, назначение/сброс sticky, IP и число попыток коннекта.
+  - Legacy-путь через `HTTPS_PROXY` (`proxy.ts`, `HttpsProxyAgent`) включается только
+    при `TELEGRAM_USE_PROXY=1`.
+  `pollLoop` пересоздаёт бота через 10с после сбоя long polling; отправка
   ретраится до 5 раз с паузой 3с×попытка (grammy не ретраит HTTP 502 от прокси).
 - **Логируются**: входящее сообщение, результат отправки (успех/ошибка), ошибки
   `bot.start()`/`bot.stop()`.
