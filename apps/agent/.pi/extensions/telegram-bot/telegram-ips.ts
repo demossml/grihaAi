@@ -10,12 +10,14 @@ import dns from "node:dns/promises";
  *   2. Google DoH (https://dns.google/resolve);
  *   3. Cloudflare DoH (https://cloudflare-dns.com/dns-query, JSON API).
  * Результаты объединяются, валидируются (только публичные IPv4) и дедуплицируются.
- * При полном провале всех источников возвращается аварийный seed-список.
+ * Seed-список добавляется в конец ВСЕГДА: DoH/DNS могут вернуть только
+ * заблокированные РКН IP (например, актуальный DNS-IP), и тогда рабочий
+ * запасной адрес должен остаться в списке кандидатов.
  */
 
 export const TELEGRAM_API_HOST = "api.telegram.org";
 
-/** Аварийный seed — только когда DoH и системный DNS полностью отказали. */
+/** Аварийный seed — добавляется в конец ВСЕГДА (страховка от заблокированного DNS-IP). */
 export const SEED_FALLBACK_IPS: readonly string[] = [
   "149.154.167.220",
   "149.154.166.110",
@@ -108,6 +110,6 @@ export async function discoverTelegramIps(options: DiscoverTelegramIpsOptions = 
     ).catch(() => []),
   ]);
 
-  const merged = dedupeIps([...system, ...google, ...cloudflare]);
-  return merged.length > 0 ? merged : [...SEED_FALLBACK_IPS];
+  const merged = dedupeIps([...system, ...google, ...cloudflare, ...SEED_FALLBACK_IPS]);
+  return merged;
 }

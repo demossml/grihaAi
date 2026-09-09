@@ -15,6 +15,7 @@ import {
   TelegramResilientFetcher,
   isRetryableConnectError,
   socketOptionsFor,
+  sharedTelegramFetcher,
 } from "../../../.pi/extensions/telegram-bot/telegram-network.js";
 
 // Самоподписанный тестовый сертификат CN=api.telegram.org (срок ~100 лет).
@@ -119,6 +120,35 @@ describe("telegram-ips DoH discovery", () => {
       },
     });
     assert.deepEqual(ips, [...SEED_FALLBACK_IPS]);
+  });
+
+  it("merges seed IPs even when discovery returns a result", async () => {
+    // Обнаружение вернуло только заблокированный РКН IP — рабочий seed-IP
+    // обязан остаться в списке кандидатов для диалерского фолбэка.
+    const ips = await discoverTelegramIps({
+      fetchFn: (async () => {
+        return {
+          ok: true,
+          json: async () => ({ Answer: [{ data: "149.154.166.110" }] }),
+        } as unknown as Response;
+      }) as typeof fetch,
+      resolve4: async () => ["149.154.166.110"],
+    });
+    assert.deepEqual(ips, ["149.154.166.110", "149.154.167.220"]);
+  });
+});
+
+describe("sharedTelegramFetcher singleton", () => {
+  it("is a function and has no sticky IP before first connect", () => {
+    assert.equal(typeof sharedTelegramFetcher.fetch, "function");
+    assert.equal(sharedTelegramFetcher.getStickyIp(), null); // ещё не подключались
+  });
+
+  it("imports from the same module give the same instance", async () => {
+    const { sharedTelegramFetcher: again } = await import(
+      "../../../.pi/extensions/telegram-bot/telegram-network.js"
+    );
+    assert.equal(again, sharedTelegramFetcher);
   });
 });
 

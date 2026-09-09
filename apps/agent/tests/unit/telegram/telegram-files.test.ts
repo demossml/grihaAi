@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { downloadTelegramFileAsBase64 } from "../../../src/utils/telegram/telegram-files.js";
+import {
+  downloadTelegramFileAsBase64,
+  downloadTelegramFileToDisk,
+} from "../../../src/utils/telegram/telegram-files.js";
+import { sharedTelegramFetcher } from "../../../.pi/extensions/telegram-bot/telegram-network.js";
 
 describe("telegram file resolution", () => {
   it("resolves a file_id to a base64 data URL via getFile + download", async () => {
@@ -39,5 +43,68 @@ describe("telegram file resolution", () => {
       () => downloadTelegramFileAsBase64("token", "fid", { fetchFn }),
       /no file_path/,
     );
+  });
+
+  it("defaults to sharedTelegramFetcher (multi-IP), not global fetch", async () => {
+    // Без инжекции fetchFn скачивание обязано идти через мульти-IP фетчер.
+    // Проверяем подменой sharedTelegramFetcher.fetch на фейк.
+    const original = sharedTelegramFetcher.fetch;
+    const calls: string[] = [];
+    (sharedTelegramFetcher as unknown as { fetch: typeof fetch }).fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("/getFile")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, result: { file_path: "photos/file_1.jpg" } }),
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode("IMG").buffer,
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    try {
+      const dataUrl = await downloadTelegramFileAsBase64("123:token", "AgAC-fid");
+      assert.equal(dataUrl, `data:image/jpeg;base64,${Buffer.from("IMG").toString("base64")}`);
+      assert.equal(calls.length, 2, "getFile + download оба через sharedTelegramFetcher");
+    } finally {
+      (sharedTelegramFetcher as unknown as { fetch: typeof fetch }).fetch = original;
+    }
+  });
+
+  it("downloadTelegramFileToDisk writes via shared fetcher when not injected", async () => {
+    const original = sharedTelegramFetcher.fetch;
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "tg-file-"));
+    (sharedTelegramFetcher as unknown as { fetch: typeof fetch }).fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/getFile")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, result: { file_path: "voice/file_1.oga" } }),
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode("OGG-BYTES").buffer,
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    try {
+      const dest = join(dir, "voice.oga");
+      const result = await downloadTelegramFileToDisk("123:token", "fid", dest);
+      const { readFile } = await import("node:fs/promises");
+      assert.equal(result, dest);
+      assert.equal((await readFile(dest)).toString(), "OGG-BYTES");
+    } finally {
+      (sharedTelegramFetcher as unknown as { fetch: typeof fetch }).fetch = original;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -1,8 +1,7 @@
 import { Bot, InputFile } from "grammy";
 import { buildBotOptions, resolveProxyUrl } from "./proxy.js";
-import { discoverTelegramIps } from "./telegram-ips.js";
 import {
-  TelegramResilientFetcher,
+  sharedTelegramFetcher,
   startPeriodicIpRefresh,
 } from "./telegram-network.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -17,6 +16,11 @@ import { shouldProcessMessage } from "../user-rules/prefilter.js";
 import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
+
+// Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
+// Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
+startPeriodicIpRefresh(sharedTelegramFetcher);
+void sharedTelegramFetcher.refreshIps().catch(() => {});
 
 /**
  * Adapts the real grammy Bot to the framework-free `TelegramBotLike` surface.
@@ -35,17 +39,10 @@ const realBotFactory: TelegramBotFactory = (token) => {
     console.log("[telegram-bot] using HTTPS proxy for Telegram API (legacy TELEGRAM_USE_PROXY=1)");
     bot = new Bot(token, buildBotOptions(proxyUrl)!);
   } else {
-    const fetcher = new TelegramResilientFetcher({
-      discoverIps: () => discoverTelegramIps(),
-      logger: (message) => console.log(message),
-    });
-    // Периодическое переобнаружение IP (10 минут) + первичное обнаружение с логом.
-    startPeriodicIpRefresh(fetcher);
-    void fetcher.refreshIps().catch(() => {});
     bot = new Bot(token, {
       // Типы fetch в grammy (node-fetch) и @types/node (undici) несовместимы
       // номинально; сигнатура нашей реализации соответствует им обоим.
-      client: { fetch: fetcher.fetch as never },
+      client: { fetch: sharedTelegramFetcher.fetch as never },
     });
   }
   return {

@@ -4,11 +4,16 @@
  */
 
 import { writeFile } from "node:fs/promises";
+import { sharedTelegramFetcher } from "../../../.pi/extensions/telegram-bot/telegram-network.js";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
 export interface TelegramFilesOptions {
-  /** Injectable fetch for tests; defaults to the global fetch. */
+  /**
+   * Injectable fetch for tests. По умолчанию — мульти-IP фетчер
+   * (sharedTelegramFetcher): глобальный fetch резолвит api.telegram.org в
+   * заблокированный РКН IP и получает ETIMEDOUT.
+   */
   fetchFn?: typeof fetch;
 }
 
@@ -18,7 +23,9 @@ export async function downloadTelegramFileAsBase64(
   fileId: string,
   options: TelegramFilesOptions = {},
 ): Promise<string> {
-  const fetchFn = options.fetchFn ?? fetch;
+  // НЕ использовать глобальный fetch: он резолвит api.telegram.org в
+  // заблокированный IP и получает ETIMEDOUT. Только мульти-IP фетчер.
+  const fetchFn = options.fetchFn ?? (sharedTelegramFetcher.fetch as typeof fetch);
 
   const getFileUrl = `${TELEGRAM_API}/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`;
   const fileRes = await fetchFn(getFileUrl);
@@ -51,7 +58,7 @@ export async function downloadTelegramFileToDisk(
   destPath: string,
   options: TelegramFilesOptions = {},
 ): Promise<string> {
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = options.fetchFn ?? (sharedTelegramFetcher.fetch as typeof fetch);
 
   const getFileUrl = `${TELEGRAM_API}/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`;
   const fileRes = await fetchFn(getFileUrl);

@@ -238,11 +238,13 @@ await session.bindExtensions({ mode: "json" });
 - **Модель**: `first-run-setup` (основная сессия) и `providerBootstrap` (субсессии)
   применяют `~/.grish-ai/config.json` через `applyConfig`; результат и причина неудачи
   логируются (`[provider-bootstrap] model activated: ...` / `setModel failed ...`).
-- **Сеть (РКН)**: по умолчанию Telegram ходит **напрямую, без прокси**, через кастомную
-  `fetch` (`telegram-network.ts`, `TelegramResilientFetcher` поверх `node:https`):
+- **Сеть (РКН)**: по умолчанию Telegram ходит **напрямую, без прокси**, через ОДИН
+  общий `TelegramResilientFetcher` (`telegram-network.ts`, `sharedTelegramFetcher` —
+  синглтон на процесс поверх `node:https`):
   - IP `api.telegram.org` переобнаруживаются каждые 10 минут (системный DNS + DoH Google +
-    DoH Cloudflare, валидация/дедуп; при недоступности всех источников — seed-список
-    `149.154.167.220`, `149.154.166.110`);
+    DoH Cloudflare, валидация/дедуп); seed-список (`149.154.167.220`, `149.154.166.110`)
+    добавляется в конец **всегда** — страховка, если DoH/DNS вернули только
+    заблокированные РКН адреса;
   - при установке соединения IP перебираются по порядку **sticky → системный DNS →
     остальные IP**; успешный IP запоминается (sticky), при connect-сбое sticky
     сбрасывается; ретраится **только connect-уровень** (ECONNREFUSED/ETIMEDOUT/…),
@@ -251,6 +253,10 @@ await session.bindExtensions({ mode: "json" });
   - keep-alive: живой сокет переиспользуется между запросами (в т.ч. соседними
     long polling), новые TCP-коннекты не создаются;
   - логи: обнаруженные IP, назначение/сброс sticky, IP и число попыток коннекта.
+  - Через тот же синглтон идут **все** запросы к api.telegram.org: grammy Bot API
+    (`client.fetch`) и скачивание файлов (`getFile` → `/file/...` → vision/STT,
+    `telegram-files.ts`). Глобальный `fetch` к api.telegram.org не используется
+    (он резолвит только заблокированный DNS-IP и падает с ETIMEDOUT).
   - Legacy-путь через `HTTPS_PROXY` (`proxy.ts`, `HttpsProxyAgent`) включается только
     при `TELEGRAM_USE_PROXY=1`.
   `pollLoop` пересоздаёт бота через 10с после сбоя long polling; отправка

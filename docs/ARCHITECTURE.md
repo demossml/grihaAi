@@ -162,13 +162,15 @@ sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : н�
 Полный разбор бота — в [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md).
 
 Транспорт к Telegram устойчив к блокировкам отдельных IP РКН: кастомная `fetch`
-(`apps/agent/.pi/extensions/telegram-bot/telegram-network.ts`) ходит на
-`api.telegram.org` напрямую через keep-alive `https.Agent`, `createConnection`
-которого перебирает IP (порядок: sticky → системный DNS → DoH-обнаруженные) и
-запоминает рабочий (sticky). Переобнаружение IP — каждые 10 минут
-(`telegram-ips.ts`: системный DNS + DoH Google/Cloudflare + seed-фолбэк); SNI и
-`Host` сохраняются как `api.telegram.org`. Старый прокси-путь доступен только при
-`TELEGRAM_USE_PROXY=1`.
+(`apps/agent/.pi/extensions/telegram-bot/telegram-network.ts`, синглтон
+`sharedTelegramFetcher`) ходит на `api.telegram.org` напрямую через keep-alive
+`https.Agent`, `createConnection` которого перебирает IP (порядок: sticky →
+системный DNS → DoH-обнаруженные) и запоминает рабочий (sticky). Переобнаружение
+IP — каждые 10 минут (`telegram-ips.ts`: системный DNS + DoH Google/Cloudflare,
+seed-список `149.154.167.220`/`149.154.166.110` добавляется всегда); SNI и `Host`
+сохраняются как `api.telegram.org`. Скачивание файлов (фото/документы/голос,
+`src/utils/telegram/telegram-files.ts`) идёт через тот же синглтон. Старый
+прокси-путь доступен только при `TELEGRAM_USE_PROXY=1`.
 
 ---
 

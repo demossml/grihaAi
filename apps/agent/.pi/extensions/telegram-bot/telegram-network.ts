@@ -2,7 +2,7 @@ import tls from "node:tls";
 import https from "node:https";
 import type { Socket } from "node:net";
 import { Readable, type Duplex } from "node:stream";
-import { TELEGRAM_API_HOST } from "./telegram-ips.js";
+import { TELEGRAM_API_HOST, discoverTelegramIps } from "./telegram-ips.js";
 
 /**
  * Мульти-IP подключение к Telegram: кастомная `fetch`-реализация поверх
@@ -374,3 +374,19 @@ export function startPeriodicIpRefresh(
   timer.unref?.();
   return timer;
 }
+
+/**
+ * Единый экземпляр resilient-фетчера на весь процесс.
+ *
+ * Используется ВЕЗДЕ, где нужно ходить в api.telegram.org:
+ *   - grammy client.fetch (Bot API: getUpdates/sendMessage/setMyCommands);
+ *   - скачивание фото/документов (getFile → /file/... → base64 → vision);
+ *   - скачивание голоса (getFile → /file/... → на диск → STT).
+ *
+ * Один экземпляр важен: он держит пул keep-alive-сокетов и sticky-IP.
+ * Если создавать новый фетчер на каждый реконнект, sticky и пул теряются.
+ */
+export const sharedTelegramFetcher = new TelegramResilientFetcher({
+  discoverIps: () => discoverTelegramIps(),
+  logger: (m) => console.log(m),
+});
