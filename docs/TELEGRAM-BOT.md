@@ -251,6 +251,15 @@ await session.bindExtensions({ mode: "json" });
 
 ### Chat onboarding + пресеты правил
 
+- **Group setup contract (mandatory)**: пока группа pending — бот в ней **молчит**
+  (R1: prefilter → false, 0 токенов LLM, даже на @mention). Настройка (пресеты,
+  «настроить самому», «оставить как есть») — **только в DM** с тем, кто добавил
+  (R2). Если DM не доставлен — **один** короткий fallback в группу («откройте личный
+  чат… /start … /setup», R3) — это не диалог и не снимает silent.
+- `safe_default` пишется при add (silent, R4), но status остаётся pending — настройка
+  завершается только preset/skip (R5). Личные чаты не блокируются (R6). Callback
+  пресетов — только из DM или от canManage/addedBy (R7). Никаких LLM-ответов
+  «я пока не настроен» в pending-группе (R8).
 - При добавлении бота в группу (`my_chat_member`) сразу применяются **safe defaults** чата
   (hard rules: `require_mention`, `reply_to_bot`, `ignore_bots`, `ignore_service`,
   `ignore_if_other_mention`), а добавившему в DM уходит сообщение с кнопками пресетов.
@@ -258,7 +267,7 @@ await session.bindExtensions({ mode: "json" });
   (детерминированный парсер + кнопки confirm/cancel) и «Оставить как есть».
   Callback-данные: `cs:{chatId}:{p:{preset}|custom|skip|confirm|cancel}` (≤64 байт).
 - Состояние онбординга — `~/.grish-ai/chat-setup.json` (pending/completed/skipped,
-  атомарная запись); правила пишутся в **тот же** User Rules store как structured
+  атомарная запись, `isConfiguredSync(chatId)`); правила пишутся в **тот же** User Rules store как structured
   key/value (scope=chat, source `preset:*`/`custom`) через `replaceChatManagedRules` —
   чужие custom-правила не трогаются. Повторный add не спамит онбордингом.
 - Pre-filter читает structured-ключи в первую очередь (§9: listen_only, ignore_bots/service,

@@ -115,6 +115,24 @@ describe("ChatSetupService", () => {
     );
     assert.equal((await setup2.get("-42"))?.status, "pending");
   });
+
+  it("isConfiguredSync: no record → false; pending → false; completed/skipped → true", async () => {
+    const { setup } = makeSetup();
+    assert.equal(setup.isConfiguredSync("-100"), false);
+
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "1" });
+    assert.equal(setup.isConfiguredSync("-100"), false, "pending — ещё silent");
+
+    await setup.applyPreset("-100", "safe_default", { actorId: "1", silent: true });
+    assert.equal(setup.isConfiguredSync("-100"), false, "safe_default НЕ завершает настройку");
+
+    await setup.markCompleted("-100", "team");
+    assert.equal(setup.isConfiguredSync("-100"), true);
+
+    await setup.markPending({ chatId: "-200", chatType: "group", addedByUserId: "1" });
+    await setup.markSkipped("-200");
+    assert.equal(setup.isConfiguredSync("-200"), true);
+  });
 });
 
 describe("onboarding handlers", () => {
@@ -176,6 +194,34 @@ describe("onboarding handlers", () => {
 
     assert.equal(rules.replaced.length, replacedAfter);
     assert.equal(sent.length, 1, "повторный add не спамит онбордингом");
+  });
+
+  it("DM упал → ровно один короткий fallback в группу (без кнопок)", async () => {
+    const { setup, rules } = makeSetup();
+    const toActor: string[] = [];
+    const toGroup: Array<{ chatId: number; text: string }> = [];
+    await onChatMemberAdded(
+      { oldStatus: "left", newStatus: "member", chat: { id: -100, type: "group", title: "T" }, from: { id: 42 } },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async (chatId, text) => {
+          if (chatId === 42) {
+            toActor.push(text);
+            throw new Error("can't DM");
+          }
+          toGroup.push({ chatId, text });
+        },
+      },
+    );
+
+    assert.equal(toActor.length, 1, "DM попытка была ровно одна");
+    assert.equal(toGroup.length, 1, "fallback ровно один");
+    assert.ok(toGroup[0].text.includes("/start"));
+    assert.ok(toGroup[0].text.includes("/setup"));
+    assert.ok(!toGroup[0].text.includes("Выберите сценарий"), "кнопки/меню — только в DM");
+    assert.equal(rules.replaced.length, 1, "safe_default всё равно применён");
+    assert.equal(setup.isConfiguredSync("-100"), false, "fallback не завершает настройку");
   });
 
   it("callback p:team от canManage-actor применяет пресет и редактирует сообщение", async () => {

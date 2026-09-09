@@ -17,6 +17,11 @@ export interface RulePreFilterInput {
   repliedToBot?: boolean;
   /** Текст начинается с упоминания ДРУГОГО пользователя. */
   startsWithOtherMention?: boolean;
+  /**
+   * R1: false в группе → SILENT (онбординг не завершён). Для private
+   * игнорируется (R6). Bridge обязан передавать boolean для group/supergroup.
+   */
+  groupConfigured?: boolean;
 }
 
 /**
@@ -121,6 +126,12 @@ export function shouldProcessMessage(
   hardRules: UserRule[],
   input: RulePreFilterInput,
 ): boolean {
+  // R1 / R6: pending-группа молчит (0 токенов LLM), даже на @mention.
+  // Private (isGroup=false) не блокируется по groupConfigured.
+  if (input.isGroup && input.groupConfigured === false) {
+    return false;
+  }
+
   // Structured keys (пресеты) — в первую очередь.
   const structured = evaluateStructuredRules(hardRules, input);
   if (structured !== null) {

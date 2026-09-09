@@ -1,5 +1,8 @@
 # Status — griha-ai
 
+- [x] Group onboarding silent-until-configured: fixed — pending-группа молчит (R1–R8),
+  настройка только в DM, safe_default не завершает онбординг (см. docs/TELEGRAM-BOT.md
+  «Group setup contract», GROUP_ONBOARDING_FIX_REPORT.md)
 - [x] Scaffold + modern types (BotConfig, layered memory)
 - [x] Test harness green
 - [x] Hybrid FTS5 memory (facts + session search + listRecentFacts)

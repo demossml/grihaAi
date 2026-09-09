@@ -112,6 +112,8 @@ export interface TelegramBotControllerOptions {
   ) => Promise<{ ack?: string } | null>;
   /** self-инфо бота (id/username) для расчёта mention/reply флагов. */
   getBotSelf?: () => { id: number; username?: string } | undefined;
+  /** R1: false → pending-группа silent (ChatSetupService.isConfiguredSync). */
+  getGroupConfigured?: (chatId: string) => boolean;
   /** Advertised bot commands (defaults to DEFAULT_TELEGRAM_COMMANDS). */
   commands?: Array<{ command: string; description: string }>;
   /** Send retry policy (injectable for tests). */
@@ -507,6 +509,12 @@ export class TelegramBotController {
       m.message_thread_id ?? m.reply_to_message?.message_thread_id,
     );
     const isForum = m.chat.is_forum === true;
+    // R1: для группы всегда boolean (pending → false → silent); private — undefined.
+    const chatType = m.chat.type ?? "private";
+    const isGroup = chatType === "group" || chatType === "supergroup";
+    const groupConfigured = isGroup
+      ? (this.options?.getGroupConfigured?.(String(m.chat.id ?? 0)) ?? false)
+      : undefined;
 
     // ── Pre-filter флаги (structured rules §9): mention/reply/bot/service. ──
     const self = this.options?.getBotSelf?.();
@@ -552,6 +560,7 @@ export class TelegramBotController {
         messageId: m.message_id,
         threadId,
         isForum,
+        groupConfigured,
         text: m.text,
         caption: m.caption,
         voice: m.voice as { file_id?: string } | undefined,

@@ -21,6 +21,11 @@ export interface TgMessage {
   /** Тема форума (message_thread_id); undefined в обычных группах/DM. */
   threadId?: string;
   isForum?: boolean;
+  /**
+   * R1: заполнен ТОЛЬКО для group/supergroup контроллером
+   * (getGroupConfigured). false = pending → silent. private — undefined.
+   */
+  groupConfigured?: boolean;
   text?: string;
   caption?: string;
   voice?: { file_id?: string };
@@ -80,6 +85,8 @@ export interface RulePreFilter {
     botMentioned?: boolean;
     repliedToBot?: boolean;
     startsWithOtherMention?: boolean;
+    /** R1: false в группе → silent (pending-онбординг). private — undefined. */
+    groupConfigured?: boolean;
   }): boolean;
 }
 
@@ -189,16 +196,19 @@ export class TelegramBridge {
   private isProcessable(text: string, userId: number, chatId: number, msg: TgMessage, chatType: string): boolean {
     const prefilter = this.options?.prefilter;
     if (!prefilter) return true;
+    const isGroup = chatType === "group" || chatType === "supergroup";
     return prefilter({
       chatId: String(chatId),
       fromUserId: String(userId),
       text,
-      isGroup: chatType === "group" || chatType === "supergroup",
+      isGroup,
       fromIsBot: msg.fromIsBot,
       isService: msg.isService,
       botMentioned: msg.botMentioned,
       repliedToBot: msg.repliedToBot,
       startsWithOtherMention: msg.startsWithOtherMention,
+      // R1: pending-группа → false (silent). private → undefined (не применяется).
+      groupConfigured: isGroup ? (msg.groupConfigured ?? false) : undefined,
     });
   }
 
@@ -330,7 +340,8 @@ export class TelegramBridge {
     }
     if (msg.photo && msg.photo.length > 0) {
       // Документ/чек: сначала попытка инжеста в expenses store (§12 порядок).
-      const ingest = this.options?.documentIngest;
+      // R1/R6: в pending-группе инжест не открываем (silent, нет side-channel).
+      const ingest = msg.groupConfigured === false ? undefined : this.options?.documentIngest;
       if (ingest) {
         const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
         if (ingested?.ack) {
@@ -353,7 +364,7 @@ export class TelegramBridge {
       return { handled: true };
     }
     if (msg.document?.file_id) {
-      const ingest = this.options?.documentIngest;
+      const ingest = msg.groupConfigured === false ? undefined : this.options?.documentIngest;
       if (ingest) {
         const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
         if (ingested?.ack) {

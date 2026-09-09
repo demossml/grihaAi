@@ -82,8 +82,13 @@ export async function onChatMemberAdded(
       inlineButtons: buildOnboardingKeyboard(chatId),
     });
   } catch {
+    // R3: ОДИН короткий fallback в группу, без кнопок пресетов (кнопки — только в DM).
+    // Это НЕ диалог с агентом и не снимает silent (R1 остаётся).
     try {
-      await deps.sendMessage(Number(chatId), "Напишите мне в личные сообщения /start — настроим, как мне работать в этой группе.");
+      await deps.sendMessage(
+        Number(chatId),
+        "Чтобы настроить меня для этой группы, откройте личный чат со мной, нажмите /start и отправьте /setup.",
+      );
     } catch {
       /* ignore */
     }

@@ -176,6 +176,8 @@ function getController(): TelegramBotController {
             await send(chatId, text, undefined, extra);
           }),
         getBotSelf: () => botSelf,
+        // R1: pending-группа silent (онбординг не завершён → prefilter false).
+        getGroupConfigured: (chatId) => setup.isConfiguredSync(chatId),
         // Чек/накладная: инжест в expenses store (mention-policy, ACL, дедуп).
         documentIngest: (msg) =>
           maybeIngestDocument(msg as unknown as Parameters<typeof maybeIngestDocument>[0], {
@@ -217,6 +219,8 @@ async function bootstrapUsers(): Promise<void> {
   const users = getUsersService();
   await users.seedLegacyUsers(cfg?.telegram?.allowedUserIds);
   await users.ensureOwner(resolveOwnerId(cfg));
+  // R1: hydrate chat-setup cache до старта long polling (isConfiguredSync).
+  getChatSetupService().loadSync();
 }
 
 async function startBot(): Promise<boolean> {

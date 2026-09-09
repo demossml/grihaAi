@@ -62,8 +62,25 @@ export class ChatSetupService {
   }
 
   async list(): Promise<ChatSetupRecord[]> {
+    this.loadSync();
+    return this.cache!.map((c) => ({ ...c }));
+  }
+
+  /** Синхронно гидратировать cache с диска (вызывать на старте telegram). */
+  loadSync(): void {
     if (!this.cache) this.cache = this.readStore().chats;
-    return this.cache.map((c) => ({ ...c }));
+  }
+
+  /**
+   * R1/R5: true → группа настроена (completed|skipped), можно применять
+   * обычные hard-rules. false → pending/неизвестно → SILENT в группе.
+   * Для private не применяется (R6) — решает вызывающий.
+   */
+  isConfiguredSync(chatId: string): boolean {
+    this.loadSync();
+    const rec = this.cache!.find((c) => c.chatId === chatId);
+    if (!rec) return false;
+    return rec.status === "completed" || rec.status === "skipped";
   }
 
   async get(chatId: string): Promise<ChatSetupRecord | null> {
