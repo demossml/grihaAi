@@ -1,6 +1,7 @@
 /**
  * Чистые парсеры caption-текста (StubExtractor, MVP без vision) + date helpers.
  */
+import type { DocumentKind } from "../types.js";
 
 export function todayYmd(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -77,6 +78,18 @@ export function parseSupplierFromText(text: string): string | undefined {
   const stop = /(?:итого|сумма|оплачено|total|sum|\d)/i.exec(raw);
   const cleaned = stop ? raw.slice(0, stop.index).trim() : raw;
   return cleaned.length >= 2 ? cleaned : undefined;
+}
+
+/**
+ * Тип документа по распознанному тексту: waybill/invoice/receipt/unknown.
+ * Используется VisionExtractor'ом (после OCR).
+ */
+export function detectKind(text: string): DocumentKind {
+  const t = text.toLowerCase();
+  if (/(накладн|товарная|waybill|торг-?12)/i.test(t)) return "waybill";
+  if (/(счёт|счет|invoice|инвойс)/i.test(t)) return "invoice";
+  if (/(чек|касс|receipt|итого|оплачено|сдача)/i.test(t)) return "receipt";
+  return "unknown";
 }
 
 export function formatExpensesSum(r: import("../types.js").ExpensesQueryResult): string {

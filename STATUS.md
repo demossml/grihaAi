@@ -312,6 +312,14 @@
 - [x] L5: pending-группа — по-прежнему полная тишина; L7/L10/L11: needsReview+notify только по флагу, typecheck+тесты зелёные, docs обновлены
 - [x] Tests: 512 unit — зелёные; отчёт `LISTEN_ONLY_OCR_REPORT.md`
 
+## Phase 33 — Vision OCR для фонового инжеста групп
+
+- [x] `VisionExtractor` + `VisionOcrFn` в extractors/types.ts: файл → vision-backend → парсеры суммы/даты/поставщика → `detectKind` (receipt/invoice/waybill), честные confidence/needsReview
+- [x] Фабрика `createExtractor(config, hasVisionKey, visionOcr?)`: vision при ключе И собранном ocr; без ключа — StubExtractor (offline/тесты)
+- [x] `documents/index.ts`: `buildVisionOcr` из `createHttpVisionCaller` (тот же backend, что analyze_image) прокинут в DocumentIngestService / ChatArchiveService / ListenerMediaPipeline — группы и личный чат распознают ОДИНАКОВО
+- [x] Без `models.vision.apiKey` — поведение прежнее (stub), без падений
+- [x] Tests: 521 unit — зелёные; typecheck/build зелёные
+
 
 
 

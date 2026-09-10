@@ -3,16 +3,38 @@
  */
 import path from "node:path";
 import { getConfigDir, loadConfig } from "@griha/config";
+import { createHttpVisionCaller } from "../../utils/vision/http-vision.js";
 import { DocumentsRepository } from "./DocumentsRepository.js";
 import { DocumentIngestService } from "./DocumentIngestService.js";
 import { ChatArchiveService } from "./chat-archive.js";
 import { ListenerMediaPipeline } from "./ListenerMediaPipeline.js";
-import { createExtractor } from "./extractors/types.js";
+import {
+  createExtractor,
+  type VisionOcrFn,
+} from "./extractors/types.js";
 
 let repository: DocumentsRepository | null = null;
 let ingestService: DocumentIngestService | null = null;
 let archiveService: ChatArchiveService | null = null;
 let listenerPipeline: ListenerMediaPipeline | null = null;
+
+/**
+ * Тот же vision-backend, что и analyze_image в личном чате: читает файл в
+ * base64 → createHttpVisionCaller → распознанный текст. Без vision.apiKey —
+ * undefined (честный stub).
+ */
+function buildVisionOcr(): VisionOcrFn | undefined {
+  const cfg = loadConfig();
+  const vision = cfg?.models?.vision;
+  if (!vision?.apiKey) return undefined;
+  const caller = createHttpVisionCaller();
+  return async (filePath: string, mimeType?: string) => {
+    const fs = await import("node:fs/promises");
+    const b64 = (await fs.readFile(filePath)).toString("base64");
+    const mime = mimeType && mimeType.trim() !== "" ? mimeType : "image/jpeg";
+    return caller(vision, { source: "base64", value: `data:${mime};base64,${b64}` }, "ocr");
+  };
+}
 
 export function getDocumentsRepository(): DocumentsRepository {
   if (!repository) {
@@ -31,7 +53,7 @@ export function getDocumentIngestService(): DocumentIngestService {
     const hasVisionKey = Boolean(cfg?.models?.vision?.apiKey ?? cfg?.apiKey);
     ingestService = new DocumentIngestService(
       getDocumentsRepository(),
-      createExtractor(cfg?.documents, hasVisionKey),
+      createExtractor(cfg?.documents, hasVisionKey, buildVisionOcr()),
     );
   }
   return ingestService;
@@ -58,7 +80,7 @@ export function getChatArchiveService(): ChatArchiveService {
     const hasVisionKey = Boolean(cfg?.models?.vision?.apiKey ?? cfg?.apiKey);
     archiveService = new ChatArchiveService(
       getDocumentsRepository(),
-      createExtractor(cfg?.documents, hasVisionKey),
+      createExtractor(cfg?.documents, hasVisionKey, buildVisionOcr()),
     );
   }
   return archiveService;
@@ -72,7 +94,7 @@ export function getListenerMediaPipeline(): ListenerMediaPipeline {
     const token = cfg?.telegram?.botToken;
     listenerPipeline = new ListenerMediaPipeline(
       getDocumentsRepository(),
-      createExtractor(cfg?.documents, hasVisionKey),
+      createExtractor(cfg?.documents, hasVisionKey, buildVisionOcr()),
       async (fileId) => {
         if (!token) throw new Error("no botToken");
         const fs = await import("node:fs/promises");

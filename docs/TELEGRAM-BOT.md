@@ -406,6 +406,10 @@ typing НЕ отправляется. Форум — тот же `message_thread
   - `chat_archive` — сырой архив (raw_text, confidence, needs_review, ocr_status);
   - `expense_documents` — при распознанных полях и policy `archive_ocr_ingest`
     (одно скачивание, дедуп по file_unique_id; `expense_id`-ссылка в архиве).
+- OCR — **тот же vision-backend, что и `analyze_image` в личном чате**
+  (`VisionExtractor` + `createHttpVisionCaller`; без `models.vision.apiKey` —
+  честный StubExtractor). kind определяется по тексту (receipt/invoice/waybill),
+  сумма/дата/поставщик — парсерами; без суммы — `needsReview`.
 - Сбой сети → `media-retry` очередь → на ретрае ПОЛНЫЙ конвейер (OCR+ingest), не только архив.
 - `notify_poor_ocr` (default off) — единственное уведомление о низком качестве распознавания.
 - LLM на каждое фото в listen_only не включается; фоновая обработка не зависит от вызова агента.
