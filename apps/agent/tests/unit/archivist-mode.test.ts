@@ -162,6 +162,76 @@ describe("archivist mode (bridge)", () => {
   });
 });
 
+describe("typing heartbeat (bridge)", () => {
+  it("silent (prefilter false) → sendChatAction не вызывается", async () => {
+    const typingCalls: number[] = [];
+    const bridge = new TelegramBridge(
+      [42],
+      async () => ({ text: "x" }),
+      async () => undefined,
+      {
+        prefilter: () => false,
+        sendChatAction: async () => {
+          typingCalls.push(1);
+        },
+        typingIntervalMs: 5,
+      },
+    );
+    await bridge.handleUpdate(groupMsg());
+    assert.equal(typingCalls.length, 0, "silent → без typing");
+  });
+
+  it("allow → typing до агента, после ответа пульс остановлен", async () => {
+    const typingCalls: number[] = [];
+    const order: string[] = [];
+    const bridge = new TelegramBridge(
+      [42],
+      async () => {
+        order.push("agent");
+        return { text: "x" };
+      },
+      async () => {
+        order.push("reply");
+      },
+      {
+        prefilter: () => true,
+        sendChatAction: async () => {
+          typingCalls.push(1);
+          order.push("typing");
+        },
+        typingIntervalMs: 10,
+      },
+    );
+    const res = await bridge.handleUpdate(groupMsg());
+    assert.equal(res.handled, true);
+    assert.ok(typingCalls.length >= 1, "хотя бы один typing");
+    assert.ok(order.indexOf("typing") < order.indexOf("agent"), "typing до агента");
+    const after = typingCalls.length;
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(typingCalls.length, after, "после ответа пульс остановлен");
+  });
+
+  it("archivist silent (suppressReply) → heartbeat не запускается", async () => {
+    const typingCalls: number[] = [];
+    const bridge = new TelegramBridge(
+      [42],
+      async () => ({ text: "x" }),
+      async () => undefined,
+      {
+        prefilter: () => ({ process: true, suppressReply: true, archive: true }),
+        archiveHandler: async () => ({ stored: true }),
+        sendChatAction: async () => {
+          typingCalls.push(1);
+        },
+        typingIntervalMs: 5,
+      },
+    );
+    await bridge.handleUpdate(groupMsg());
+    await new Promise((r) => setTimeout(r, 15));
+    assert.equal(typingCalls.length, 0, "silent-archive: без typing");
+  });
+});
+
 describe("ChatArchiveService", () => {
   it("archiveText: сохраняет, дедуп по chat_id + message_id", async () => {
     const { repo } = makeRepo();

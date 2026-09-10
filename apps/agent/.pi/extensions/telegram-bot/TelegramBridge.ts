@@ -5,6 +5,7 @@
 
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import { buildTelegramSessionKey } from "./session-key.js";
+import { startTypingHeartbeat } from "./typing-heartbeat.js";
 
 export interface TgUser {
   id: number;
@@ -201,6 +202,14 @@ export class TelegramBridge {
       ) => Promise<{ stored: boolean; notify?: string }>;
       /** Group Runtime Contract: единая подготовка хода (configured → rules → prefilter). */
       prepareTurn?: (input: import("./group-runtime.js").PrepareTurnInput) => import("./group-runtime.js").PrepareTurnResult;
+      /** Typing heartbeat: шлёт sendChatAction(typing) каждые ~4с, пока идёт ответ. */
+      sendChatAction?: (
+        chatId: number,
+        action: "typing",
+        extra?: { messageThreadId?: number },
+      ) => Promise<unknown>;
+      /** Интервал пульса typing (тесты). Default 4000мс. */
+      typingIntervalMs?: number;
     },
   ) {}
 
@@ -217,6 +226,21 @@ export class TelegramBridge {
   private makeSender(threadId?: string): TelegramReplySender {
     return (chatId, text, filePath, extra) =>
       this.sender(chatId, text, filePath, { ...extra, threadId });
+  }
+
+  /**
+   * Typing heartbeat для разрешённого хода (только после allow, не при silent).
+   * Форум — тот же message_thread_id, что у входящего сообщения.
+   */
+  private startHeartbeat(
+    chatId: number,
+    msg: TgMessage,
+  ): import("./typing-heartbeat.js").TypingHeartbeatHandle | null {
+    if (!this.options?.sendChatAction) return null;
+    return startTypingHeartbeat(chatId, msg.threadId, {
+      sendChatAction: (id, action, extra) => this.options!.sendChatAction!(id, action, extra),
+      intervalMs: this.options.typingIntervalMs,
+    });
   }
 
   private isProcessable(text: string, userId: number, chatId: number, msg: TgMessage, chatType: string): boolean {
@@ -422,49 +446,54 @@ export class TelegramBridge {
         return { handled: true, reason: "blocked-by-rules" };
       }
       this.options?.beforeAgent?.(chatId);
-
-      let transcript: string;
-      if (!this.options?.transcribeVoice) {
-        await send(chatId, "Голосовые пока недоступны.");
-        return { handled: true, reason: "stt-unavailable" };
-      }
+      // Heartbeat на время STT И агента; finally гарантирует остановку.
+      const hb = this.startHeartbeat(chatId, msg);
       try {
-        transcript = await this.options.transcribeVoice(fileId, {
-          chatId: String(chatId),
-          userId: String(userId),
-        });
-      } catch {
-        await send(chatId, "Не удалось распознать голос.");
-        return { handled: true, reason: "stt-failed" };
-      }
-      const text2 = transcript.trim();
-      if (!text2) {
-        await send(chatId, "Не удалось распознать голос.");
-        return { handled: true, reason: "stt-empty" };
-      }
+        let transcript: string;
+        if (!this.options?.transcribeVoice) {
+          await send(chatId, "Голосовые пока недоступны.");
+          return { handled: true, reason: "stt-unavailable" };
+        }
+        try {
+          transcript = await this.options.transcribeVoice(fileId, {
+            chatId: String(chatId),
+            userId: String(userId),
+          });
+        } catch {
+          await send(chatId, "Не удалось распознать голос.");
+          return { handled: true, reason: "stt-failed" };
+        }
+        const text2 = transcript.trim();
+        if (!text2) {
+          await send(chatId, "Не удалось распознать голос.");
+          return { handled: true, reason: "stt-empty" };
+        }
 
-      // Повторный prefilter по РАСПОЗНАННОМУ тексту (mention-правила и т.д.).
-      const gate2 = this.evaluateInput(text2, userId, chatId, msg, chatType);
-      if (!gate2.process) {
-        return { handled: true, reason: "blocked-by-rules" };
-      }
+        // Повторный prefilter по РАСПОЗНАННОМУ тексту (mention-правила и т.д.).
+        const gate2 = this.evaluateInput(text2, userId, chatId, msg, chatType);
+        if (!gate2.process) {
+          return { handled: true, reason: "blocked-by-rules" };
+        }
 
-      const response = await this.agent({
-        message: text2,
-        userId,
-        platform: "telegram",
-        sessionKey: buildTelegramSessionKey({
+        const response = await this.agent({
+          message: text2,
           userId,
-          chatId,
+          platform: "telegram",
+          sessionKey: buildTelegramSessionKey({
+            userId,
+            chatId,
+            threadId: msg.threadId,
+          }),
+          chatId: String(chatId),
           threadId: msg.threadId,
-        }),
-        chatId: String(chatId),
-        threadId: msg.threadId,
-        rulesContext: gate2.rulesContext || undefined,
-      });
-      if (gate2.suppressReply) return { handled: true, reason: "archived-silent" };
-      await this.sendReply(chatId, response, msg.threadId);
-      return { handled: true };
+          rulesContext: gate2.rulesContext || undefined,
+        });
+        if (gate2.suppressReply) return { handled: true, reason: "archived-silent" };
+        await this.sendReply(chatId, response, msg.threadId);
+        return { handled: true };
+      } finally {
+        await hb?.stop();
+      }
     }
     if (msg.photo && msg.photo.length > 0) {
       const message = `Пользователь прислал изображение.\nfile_id: ${lastPhotoFileId(msg.photo)}\nПодпись: ${msg.caption ?? "нет"}`;
@@ -488,18 +517,24 @@ export class TelegramBridge {
         if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
         this.options?.beforeAgent?.(chatId);
       }
-      const response = await this.agent({
-        message,
-        userId,
-        platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
-        chatId: String(chatId),
-        threadId: msg.threadId,
-        rulesContext: gate.rulesContext || undefined,
-      });
-      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
-      await this.sendReply(chatId, response, msg.threadId);
-      return { handled: true };
+      // Heartbeat только когда пользователь получит ответ (не silent-archive).
+      const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
+      try {
+        const response = await this.agent({
+          message,
+          userId,
+          platform: "telegram",
+          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+          chatId: String(chatId),
+          threadId: msg.threadId,
+          rulesContext: gate.rulesContext || undefined,
+        });
+        if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+        await this.sendReply(chatId, response, msg.threadId);
+        return { handled: true };
+      } finally {
+        await hb?.stop();
+      }
     }
     if (msg.document?.file_id) {
       const message = `Пользователь прислал документ.\nfile_id: ${msg.document.file_id}\nПодпись: ${msg.caption ?? "нет"}`;
@@ -521,18 +556,24 @@ export class TelegramBridge {
         if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
         this.options?.beforeAgent?.(chatId);
       }
-      const response = await this.agent({
-        message,
-        userId,
-        platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
-        chatId: String(chatId),
-        threadId: msg.threadId,
-        rulesContext: gate.rulesContext || undefined,
-      });
-      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
-      await this.sendReply(chatId, response, msg.threadId);
-      return { handled: true };
+      // Heartbeat только когда пользователь получит ответ (не silent-archive).
+      const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
+      try {
+        const response = await this.agent({
+          message,
+          userId,
+          platform: "telegram",
+          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+          chatId: String(chatId),
+          threadId: msg.threadId,
+          rulesContext: gate.rulesContext || undefined,
+        });
+        if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+        await this.sendReply(chatId, response, msg.threadId);
+        return { handled: true };
+      } finally {
+        await hb?.stop();
+      }
     }
     if (msg.contact) {
       // Контакт уходит агенту как текст: агент сам решит, вызвать ли
@@ -544,18 +585,23 @@ export class TelegramBridge {
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
       if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
-      const response = await this.agent({
-        message,
-        userId,
-        platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
-        chatId: String(chatId),
-        threadId: msg.threadId,
-        rulesContext: gate.rulesContext || undefined,
-      });
-      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
-      await this.sendReply(chatId, response, msg.threadId);
-      return { handled: true };
+      const hb = this.startHeartbeat(chatId, msg);
+      try {
+        const response = await this.agent({
+          message,
+          userId,
+          platform: "telegram",
+          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+          chatId: String(chatId),
+          threadId: msg.threadId,
+          rulesContext: gate.rulesContext || undefined,
+        });
+        if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+        await this.sendReply(chatId, response, msg.threadId);
+        return { handled: true };
+      } finally {
+        await hb?.stop();
+      }
     }
     if (msg.location) {
       // Геолокация — тот же путь через агента: он сам решит, вызывать ли
@@ -564,18 +610,23 @@ export class TelegramBridge {
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
       if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
       this.options?.beforeAgent?.(chatId);
-      const response = await this.agent({
-        message,
-        userId,
-        platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
-        chatId: String(chatId),
-        threadId: msg.threadId,
-        rulesContext: gate.rulesContext || undefined,
-      });
-      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
-      await this.sendReply(chatId, response, msg.threadId);
-      return { handled: true };
+      const hb = this.startHeartbeat(chatId, msg);
+      try {
+        const response = await this.agent({
+          message,
+          userId,
+          platform: "telegram",
+          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+          chatId: String(chatId),
+          threadId: msg.threadId,
+          rulesContext: gate.rulesContext || undefined,
+        });
+        if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+        await this.sendReply(chatId, response, msg.threadId);
+        return { handled: true };
+      } finally {
+        await hb?.stop();
+      }
     }
     if (!text) return { handled: false, reason: "empty" };
 
@@ -590,18 +641,24 @@ export class TelegramBridge {
       // обрабатывает контекст, но ответ подавляется без @mention.
       await this.archiveQuietly(msg, chatId, userId, "text", send);
     }
-    const response = await this.agent({
-      message: text,
-      userId,
-      platform: "telegram",
-      sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
-      chatId: String(chatId),
-      threadId: msg.threadId,
-      rulesContext: gate.rulesContext || undefined,
-    });
-    if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
-    await this.sendReply(chatId, response, msg.threadId);
-    return { handled: true };
+    // Heartbeat только когда пользователь получит ответ (не silent-archive).
+    const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
+    try {
+      const response = await this.agent({
+        message: text,
+        userId,
+        platform: "telegram",
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+        chatId: String(chatId),
+        threadId: msg.threadId,
+        rulesContext: gate.rulesContext || undefined,
+      });
+      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+      await this.sendReply(chatId, response, msg.threadId);
+      return { handled: true };
+    } finally {
+      await hb?.stop();
+    }
   }
 
   /**

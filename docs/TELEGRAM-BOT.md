@@ -392,8 +392,14 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
   Ошибки — понятным текстом, без падения бота. Лог: кто/что/куда + file_id/message_id.
 - Не затрагивает доставку файлов report-generator (`session-files.ts`) — это отдельный путь.
 
-### Слушатель-архивариус (`listen_only`)
+### Typing indicator
 
+Пока обрабатывается разрешённое сообщение (после prefilter: STT/OCR/LLM/tools), бот шлёт
+`sendChatAction(typing)` каждые ~4с до отправки ответа (`typing-heartbeat.ts`, finally —
+обязательная остановка). В pending-группе / ACL deny / prefilter block / silent-archive —
+typing НЕ отправляется. Форум — тот же `message_thread_id`.
+
+### Слушатель-архивариус (`listen_only`)
 - Пресет `listener` (и custom-правило `listen_only: true`) переведён в режим
   «обрабатывать, но не отвечать»: **все** сообщения группы (текст, фото, документы)
   доходят до обработки и архива, а текстовый ответ в чат подавляется без явного

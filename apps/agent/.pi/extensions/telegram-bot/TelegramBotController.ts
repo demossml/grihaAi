@@ -69,7 +69,11 @@ export interface TelegramBotLike {
       filePath: string,
       extra?: { caption?: string; messageThreadId?: number },
     ): Promise<unknown>;
-    sendChatAction(chatId: number, action: "typing" | "upload_document"): Promise<unknown>;
+    sendChatAction(
+      chatId: number,
+      action: "typing" | "upload_document",
+      extra?: { messageThreadId?: number },
+    ): Promise<unknown>;
     setMyCommands(commands: Array<{ command: string; description: string }>): Promise<unknown>;
     setMessageReaction(chatId: number, messageId: number, reaction: string): Promise<unknown>;
     getChatMember(chatId: number, userId: number): Promise<{ status: string }>;
@@ -333,6 +337,8 @@ export class TelegramBotController {
           documentIngest: this.options?.documentIngest,
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,
+          // Typing heartbeat: тот же thread, что у входящего сообщения.
+          sendChatAction: (chatId, action, extra) => bot.api.sendChatAction(chatId, action, extra),
         },
       );
 

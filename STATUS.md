@@ -295,6 +295,13 @@
 - [x] Contract-текст добавлен в `packages/skills/skills/core/SKILL.md`
 - [x] Tests: 499 unit — зелёные; отчёт `GROUP_RUNTIME_CONTRACT_REPORT.md`
 
+## Phase 31 — Typing heartbeat
+
+- [x] `typing-heartbeat.ts`: пульс `sendChatAction(typing)` каждые ~4с (Telegram гасит через ~5с), immediate first pulse, ошибки глотаются
+- [x] Bridge: heartbeat только после allow (не silent/pending/ACL/prefilter); в archivist silent-archive — без heartbeat; finally — остановка при любой ошибке; форум — тот же message_thread_id
+- [x] Ветки обёрнуты: text, voice (на время STT и агента), photo/document, contact/location; wiring через controller → grammy (message_thread_id)
+- [x] Tests: 507 unit — зелёные; typecheck/build зелёные
+
 
 
 
