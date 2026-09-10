@@ -2,7 +2,7 @@
 
 ## 0. Meta
 - Date (UTC): 2026-09-10
-- Commit / branch: main (код после Phase 30; хэш коммита см. ниже после push)
+- Commit / branch: `c393504` on `main`
 - Overall: **GREEN**
 
 ## 1. Executive summary
