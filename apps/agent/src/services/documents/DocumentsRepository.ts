@@ -120,6 +120,8 @@ interface ArchiveRow {
   confidence: number;
   needs_review: number;
   created_at: string;
+  ocr_status: string | null;
+  expense_id: string | null;
 }
 
 function archiveRowToRecord(row: ArchiveRow): ChatArchiveRecord {
@@ -143,6 +145,8 @@ function archiveRowToRecord(row: ArchiveRow): ChatArchiveRecord {
     confidence: row.confidence,
     needsReview: row.needs_review !== 0,
     createdAt: row.created_at,
+    ocrStatus: (row.ocr_status ?? undefined) as ChatArchiveRecord["ocrStatus"],
+    expenseId: row.expense_id ?? undefined,
   };
 }
 
@@ -192,6 +196,18 @@ export class DocumentsRepository {
         `CREATE INDEX IF NOT EXISTS idx_expense_chat_thread_date
          ON expense_documents(chat_id, thread_id, doc_date);`,
       );
+    }
+    // Listen-only OCR: additive-колонки архива (ocr_status/expense_id).
+    const archiveColumns = new Set(
+      (this.db.pragma("table_info(chat_archive)") as Array<{ name: string }>).map(
+        (c) => c.name,
+      ),
+    );
+    if (!archiveColumns.has("ocr_status")) {
+      this.db.exec("ALTER TABLE chat_archive ADD COLUMN ocr_status TEXT;");
+    }
+    if (!archiveColumns.has("expense_id")) {
+      this.db.exec("ALTER TABLE chat_archive ADD COLUMN expense_id TEXT;");
     }
   }
 
@@ -257,8 +273,8 @@ export class DocumentsRepository {
         `INSERT INTO chat_archive
          (id, chat_id, thread_id, message_id, from_user_id, kind, doc_date, supplier, total,
           currency, raw_text, file_id, file_unique_id, file_name, mime_type, items_json,
-          confidence, needs_review, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          confidence, needs_review, created_at, ocr_status, expense_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -280,6 +296,8 @@ export class DocumentsRepository {
         record.confidence ?? 0,
         record.needsReview ? 1 : 0,
         record.createdAt,
+        record.ocrStatus ?? null,
+        record.expenseId ?? null,
       );
     return record;
   }

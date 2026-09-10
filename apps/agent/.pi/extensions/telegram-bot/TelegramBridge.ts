@@ -499,10 +499,10 @@ export class TelegramBridge {
       const message = `Пользователь прислал изображение.\nfile_id: ${lastPhotoFileId(msg.photo)}\nПодпись: ${msg.caption ?? "нет"}`;
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
       if (gate.archive) {
-        // Архивариус: OCR/архив ВСЕХ фото, тихо (без ack), ответ — только на @mention.
-        if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
-        this.options?.beforeAgent?.(chatId);
+        // L2/L3: фоновая OCR-обработка без LLM; agent — только если allow.
         await this.archiveQuietly(msg, chatId, userId, "photo", send);
+        if (!gate.process) return { handled: true, reason: "archived-silent" };
+        this.options?.beforeAgent?.(chatId);
       } else {
         // Обычный путь: сначала попытка инжеста чеков/накладных (§12 порядок).
         // R1/R6: в pending-группе инжест не открываем (silent, нет side-channel).
@@ -540,10 +540,10 @@ export class TelegramBridge {
       const message = `Пользователь прислал документ.\nfile_id: ${msg.document.file_id}\nПодпись: ${msg.caption ?? "нет"}`;
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
       if (gate.archive) {
-        // Архивариус: OCR/архив всех документов, тихо, ответ — только на @mention.
-        if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
-        this.options?.beforeAgent?.(chatId);
+        // L2/L3: фоновая OCR-обработка без LLM; agent — только если allow.
         await this.archiveQuietly(msg, chatId, userId, "document", send);
+        if (!gate.process) return { handled: true, reason: "archived-silent" };
+        this.options?.beforeAgent?.(chatId);
       } else {
         const ingest = msg.groupConfigured === false ? undefined : this.options?.documentIngest;
         if (ingest) {
@@ -631,16 +631,17 @@ export class TelegramBridge {
     if (!text) return { handled: false, reason: "empty" };
 
     const gate = this.evaluateInput(text, userId, chatId, msg, chatType);
-    if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
 
-    // Индикатор «печатает…» сразу после приёма, до обработки (в т.ч. в режиме
-    // архивариуса, где текстового ответа может не быть вообще).
-    this.options?.beforeAgent?.(chatId);
+    // L1: listen_only без обращения — агент заблокирован; текст всё равно тихо
+    // архивируется (если archive=true), индикатор «печатает» не включается.
     if (gate.archive) {
-      // Архивариус: тихо сохранить текст (с автором/временем/темой), агент
-      // обрабатывает контекст, но ответ подавляется без @mention.
       await this.archiveQuietly(msg, chatId, userId, "text", send);
+      if (!gate.process) return { handled: true, reason: "archived-silent" };
+    } else if (!gate.process) {
+      return { handled: true, reason: "blocked-by-rules" };
     }
+
+    this.options?.beforeAgent?.(chatId);
     // Heartbeat только когда пользователь получит ответ (не silent-archive).
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {

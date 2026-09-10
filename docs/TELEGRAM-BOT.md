@@ -399,6 +399,17 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
 обязательная остановка). В pending-группе / ACL deny / prefilter block / silent-archive —
 typing НЕ отправляется. Форум — тот же `message_thread_id`.
 
+### Listener mode (listen_only)
+
+- Не отвечает, пока нет `@mention` или reply на сообщение бота (после этого патча).
+- Фото/документы автоматически скачиваются и проходят OCR/extract:
+  - `chat_archive` — сырой архив (raw_text, confidence, needs_review, ocr_status);
+  - `expense_documents` — при распознанных полях и policy `archive_ocr_ingest`
+    (одно скачивание, дедуп по file_unique_id; `expense_id`-ссылка в архиве).
+- Сбой сети → `media-retry` очередь → на ретрае ПОЛНЫЙ конвейер (OCR+ingest), не только архив.
+- `notify_poor_ocr` (default off) — единственное уведомление о низком качестве распознавания.
+- LLM на каждое фото в listen_only не включается; фоновая обработка не зависит от вызова агента.
+
 ### Слушатель-архивариус (`listen_only`)
 - Пресет `listener` (и custom-правило `listen_only: true`) переведён в режим
   «обрабатывать, но не отвечать»: **все** сообщения группы (текст, фото, документы)

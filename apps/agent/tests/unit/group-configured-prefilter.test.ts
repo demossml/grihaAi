@@ -60,12 +60,15 @@ describe("shouldProcessMessage: groupConfigured (R1/R6)", () => {
     );
   });
 
-  it("configured + listen_only → обрабатывается (архивариус), ответ подавлен", () => {
+  it("configured + listen_only: без обращения агент заблокирован, архив разрешён", () => {
     const rules = [hard("listen_only", true)];
-    assert.equal(shouldProcessMessage(rules, groupInput({ groupConfigured: true })), true);
+    assert.equal(shouldProcessMessage(rules, groupInput({ groupConfigured: true })), false);
     const gate = evaluatePreFilter(rules, groupInput({ groupConfigured: true }));
-    assert.equal(gate.suppressReply, true);
     assert.equal(gate.archive, true);
+    assert.equal(gate.suppressReply, true);
+    // При @mention — агент разрешён.
+    const mention = evaluatePreFilter(rules, groupInput({ groupConfigured: true, botMentioned: true }));
+    assert.equal(mention.process, true);
   });
 });
 

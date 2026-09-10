@@ -18,7 +18,10 @@ export type RuleKey =
   | "style"
   | "length"
   | "memory_write"
-  | "no_hallucinate_data";
+  | "no_hallucinate_data"
+  | "archive_media"
+  | "archive_ocr_ingest"
+  | "notify_poor_ocr";
 
 export type RuleValue = boolean | string;
 
@@ -84,11 +87,14 @@ export const PRESETS: Record<PresetId, { title: string; description: string; rul
     description: "Архивирую всё, отвечаю только по @mention",
     rules: [
       { key: "listen_only", value: true, kind: "hard" },
+      { key: "archive_media", value: true, kind: "hard" },
+      { key: "archive_ocr_ingest", value: true, kind: "hard" },
       { key: "require_mention", value: true, kind: "hard" },
-      { key: "reply_to_bot", value: false, kind: "hard" },
+      { key: "reply_to_bot", value: true, kind: "hard" },
       { key: "ignore_bots", value: true, kind: "hard" },
       { key: "ignore_service", value: true, kind: "hard" },
       { key: "memory_write", value: true, kind: "soft" },
+      { key: "notify_poor_ocr", value: false, kind: "soft" },
       { key: "language_mirror", value: true, kind: "soft" },
     ],
   },

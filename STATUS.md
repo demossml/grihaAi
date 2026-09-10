@@ -302,6 +302,16 @@
 - [x] Ветки обёрнуты: text, voice (на время STT и агента), photo/document, contact/location; wiring через controller → grammy (message_thread_id)
 - [x] Tests: 507 unit — зелёные; typecheck/build зелёные
 
+## Phase 32 — Listen-Only Archive → OCR → Structured Ingest
+
+- [x] L1: listen_only — агент НЕ вызывается для ordinary messages; ответ разрешён только на @mention/reply боту (prefilter)
+- [x] L2/L3/L4: медиа в listener обрабатывается фоном (без LLM): download → OCR → chat_archive → expense_documents при полях и `archive_ocr_ingest` (require_mention не блокирует фон)
+- [x] `ListenerMediaPipeline` (одно скачивание, дедуп file_unique_id, L8 — только поля extractor, L9 — thread_id); additive-колонки архива `ocr_status`/`expense_id`
+- [x] L6: media-retry worker выполняет ПОЛНЫЙ конвейер (processMediaRetryJob), не только сырой archive
+- [x] Пресет listener: +archive_media/archive_ocr_ingest, reply_to_bot=true, notify_poor_ocr=false; миграция существующих listener-чатов в bootstrapUsers (идемпотентно)
+- [x] L5: pending-группа — по-прежнему полная тишина; L7/L10/L11: needsReview+notify только по флагу, typecheck+тесты зелёные, docs обновлены
+- [x] Tests: 512 unit — зелёные; отчёт `LISTEN_ONLY_OCR_REPORT.md`
+
 
 
 

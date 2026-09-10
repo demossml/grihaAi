@@ -42,6 +42,10 @@ export interface ChatArchiveRecord {
   confidence: number;
   needsReview: boolean;
   createdAt: string;
+  /** Статус распознавания (L-OCR): pending|done|failed. */
+  ocrStatus?: "pending" | "done" | "failed";
+  /** Ссылка на expense_documents после structured ingest (опционально). */
+  expenseId?: string;
 }
 
 export interface ArchiveTextInput {

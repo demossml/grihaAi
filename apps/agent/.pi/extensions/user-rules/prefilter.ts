@@ -156,7 +156,9 @@ export function evaluatePreFilter(
   const keys = new Set(hardRules.map((r) => r.key));
   const has = (key: string) => keys.has(key);
 
-  // ── Архивариус (listen_only): обрабатывать всё, отвечать только на @mention. ──
+  // ── Архивариус (listen_only): агент НЕ вызывается для ordinary messages (L1); ──
+  // фоновая архивация/OCR идёт отдельно (не здесь). Ответ разрешён ТОЛЬКО на
+  // @mention или reply боту (спека listen-only OCR).
   if (has("listen_only") && truthy(hardValue(hardRules, "listen_only"))) {
     // Прочие фильтры сохраняются: игнор ботов и сервисных сообщений.
     if (has("ignore_bots") && hardValue(hardRules, "ignore_bots") !== false && input.fromIsBot) {
@@ -169,12 +171,18 @@ export function evaluatePreFilter(
       const onlyId = String(hardValue(hardRules, "only_my_messages_user_id") ?? "");
       if (!onlyId || String(input.fromUserId) !== onlyId) return BLOCKED;
     }
-    // require_mention/ignore_if_other_mention в режиме архива НЕ блокируют:
-    // сообщение без @mention должно быть сохранено; блокируется только ответ.
+    const mentioned = input.botMentioned === true || input.repliedToBot === true;
+    if (!mentioned) {
+      // Без обращения: агент заблокирован, фоновая архивация разрешена (archive=true).
+      return {
+        process: false,
+        suppressReply: true,
+        archive: input.isGroup === true,
+      };
+    }
     return {
       process: true,
-      // Решение: только явный @mention считается обращением (reply — нет).
-      suppressReply: input.botMentioned !== true,
+      suppressReply: false,
       archive: input.isGroup === true,
     };
   }

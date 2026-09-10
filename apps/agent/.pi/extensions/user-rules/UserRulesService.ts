@@ -86,6 +86,10 @@ export const MANAGED_RULE_KEYS: readonly string[] = [
   "length",
   "memory_write",
   "no_hallucinate_data",
+  "archive_media",
+  "archive_ocr_ingest",
+  "notify_poor_ocr",
+  "poor_ocr_confidence_below",
 ];
 
 export interface RuleListFilter {

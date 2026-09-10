@@ -10,6 +10,8 @@ import { getDocumentIngestService, maybeIngestDocument } from "../../../src/serv
 import {
   archiveFromTelegram,
   getChatArchiveService,
+  getListenerMediaPipeline,
+  processMediaRetryJob,
 } from "../../../src/services/documents/index.js";
 import {
   MediaRetryQueue,
@@ -41,6 +43,7 @@ import {
   runSetupCommand,
   tryHandleCustomText,
 } from "../chat-setup/handlers.js";
+import { presetRulesWithActor } from "../chat-setup/RulePresets.js";
 import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
 import { transcribeVoice } from "@griha/stt";
@@ -183,28 +186,12 @@ let stopMediaWorker: (() => void) | null = null;
 function startMediaRetry(): void {
   if (stopMediaWorker) return;
   mediaRetry = new MediaRetryQueue();
-  const token = loadConfig()?.telegram?.botToken;
   stopMediaWorker = startMediaRetryWorker({
     queue: mediaRetry,
     processJob: async (job: MediaRetryJob) => {
-      if (!token) throw new Error("no botToken");
-      const msg = {
-        chat: { id: Number(job.chatId), type: "supergroup" },
-        threadId: job.threadId,
-        messageId: job.messageId !== undefined ? Number(job.messageId) : undefined,
-        ...(job.kind === "photo"
-          ? { photo: [{ file_id: job.fileId, file_unique_id: job.fileUniqueId }] }
-          : { document: { file_id: job.fileId, file_unique_id: job.fileUniqueId } }),
-      };
-      await getChatArchiveService().archiveMedia(msg, {
-        download: async (fileId) => {
-          const dest = path.join(
-            os.tmpdir(),
-            `griha-retry-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          );
-          return downloadTelegramFileToDisk(token, fileId, dest);
-        },
-      });
+      // L6: ретрай выполняет ПОЛНЫЙ pipeline (OCR + archive + structured ingest),
+      // не только сырой archive.
+      await processMediaRetryJob(job, getListenerMediaPipeline());
     },
   });
 }
@@ -346,50 +333,83 @@ function getController(): TelegramBotController {
               });
             },
           }),
-        // Архивариус (listen_only): тихое сохранение текста/медиа в chat_archive.
+        // Архивариус (listen_only): тихое сохранение текста/медиа.
+        // Медиа — полный конвейер: download → OCR → archive → structured ingest.
         archiveHandler: async (msg, ctx) => {
-          const token = loadConfig()?.telegram?.botToken;
-          try {
-            const res = await archiveFromTelegram(
-              msg as unknown as Parameters<typeof archiveFromTelegram>[0],
-              { kind: ctx.kind },
-              getChatArchiveService(),
-              {
-                download: async (fileId) => {
-                  if (!token) throw new Error("no botToken");
-                  const dest = path.join(
-                    os.tmpdir(),
-                    `griha-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                  );
-                  return downloadTelegramFileToDisk(token, fileId, dest);
+          const svc = getChatArchiveService();
+          if (ctx.kind === "text") {
+            try {
+              const res = await archiveFromTelegram(
+                msg as unknown as Parameters<typeof archiveFromTelegram>[0],
+                { kind: "text" },
+                svc,
+                {
+                  download: async (fileId) => {
+                    const token = loadConfig()?.telegram?.botToken;
+                    if (!token) throw new Error("no botToken");
+                    const dest = path.join(
+                      os.tmpdir(),
+                      `griha-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    );
+                    return downloadTelegramFileToDisk(token, fileId, dest);
+                  },
                 },
+              );
+              return { stored: res.stored };
+            } catch (err: unknown) {
+              console.error(
+                "[telegram-bot] text archive failed:",
+                err instanceof Error ? err.message : err,
+              );
+              return { stored: false };
+            }
+          }
+
+          // Медиа: полный listen-only конвейер (L2/L3).
+          try {
+            const rules = [
+              ...getUserRulesService().getHardRules(ctx.chatId),
+              ...getUserRulesService().getSoftRules(ctx.chatId),
+            ];
+            const ruleVal = (key: string): boolean =>
+              [...rules].reverse().some((r) => r.key === key && (r.value === true || r.value === "true"));
+            const listenOnly = ruleVal("listen_only");
+            const result = await getListenerMediaPipeline().process(
+              {
+                chatId: ctx.chatId,
+                threadId: msg.threadId,
+                messageId: msg.messageId !== undefined ? String(msg.messageId) : undefined,
+                fromUserId: msg.from?.id !== undefined ? String(msg.from.id) : undefined,
+                caption: msg.caption,
+                photo: msg.photo as Array<{ file_id: string; file_unique_id?: string }> | undefined,
+                document: msg.document as {
+                  file_id: string;
+                  file_unique_id?: string;
+                  file_name?: string;
+                  mime_type?: string;
+                } | undefined,
+              },
+              {
+                archive: true,
+                ocrIngest: listenOnly || ruleVal("archive_ocr_ingest"),
               },
             );
-            // R-GR-8: уведомление о плохом OCR — только по policy-флагу чата.
+            // R-GR-8/L7: notify только по policy-флагу, в listen_only по умолчанию тишина.
             if (
-              res.stored &&
-              ctx.kind !== "text" &&
-              (res.needsReview === true || (res.confidence ?? 1) < 0.4)
+              result.needsReview &&
+              shouldNotifyPoorOcr(rules, {
+                needsReview: result.needsReview,
+                confidence: result.confidence,
+              })
             ) {
-              const rules = [
-                ...getUserRulesService().getHardRules(ctx.chatId),
-                ...getUserRulesService().getSoftRules(ctx.chatId),
-              ];
-              if (
-                shouldNotifyPoorOcr(rules, {
-                  needsReview: res.needsReview,
-                  confidence: res.confidence,
-                })
-              ) {
-                return {
-                  stored: true,
-                  notify: "Не удалось уверенно распознать документ. Пришлите, пожалуйста, более чёткое фото.",
-                };
-              }
+              return {
+                stored: result.archived,
+                notify: "Не удалось уверенно распознать документ. Пришлите, пожалуйста, более чёткое фото.",
+              };
             }
-            return { stored: res.stored };
+            return { stored: result.archived };
           } catch (err: unknown) {
-            // R-GR-7: download/OCR упал → отложенный retry, без потери file_id.
+            // R-GR-7: download/OCR упал → отложенный retry (полный pipeline), file_id не теряем.
             const media = mediaFileOf(msg);
             if (media && mediaRetry) {
               await mediaRetry.enqueue({
@@ -424,7 +444,27 @@ async function bootstrapUsers(): Promise<void> {
   await users.seedLegacyUsers(cfg?.telegram?.allowedUserIds);
   await users.ensureOwner(resolveOwnerId(cfg));
   // R1: hydrate chat-setup cache до старта long polling (isConfiguredSync).
-  getChatSetupService().loadSync();
+  const setup = getChatSetupService();
+  setup.loadSync();
+  // Миграция существующих listener-чатов: дописываем archive_ocr_ingest/
+  // reply_to_bot (идемпотентно — managed-правила перезаписываются полным сетом).
+  for (const rec of await setup.list()) {
+    if (rec.status !== "completed" || rec.presetId !== "listener") continue;
+    const actorId = rec.addedByUserId ?? "0";
+    try {
+      getUserRulesService().replaceChatManagedRules(
+        rec.chatId,
+        presetRulesWithActor("listener", actorId),
+        { source: "preset:listener", actorId },
+      );
+      console.log(`[telegram-bot] listener defaults ensured for chat ${rec.chatId}`);
+    } catch (err: unknown) {
+      console.error(
+        `[telegram-bot] listener migration failed for chat ${rec.chatId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 }
 
 async function startBot(): Promise<boolean> {

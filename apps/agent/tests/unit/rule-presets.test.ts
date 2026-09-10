@@ -89,45 +89,48 @@ describe("pre-filter structured keys (§9)", () => {
     ...extra,
   });
 
-  it("listen_only (архивариус): process=true, suppressReply без @mention, archive", () => {
+  it("listen_only без обращения: агент заблокирован, архив разрешён", () => {
     const rules = [rule("listen_only", true)];
-    assert.equal(shouldProcessMessage(rules, groupInput()), true, "сообщение обрабатывается");
+    assert.equal(shouldProcessMessage(rules, groupInput()), false, "агент не вызывается");
     const gate = evaluatePreFilter(rules, groupInput());
-    assert.equal(gate.process, true);
+    assert.equal(gate.process, false);
     assert.equal(gate.suppressReply, true);
     assert.equal(gate.archive, true);
   });
 
-  it("listen_only + @mention → обрабатывается и ОТВЕЧАЕТ", () => {
+  it("listen_only + @mention → агент разрешён и отвечает", () => {
     const rules = [rule("listen_only", true)];
     const gate = evaluatePreFilter(rules, groupInput({ botMentioned: true }));
     assert.equal(gate.process, true);
     assert.equal(gate.suppressReply, false);
   });
 
-  it("listen_only: reply на бота НЕ считается обращением (только @mention)", () => {
+  it("listen_only + reply боту → агент разрешён (спека listen-only OCR)", () => {
     const rules = [rule("listen_only", true)];
     const gate = evaluatePreFilter(rules, groupInput({ repliedToBot: true }));
     assert.equal(gate.process, true);
-    assert.equal(gate.suppressReply, true);
+    assert.equal(gate.suppressReply, false);
   });
 
   it("listen_only: боты и сервисные по-прежнему игнорируются", () => {
     const rules = [rule("listen_only", true), rule("ignore_bots", true), rule("ignore_service", true)];
     assert.equal(evaluatePreFilter(rules, groupInput({ fromIsBot: true })).process, false);
     assert.equal(evaluatePreFilter(rules, groupInput({ isService: true })).process, false);
-    assert.equal(evaluatePreFilter(rules, groupInput()).process, true);
+    // Обычное сообщение без mention — агент заблокирован, но архив разрешён.
+    const gate = evaluatePreFilter(rules, groupInput());
+    assert.equal(gate.process, false);
+    assert.equal(gate.archive, true);
   });
 
-  it("listen_only: require_mention не блокирует обработку без @mention", () => {
+  it("listen_only + require_mention: без @mention агент не вызывается (архив отдельно)", () => {
     const rules = [
       rule("listen_only", true),
       rule("require_mention", true),
-      rule("reply_to_bot", false),
+      rule("reply_to_bot", true),
     ];
     const gate = evaluatePreFilter(rules, groupInput());
-    assert.equal(gate.process, true);
-    assert.equal(gate.suppressReply, true);
+    assert.equal(gate.process, false);
+    assert.equal(gate.archive, true);
   });
 
   it("require_mention without mention → false", () => {
