@@ -63,6 +63,23 @@ export interface GrishaAgentReply {
   inlineButtons?: InlineButton[][];
 }
 
+/**
+ * Результат единого медиа-конвейера (photo/document): download → OCR →
+ * archive/expense. Контроллер сам решает, гонять ли OCR (allowed/archive/policy).
+ */
+export interface ProcessMediaResult {
+  /** Политика не требует OCR → конвейер пропущен (нет allowed/archive/policy). */
+  skipped?: boolean;
+  /** Download/OCR упали (retry уже поставлен контроллером в media-retry). */
+  failed?: boolean;
+  rawText?: string;
+  confidence?: number;
+  expenseId?: string;
+  ingestedExpense?: boolean;
+  /** R-GR-8: предупреждение о плохом OCR (только по policy-флагу чата). */
+  notify?: string;
+}
+
 export interface GrishaAgent {
   (input: {
     message: string;
@@ -151,6 +168,45 @@ function lastPhotoFileId(photo: Array<{ file_id?: string }>): string {
   return last?.file_id ?? "unknown";
 }
 
+/**
+ * Промпт агента для входящего медиа: распознанный текст OCR в центре,
+ * file_id — справочно внизу (B2: агент видит содержимое, а не голый id).
+ */
+function buildMediaAgentMessage(
+  base: string,
+  msg: TgMessage,
+  fileId: string,
+  media: ProcessMediaResult | null,
+): string {
+  if (media?.failed) {
+    return [
+      base,
+      msg.caption ? `Подпись: ${msg.caption}` : null,
+      "Не удалось распознать изображение.",
+      `telegram_file_id: ${fileId}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+  const ocrText = media?.rawText?.trim();
+  const mime = msg.document?.mime_type ?? "";
+  const fileName = msg.document?.file_name ?? "";
+  const isPdf = /pdf/i.test(mime) || /\.pdf$/i.test(fileName);
+  return [
+    base,
+    msg.caption ? `Подпись: ${msg.caption}` : null,
+    ocrText
+      ? `Распознанный текст (OCR):\n${ocrText}`
+      : isPdf
+        ? "OCR: PDF не поддерживается vision-моделью — нужна ручная проверка документа."
+        : "OCR не извлёк текст (нужна проверка или vision недоступен).",
+    media?.expenseId ? `Документ сохранён в expenses id=${media.expenseId}` : null,
+    `telegram_file_id: ${fileId}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export class TelegramBridge {
   constructor(
     private readonly allowedUserIds: number[],
@@ -195,6 +251,22 @@ export class TelegramBridge {
         msg: TgMessage,
         ctx: { chatId: string; userId: string },
       ) => Promise<{ ack?: string } | null>;
+      /**
+       * Единый медиа-конвейер (photo/document): download → OCR (VisionExtractor) →
+       * archive/expense. Вызывается ДО агента на allowed/archive ходах — агенту
+       * уходит распознанный текст, а не голый file_id (B2/B4).
+       * Контроллер решает по правилам чата, гонять ли OCR (skipped при отказе).
+       */
+      processMedia?: (
+        msg: TgMessage,
+        ctx: {
+          chatId: string;
+          userId: string;
+          kind: "photo" | "document";
+          allowed: boolean;
+          archive: boolean;
+        },
+      ) => Promise<ProcessMediaResult | null>;
       /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
       archiveHandler?: (
         msg: TgMessage,
@@ -496,84 +568,10 @@ export class TelegramBridge {
       }
     }
     if (msg.photo && msg.photo.length > 0) {
-      const message = `Пользователь прислал изображение.\nfile_id: ${lastPhotoFileId(msg.photo)}\nПодпись: ${msg.caption ?? "нет"}`;
-      const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
-      if (gate.archive) {
-        // L2/L3: фоновая OCR-обработка без LLM; agent — только если allow.
-        await this.archiveQuietly(msg, chatId, userId, "photo", send);
-        if (!gate.process) return { handled: true, reason: "archived-silent" };
-        this.options?.beforeAgent?.(chatId);
-      } else {
-        // Обычный путь: сначала попытка инжеста чеков/накладных (§12 порядок).
-        // R1/R6: в pending-группе инжест не открываем (silent, нет side-channel).
-        const ingest = msg.groupConfigured === false ? undefined : this.options?.documentIngest;
-        if (ingest) {
-          const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
-          if (ingested?.ack) {
-            await send(chatId, ingested.ack);
-            return { handled: true, reason: "document-ingested" };
-          }
-        }
-        if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
-        this.options?.beforeAgent?.(chatId);
-      }
-      // Heartbeat только когда пользователь получит ответ (не silent-archive).
-      const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
-      try {
-        const response = await this.agent({
-          message,
-          userId,
-          platform: "telegram",
-          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
-          chatId: String(chatId),
-          threadId: msg.threadId,
-          rulesContext: gate.rulesContext || undefined,
-        });
-        if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
-        await this.sendReply(chatId, response, msg.threadId);
-        return { handled: true };
-      } finally {
-        await hb?.stop();
-      }
+      return this.handleMedia(msg, chatId, userId, chatType, send, "photo");
     }
     if (msg.document?.file_id) {
-      const message = `Пользователь прислал документ.\nfile_id: ${msg.document.file_id}\nПодпись: ${msg.caption ?? "нет"}`;
-      const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
-      if (gate.archive) {
-        // L2/L3: фоновая OCR-обработка без LLM; agent — только если allow.
-        await this.archiveQuietly(msg, chatId, userId, "document", send);
-        if (!gate.process) return { handled: true, reason: "archived-silent" };
-        this.options?.beforeAgent?.(chatId);
-      } else {
-        const ingest = msg.groupConfigured === false ? undefined : this.options?.documentIngest;
-        if (ingest) {
-          const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
-          if (ingested?.ack) {
-            await send(chatId, ingested.ack);
-            return { handled: true, reason: "document-ingested" };
-          }
-        }
-        if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
-        this.options?.beforeAgent?.(chatId);
-      }
-      // Heartbeat только когда пользователь получит ответ (не silent-archive).
-      const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
-      try {
-        const response = await this.agent({
-          message,
-          userId,
-          platform: "telegram",
-          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
-          chatId: String(chatId),
-          threadId: msg.threadId,
-          rulesContext: gate.rulesContext || undefined,
-        });
-        if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
-        await this.sendReply(chatId, response, msg.threadId);
-        return { handled: true };
-      } finally {
-        await hb?.stop();
-      }
+      return this.handleMedia(msg, chatId, userId, chatType, send, "document");
     }
     if (msg.contact) {
       // Контакт уходит агенту как текст: агент сам решит, вызвать ли
@@ -647,6 +645,92 @@ export class TelegramBridge {
     try {
       const response = await this.agent({
         message: text,
+        userId,
+        platform: "telegram",
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+        chatId: String(chatId),
+        threadId: msg.threadId,
+        rulesContext: gate.rulesContext || undefined,
+      });
+      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+      await this.sendReply(chatId, response, msg.threadId);
+      return { handled: true };
+    } finally {
+      await hb?.stop();
+    }
+  }
+
+  /**
+   * Единая ветка photo/document (B2/B4): сначала download+OCR (или архив),
+   * потом агент с распознанным текстом — не с голым file_id.
+   *
+   * Матрица (спека «Group photos»):
+   * - pending-группа: тишина, без OCR и без агента (R-GR-1);
+   * - listen_only без @: OCR+archive+expense фоном, ответа нет;
+   * - любой allowed-ход с медиа: агент получает OCR-текст в том же ходе.
+   */
+  private async handleMedia(
+    msg: TgMessage,
+    chatId: number,
+    userId: number,
+    chatType: string,
+    send: TelegramReplySender,
+    kind: "photo" | "document",
+  ): Promise<{ handled: boolean; reason?: string }> {
+    const fileId =
+      kind === "photo" ? lastPhotoFileId(msg.photo ?? []) : msg.document?.file_id ?? "unknown";
+    const base = kind === "photo" ? "Пользователь прислал изображение." : "Пользователь прислал документ.";
+    // Вход prefilter'а — прежний (file_id-сообщение): решения правил не меняются.
+    const message = `${base}\nfile_id: ${fileId}\nПодпись: ${msg.caption ?? "нет"}`;
+    const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
+
+    const isGroup = chatType === "group" || chatType === "supergroup";
+    const pendingGroup = isGroup && msg.groupConfigured === false;
+    const processMedia = pendingGroup ? undefined : this.options?.processMedia;
+
+    // Heartbeat на время OCR И агента (только когда будет ответ пользователю).
+    const hb = gate.process && !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
+    try {
+      let media: ProcessMediaResult | null = null;
+      if (processMedia) {
+        media = await processMedia(msg, {
+          chatId: String(chatId),
+          userId: String(userId),
+          kind,
+          allowed: gate.process,
+          archive: gate.archive,
+        });
+        if (media?.notify) {
+          await send(chatId, media.notify, undefined, { threadId: msg.threadId });
+        }
+      } else {
+        // Legacy (без processMedia — старые тесты/контроллеры): тихий архив
+        // через archiveHandler; инжест с ack — как раньше.
+        if (gate.archive) {
+          await this.archiveQuietly(msg, chatId, userId, kind, send);
+        } else {
+          const ingest = pendingGroup ? undefined : this.options?.documentIngest;
+          if (ingest) {
+            const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
+            if (ingested?.ack) {
+              await send(chatId, ingested.ack);
+              return { handled: true, reason: "document-ingested" };
+            }
+          }
+        }
+      }
+
+      if (!gate.process) {
+        // listen_only без @mention: OCR/архив уже сделан, ответа нет.
+        return { handled: true, reason: gate.archive ? "archived-silent" : "blocked-by-rules" };
+      }
+
+      this.options?.beforeAgent?.(chatId);
+      const agentMessage = processMedia
+        ? buildMediaAgentMessage(base, msg, fileId, media)
+        : message;
+      const response = await this.agent({
+        message: agentMessage,
         userId,
         platform: "telegram",
         sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),

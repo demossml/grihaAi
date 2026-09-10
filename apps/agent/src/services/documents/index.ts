@@ -29,6 +29,10 @@ function buildVisionOcr(): VisionOcrFn | undefined {
   if (!vision?.apiKey) return undefined;
   const caller = createHttpVisionCaller();
   return async (filePath: string, mimeType?: string) => {
+    // PDF/non-image: не притворяться JPEG — честный needsReview у VisionExtractor.
+    if (mimeType && mimeType.trim() !== "" && !mimeType.startsWith("image/")) {
+      throw new Error(`OCR не поддерживает ${mimeType} (нужна ручная проверка)`);
+    }
     const fs = await import("node:fs/promises");
     const b64 = (await fs.readFile(filePath)).toString("base64");
     const mime = mimeType && mimeType.trim() !== "" ? mimeType : "image/jpeg";

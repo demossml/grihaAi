@@ -18,3 +18,5 @@ Turn an image/scan into structured data.
 - Never guess amounts, currencies or dates from unclear OCR.
 - PDF pages are read via vision on a provided page image; a dedicated PDF
   connector is future work.
+- В Telegram-группах OCR для входящих фото выполняется системой ДО твоего
+  хода; не игнорируй блок «Распознанный текст (OCR)» в сообщении.

@@ -323,3 +323,20 @@
 
 
 
+
+## Phase 34 — Group Photo Vision OCR (OCR до агента)
+
+- [x] `TelegramBridge.handleMedia` — единая ветка photo/document: pending — тишина,
+  иначе download → OCR → archive/expense → агент с блоком «Распознанный текст
+  (OCR)» и `expenseId`; `telegram_file_id` — справочно внизу (не голый file_id)
+- [x] `processMedia`-хук в bridge/controller: контроллер решает по правилам чата
+  (listen_only / archive_ocr_ingest / archive_media / ingest_mode), иначе skipped
+- [x] `maybeIngestDocument({force, skipAck})`: mention не блокирует force-путь
+  listener'а; ACL всегда
+- [x] PDF/non-image — честный needsReview (не притворяется JPEG); VisionExtractor
+  ловит сбой OCR сам (needsReview, без исключения); confidence 0.85/0.55/0.1
+- [x] Expense-инжест по useful fields (total/supplier/rawText>20), не только
+  kind=receipt/invoice
+- [x] Typing-heartbeat через OCR+агент; media-retry — полный pipeline
+- [x] Tests: 536 unit — зелёные; typecheck/build зелёные; отчёт
+  `GROUP_PHOTO_VISION_REPORT.md`

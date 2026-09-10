@@ -16,9 +16,17 @@ export interface MaybeIngestDeps {
 
 const CAPTION_HINT = /(чек|накладн|invoice|receipt|расход)/i;
 
+export interface MaybeIngestOptions {
+  /** Инжест без mention/reply/ключевых слов (listener / archive_ocr_ingest policy). */
+  force?: boolean;
+  /** Инжест выполнить, но ack не возвращать (фоновый путь без ответа в чат). */
+  skipAck?: boolean;
+}
+
 export async function maybeIngestDocument(
   message: TelegramFileMessage,
   deps: MaybeIngestDeps,
+  opts: MaybeIngestOptions = {},
 ): Promise<{ ack: string } | null> {
   const hasFile = Boolean(message.photo?.length || message.document);
   if (!hasFile) return null;
@@ -26,7 +34,8 @@ export async function maybeIngestDocument(
   const chatId = String(message.chat.id);
   const mode = deps.getIngestMode(chatId) || "mention";
 
-  if (mode === "mention") {
+  // B3: ingest_mode=mention НЕ блокирует force-путь (listener / archive_ocr_ingest).
+  if (!opts.force && mode === "mention") {
     const mentioned = (message as { botMentioned?: boolean }).botMentioned === true;
     const replied = (message as { repliedToBot?: boolean }).repliedToBot === true;
     const captionHint = CAPTION_HINT.test(message.caption ?? "");
@@ -37,5 +46,6 @@ export async function maybeIngestDocument(
   if (!userId || !(await deps.isAllowed(userId, chatId))) return null;
 
   const doc = await deps.ingest(message);
+  if (opts.skipAck) return null; // инжест выполнен тихо (bridge сам покажет expenseId агенту)
   return { ack: documentAck(doc) };
 }

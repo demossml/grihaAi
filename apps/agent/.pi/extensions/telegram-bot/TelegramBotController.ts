@@ -2,6 +2,7 @@ import {
   TelegramBridge,
   formatTelegramHtml,
   type GrishaAgent,
+  type ProcessMediaResult,
   type RulePreFilter,
   type TelegramApprovalHandler,
   type TelegramReplySender,
@@ -149,11 +150,17 @@ export interface TelegramBotControllerOptions {
       ) => Promise<unknown>;
     },
   ) => Promise<void>;
-  /** Инжест чеков/накладных из photo/document сообщений. */
-  documentIngest?: (
+  /** Единый медиа-конвейер (photo/document): OCR → archive → expenses до агента. */
+  processMedia?: (
     msg: TgMessage,
-    ctx: { chatId: string; userId: string },
-  ) => Promise<{ ack?: string } | null>;
+    ctx: {
+      chatId: string;
+      userId: string;
+      kind: "photo" | "document";
+      allowed: boolean;
+      archive: boolean;
+    },
+  ) => Promise<ProcessMediaResult | null>;
   /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
   archiveHandler?: (
     msg: TgMessage,
@@ -334,7 +341,7 @@ export class TelegramBotController {
           pendingGroupsHint: this.options?.pendingGroupsHint,
           transcribeVoice: this.options?.transcribeVoice,
           customSetupInterceptor: this.options?.customSetupInterceptor,
-          documentIngest: this.options?.documentIngest,
+          processMedia: this.options?.processMedia,
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,
           // Typing heartbeat: тот же thread, что у входящего сообщения.

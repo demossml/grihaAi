@@ -50,13 +50,13 @@ describe("VisionExtractor", () => {
     assert.equal((await invoice.extract({ filePath: "/tmp/f" })).kind, "invoice");
   });
 
-  it("OCR без суммы → needsReview=true, kind=unknown, честный confidence 0.5", async () => {
+  it("OCR без суммы → needsReview=true, kind=unknown, честный confidence 0.55", async () => {
     const extractor = new VisionExtractor(async () => "какой-то текст без денег");
     const res = await extractor.extract({ filePath: "/tmp/f" });
     assert.equal(res.total, undefined);
     assert.equal(res.needsReview, true);
     assert.equal(res.kind, "unknown");
-    assert.equal(res.confidence, 0.5);
+    assert.equal(res.confidence, 0.55);
   });
 
   it("caption-парсинг дополняет OCR (fallback сумма из caption)", async () => {
@@ -68,11 +68,15 @@ describe("VisionExtractor", () => {
     assert.equal(res.total, 400);
   });
 
-  it("visionOcr бросил → extract отклоняется (caller ловит → needsReview/retry)", async () => {
+  it("visionOcr бросил → needsReview, extract НЕ бросает (caller живёт)", async () => {
     const extractor = new VisionExtractor(async () => {
       throw new Error("Vision API error 401");
     });
-    await assert.rejects(() => extractor.extract({ filePath: "/tmp/f" }), /401/);
+    const res = await extractor.extract({ filePath: "/tmp/f", caption: "чек на 500" });
+    assert.equal(res.needsReview, true);
+    assert.equal(res.kind, "unknown");
+    assert.equal(res.confidence, 0.1);
+    assert.equal(res.rawText, "чек на 500", "caption сохранён как сырой текст");
   });
 });
 

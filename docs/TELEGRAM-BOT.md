@@ -463,3 +463,42 @@ typing НЕ отправляется. Форум — тот же `message_thread
   ретраится до 5 раз с паузой 3с×попытка (grammy не ретраит HTTP 502 от прокси).
 - **Логируются**: входящее сообщение, результат отправки (успех/ошибка), ошибки
   `bot.start()`/`bot.stop()`.
+
+---
+
+## Group photos
+
+- Incoming photos are OCR'd via the same vision model as `analyze_image` (when `models.vision` configured).
+- The agent receives recognized text, not only telegram file_id.
+- Listener mode: silent archive + expense ingest when fields found.
+- Without vision API key: StubExtractor (caption-only) — expected degraded mode.
+
+### Как это устроено (OCR до агента)
+
+Единый медиа-конвейер `processMedia` (контроллер → `ListenerMediaPipeline`):
+download → `VisionExtractor` (тот же `createHttpVisionCaller`, что и
+`analyze_image`) → `chat_archive` → `expense_documents` при policy.
+
+- `TelegramBridge.handleMedia` (photo/document) — единственная ветка медиа:
+  1. prefilter-решение (`gate`) — вход тот же, что раньше (file_id-сообщение),
+     правила чата не меняются;
+  2. pending-группа — тишина: ни OCR, ни агента (R-GR-1);
+  3. OCR идёт если ход разрешён (`allowed`), архив (`archive`) или policy
+     (`listen_only` / `archive_ocr_ingest` / mention-инжест) — решение принимает
+     контроллер по structured-правилам чата, иначе `{skipped}`;
+  4. агенту уходит промпт с блоком `Распознанный текст (OCR): …`, `expenseId`
+     при сохранении и справочным `telegram_file_id` внизу (не голый file_id в
+     прозе);
+  5. OCR fail → агенту «Не удалось распознать изображение.» + подпись, сбой
+     download — job в media-retry (полный pipeline на ретрае).
+- PDF/non-image: vision не притворяется JPEG — честный `needsReview`
+  (промпт агента: «PDF не поддерживается vision-моделью»).
+- Typing-heartbeat держится через весь OCR + ход агента (только когда будет
+  ответ).
+- `maybeIngestDocument` получил `{force, skipAck}`: `force` обходит
+  `ingest_mode=mention` (для listener/`archive_ocr_ingest`), ACL действует
+  всегда; `skipAck` — тихий фоновый инжест.
+- `analyze_image` остаётся для явных запросов («что на фото?») и личного чата;
+  заменой групповому конвейеру не является.
+- Expense-инжест учитывает «useful fields» (total/supplier/rawText>20), а не
+  только kind=receipt/invoice — unknown+сумма тоже попадает в expenses.

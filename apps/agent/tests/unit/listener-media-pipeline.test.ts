@@ -96,6 +96,30 @@ describe("ListenerMediaPipeline (listen-only OCR)", () => {
     assert.equal(await repo.findByFileUniqueId("-100", "pu1"), null);
   });
 
+  it("kind=unknown, но сумма распознана → expense-строка есть (useful fields)", async () => {
+    const repo = makeRepo();
+    const unknownTotal: DocumentExtractor = {
+      async extract() {
+        return {
+          kind: "unknown",
+          docDate: "2026-09-01",
+          total: 15400,
+          currency: "RUB",
+          rawText: "тип документа не распознан, но сумма 15400 руб извлечена",
+          confidence: 0.55,
+          needsReview: true,
+        };
+      },
+    };
+    const pipeline = new ListenerMediaPipeline(repo, unknownTotal, async () => makeFile("lm"));
+    const res = await pipeline.process(input);
+    assert.equal(res.ingestedExpense, true, "unknown+сумма попадает в expenses");
+    const expense = await repo.findByFileUniqueId("-100", "pu1");
+    assert.ok(expense);
+    assert.equal(expense!.total, 15400);
+    assert.equal(expense!.kind, "unknown");
+  });
+
   it("повторный process с тем же file_unique_id → expense не дублируется", async () => {
     const repo = makeRepo();
     const pipeline = new ListenerMediaPipeline(repo, receiptExtractor, async () => makeFile("lm"));

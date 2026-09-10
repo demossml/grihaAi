@@ -78,7 +78,8 @@ export type VisionOcrFn = (filePath: string, mimeType?: string) => Promise<strin
 /**
  * Реальный OCR: читает файл → vision-модель (через переданный VisionOcrFn) →
  * парсит сумму/дату/поставщика и определяет kind по ключевым словам.
- * Честные confidence/needsReview: без суммы — на проверку.
+ * Честные confidence/needsReview: сбой OCR/PDF не роняет конвейер — результат
+ * «нужна проверка» (caller ставит retry только на download-сбои).
  */
 export class VisionExtractor implements DocumentExtractor {
   constructor(private readonly ocr: VisionOcrFn) {}
@@ -86,12 +87,29 @@ export class VisionExtractor implements DocumentExtractor {
   async extract(input: ExtractorInput): Promise<ExtractorResult> {
     const { parseDateFromText, parseSupplierFromText, parseTotalFromText, todayYmd, detectKind } =
       await import("./parsers.js");
-    const rawText = (await this.ocr(input.filePath, input.mimeType)).trim();
+
+    // PDF / non-image: attempt only if caller supports; else needsReview
+    let rawText = "";
+    try {
+      rawText = (await this.ocr(input.filePath, input.mimeType)).trim();
+    } catch {
+      return {
+        kind: "unknown",
+        docDate: todayYmd(),
+        currency: "RUB",
+        confidence: 0.1,
+        needsReview: true,
+        rawText: input.caption?.trim() || undefined,
+      };
+    }
+
     const caption = input.caption?.trim() ?? "";
-    const total = parseTotalFromText(rawText) ?? parseTotalFromText(caption);
-    const docDate = parseDateFromText(rawText) ?? parseDateFromText(caption) ?? todayYmd();
-    const supplier = parseSupplierFromText(rawText) ?? parseSupplierFromText(caption);
-    const kind = detectKind(`${rawText}\n${caption}`);
+    const combined = [rawText, caption].filter(Boolean).join("\n");
+    const total = parseTotalFromText(combined);
+    const docDate = parseDateFromText(combined) ?? todayYmd();
+    const supplier = parseSupplierFromText(combined);
+    const kind = detectKind(combined);
+
     return {
       kind,
       docDate,
@@ -99,8 +117,8 @@ export class VisionExtractor implements DocumentExtractor {
       total,
       currency: "RUB",
       rawText: rawText || caption || undefined,
-      confidence: total != null ? 0.85 : 0.5,
-      needsReview: total == null,
+      confidence: total != null ? 0.85 : rawText ? 0.55 : 0.1,
+      needsReview: total == null || !rawText,
     };
   }
 }

@@ -129,16 +129,19 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
         extracted?.kind === "receipt" ||
         extracted?.kind === "invoice" ||
         extracted?.kind === "waybill";
+      // Полезные поля — не только kind receipt/invoice: unknown+сумма тоже идёт в expenses.
       const hasUseful =
         extracted != null &&
-        (extracted.total !== undefined || Boolean(extracted.supplier) || Boolean(extracted.rawText));
+        (extracted.total != null ||
+          Boolean(extracted.supplier) ||
+          Boolean(extracted.rawText && extracted.rawText.length > 20));
 
       const now = new Date().toISOString();
       let expenseId: string | undefined;
       let ingestedExpense = false;
 
       // 5) structured ingest: только то, что вернул extractor (L8), только при policy.
-      if (ocrIngest && isExpense && hasUseful && extracted) {
+      if (ocrIngest && hasUseful && extracted) {
         if (!file.fileUniqueId || !(await this.repo.findByFileUniqueId(input.chatId, file.fileUniqueId))) {
           const doc: ExpenseDocument = {
             id: randomUUID(),

@@ -6,7 +6,6 @@ import {
   sharedTelegramFetcher,
   startPeriodicIpRefresh,
 } from "./telegram-network.js";
-import { getDocumentIngestService, maybeIngestDocument } from "../../../src/services/documents/index.js";
 import {
   archiveFromTelegram,
   getChatArchiveService,
@@ -291,89 +290,39 @@ function getController(): TelegramBotController {
         getBotSelf: () => botSelf,
         // R1: pending-группа silent (онбординг не завершён → prefilter false).
         getGroupConfigured: (chatId) => setup.isConfiguredSync(chatId),
-        // Чек/накладная: инжест в expenses store (mention-policy, ACL, дедуп).
-        documentIngest: (msg) =>
-          maybeIngestDocument(msg as unknown as Parameters<typeof maybeIngestDocument>[0], {
-            getIngestMode: (chatId) => {
-              const svc = getUserRulesService();
-              const rules = [...svc.getHardRules(chatId), ...svc.getSoftRules(chatId)];
-              const value = [...rules]
-                .reverse()
-                .find((r) => r.key === "ingest_mode")?.value;
-              return typeof value === "string" ? value : "mention";
-            },
-            isAllowed: (userId, chatId) => users.isAllowed(userId, chatId),
-            ingest: (m) => {
-              const token = loadConfig()?.telegram?.botToken;
-              if (!token) return Promise.reject(new Error("no botToken"));
-              return getDocumentIngestService().ingestFromTelegram(m, {
-                download: async (fileId) => {
-                  const dest = path.join(
-                    os.tmpdir(),
-                    `griha-doc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                  );
-                  try {
-                    return await downloadTelegramFileToDisk(token, fileId, dest);
-                  } catch (err) {
-                    // R-GR-7: сбой скачивания → job в очередь ретраев, file_id не теряем.
-                    const media = mediaFileOf(m);
-                    if (media && mediaRetry) {
-                      await mediaRetry.enqueue({
-                        chatId: m.chat.id,
-                        threadId: m.threadId,
-                        messageId: m.messageId,
-                        fileId: media.fileId,
-                        fileUniqueId: media.fileUniqueId,
-                        kind: m.photo?.length ? "photo" : "document",
-                      });
-                    }
-                    throw err;
-                  }
-                },
-              });
-            },
-          }),
-        // Архивариус (listen_only): тихое сохранение текста/медиа.
-        // Медиа — полный конвейер: download → OCR → archive → structured ingest.
-        archiveHandler: async (msg, ctx) => {
-          const svc = getChatArchiveService();
-          if (ctx.kind === "text") {
-            try {
-              const res = await archiveFromTelegram(
-                msg as unknown as Parameters<typeof archiveFromTelegram>[0],
-                { kind: "text" },
-                svc,
-                {
-                  download: async (fileId) => {
-                    const token = loadConfig()?.telegram?.botToken;
-                    if (!token) throw new Error("no botToken");
-                    const dest = path.join(
-                      os.tmpdir(),
-                      `griha-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                    );
-                    return downloadTelegramFileToDisk(token, fileId, dest);
-                  },
-                },
-              );
-              return { stored: res.stored };
-            } catch (err: unknown) {
-              console.error(
-                "[telegram-bot] text archive failed:",
-                err instanceof Error ? err.message : err,
-              );
-              return { stored: false };
-            }
+        // Единый медиа-конвейер (photo/document): download → OCR → archive →
+        // expense. Одна точка для allowed-ходов (OCR до агента, B2/B4) и
+        // фоновых путей (listener / archive_ocr_ingest).
+        processMedia: async (msg, ctx) => {
+          const svc = getUserRulesService();
+          const rules = [...svc.getHardRules(ctx.chatId), ...svc.getSoftRules(ctx.chatId)];
+          const ruleVal = (key: string): boolean =>
+            [...rules].reverse().some((r) => r.key === key && (r.value === true || r.value === "true"));
+          const ruleStr = (key: string): string | undefined => {
+            const v = [...rules].reverse().find((r) => r.key === key)?.value;
+            return typeof v === "string" ? v : undefined;
+          };
+          const listenOnly = ruleVal("listen_only");
+          const archiveOcrIngest = ruleVal("archive_ocr_ingest");
+          const archiveMedia = ruleVal("archive_media");
+          const ingestMode = ruleStr("ingest_mode") ?? "mention";
+
+          // B3: listener / archive_ocr_ingest — force-инжест, mention не блокирует.
+          const forceOcr = listenOnly || archiveOcrIngest;
+          const mentioned = msg.botMentioned === true || msg.repliedToBot === true;
+          const captionHint = /(чек|накладн|invoice|receipt|расход)/i.test(msg.caption ?? "");
+          const mentionIngest =
+            ingestMode === "always" || (ingestMode === "mention" && (mentioned || captionHint));
+
+          // OCR только если: ход разрешён / архив / policy-инжест / mention-инжест.
+          if (!ctx.allowed && !ctx.archive && !forceOcr && !mentionIngest) {
+            return { skipped: true };
           }
 
-          // Медиа: полный listen-only конвейер (L2/L3).
+          const doArchive = ctx.archive || archiveMedia || listenOnly || archiveOcrIngest;
+          const doOcrIngest = forceOcr || mentionIngest;
+
           try {
-            const rules = [
-              ...getUserRulesService().getHardRules(ctx.chatId),
-              ...getUserRulesService().getSoftRules(ctx.chatId),
-            ];
-            const ruleVal = (key: string): boolean =>
-              [...rules].reverse().some((r) => r.key === key && (r.value === true || r.value === "true"));
-            const listenOnly = ruleVal("listen_only");
             const result = await getListenerMediaPipeline().process(
               {
                 chatId: ctx.chatId,
@@ -381,6 +330,8 @@ function getController(): TelegramBotController {
                 messageId: msg.messageId !== undefined ? String(msg.messageId) : undefined,
                 fromUserId: msg.from?.id !== undefined ? String(msg.from.id) : undefined,
                 caption: msg.caption,
+                botMentioned: msg.botMentioned,
+                repliedToBot: msg.repliedToBot,
                 photo: msg.photo as Array<{ file_id: string; file_unique_id?: string }> | undefined,
                 document: msg.document as {
                   file_id: string;
@@ -389,27 +340,26 @@ function getController(): TelegramBotController {
                   mime_type?: string;
                 } | undefined,
               },
-              {
-                archive: true,
-                ocrIngest: listenOnly || ruleVal("archive_ocr_ingest"),
-              },
+              { archive: doArchive, ocrIngest: doOcrIngest },
             );
-            // R-GR-8/L7: notify только по policy-флагу, в listen_only по умолчанию тишина.
-            if (
+            // R-GR-8: notify только по policy-флагу (listen_only — тишина по умолчанию).
+            const notify =
               result.needsReview &&
               shouldNotifyPoorOcr(rules, {
                 needsReview: result.needsReview,
                 confidence: result.confidence,
               })
-            ) {
-              return {
-                stored: result.archived,
-                notify: "Не удалось уверенно распознать документ. Пришлите, пожалуйста, более чёткое фото.",
-              };
-            }
-            return { stored: result.archived };
+                ? "Не удалось уверенно распознать документ. Пришлите, пожалуйста, более чёткое фото."
+                : undefined;
+            return {
+              rawText: result.rawText,
+              confidence: result.confidence,
+              expenseId: result.expenseId,
+              ingestedExpense: result.ingestedExpense,
+              notify,
+            };
           } catch (err: unknown) {
-            // R-GR-7: download/OCR упал → отложенный retry (полный pipeline), file_id не теряем.
+            // R-GR-7: download упал → отложенный retry (полный pipeline), file_id не теряем.
             const media = mediaFileOf(msg);
             if (media && mediaRetry) {
               await mediaRetry.enqueue({
@@ -418,11 +368,41 @@ function getController(): TelegramBotController {
                 messageId: msg.messageId,
                 fileId: media.fileId,
                 fileUniqueId: media.fileUniqueId,
-                kind: ctx.kind === "photo" ? "photo" : "document",
+                kind: ctx.kind,
               });
             }
             console.error(
-              "[telegram-bot] archive failed (enqueued retry):",
+              "[telegram-bot] media pipeline failed (enqueued retry):",
+              err instanceof Error ? err.message : err,
+            );
+            return { failed: true };
+          }
+        },
+        // Архивариус (listen_only): тихое сохранение ТЕКСТА (медиа — через processMedia).
+        archiveHandler: async (msg, ctx) => {
+          if (ctx.kind !== "text") return { stored: false };
+          try {
+            const svc = getChatArchiveService();
+            const res = await archiveFromTelegram(
+              msg as unknown as Parameters<typeof archiveFromTelegram>[0],
+              { kind: "text" },
+              svc,
+              {
+                download: async (fileId) => {
+                  const token = loadConfig()?.telegram?.botToken;
+                  if (!token) throw new Error("no botToken");
+                  const dest = path.join(
+                    os.tmpdir(),
+                    `griha-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  );
+                  return downloadTelegramFileToDisk(token, fileId, dest);
+                },
+              },
+            );
+            return { stored: res.stored };
+          } catch (err: unknown) {
+            console.error(
+              "[telegram-bot] text archive failed:",
               err instanceof Error ? err.message : err,
             );
             return { stored: false };
