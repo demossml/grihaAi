@@ -154,7 +154,11 @@ export interface TelegramBotControllerOptions {
   archiveHandler?: (
     msg: TgMessage,
     ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" },
-  ) => Promise<{ stored: boolean }>;
+  ) => Promise<{ stored: boolean; notify?: string }>;
+  /** Group Runtime Contract: единая подготовка хода (configured → rules → prefilter). */
+  prepareTurn?: (
+    input: import("./group-runtime.js").PrepareTurnInput,
+  ) => import("./group-runtime.js").PrepareTurnResult;
   /** self-инфо бота (id/username) для расчёта mention/reply флагов. */
   getBotSelf?: () => { id: number; username?: string } | undefined;
   /** R1: false → pending-группа silent (ChatSetupService.isConfiguredSync). */
@@ -328,6 +332,7 @@ export class TelegramBotController {
           customSetupInterceptor: this.options?.customSetupInterceptor,
           documentIngest: this.options?.documentIngest,
           archiveHandler: this.options?.archiveHandler,
+          prepareTurn: this.options?.prepareTurn,
         },
       );
 

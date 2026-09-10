@@ -1069,6 +1069,25 @@ describe("telegram session pool", () => {
     assert.deepEqual(sessions.get("tg:7:7")!.prompts, ["дм"]);
   });
 
+  it("R-GR-3: rulesContext передаётся в prompt на каждый ход", async () => {
+    const { pool, sessions } = makePool();
+    const rulesContext = "[GROUP_RULES]\n- length=short\n[/GROUP_RULES]";
+    await pool.handleMessage("tg:1:-100", 1, "привет", {
+      chatId: "-100",
+      rulesContext,
+    });
+    await pool.handleMessage("tg:1:-100", 1, "второе", {
+      chatId: "-100",
+      rulesContext,
+    });
+    const prompts = sessions.get("tg:1:-100")!.prompts;
+    assert.equal(prompts.length, 2);
+    for (const p of prompts) {
+      assert.ok(p.startsWith(rulesContext), "каждый ход — с префиксом правил");
+      assert.ok(p.endsWith("привет") || p.endsWith("второе"));
+    }
+  });
+
   it("/new сбрасывает только один ключ (другие чаты живы)", async () => {
     const { pool, sessions } = makePool();
     await pool.handleMessage("tg:7:-100", 7, "группа", { chatId: "-100" });

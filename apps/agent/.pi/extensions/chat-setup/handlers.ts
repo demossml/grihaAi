@@ -113,27 +113,23 @@ export async function onChatMemberAdded(
 
   const title = event.chat.title ?? chatId;
 
-  // Риск A: бот в группе шлёт сообщения без «первого /start» (в отличие от DM) —
-  // онбординг в ГРУППЕ надёжнее. Тишина — только по контенту (Ограничение D):
-  // онбординг-сообщение и /setup разрешены в pending-группе.
-  try {
-    await deps.sendMessage(Number(chatId), buildOnboardingText(title), {
-      parseMode: "HTML",
-      inlineButtons: buildOnboardingKeyboard(chatId),
-    });
-  } catch {
-    // Группа недоступна (бот кикнут и т.п.) — молча; ниже DM остаётся страховкой.
-    console.error("[chat-setup] group onboarding send failed for chat", chatId);
-  }
-
-  // DM добавившему — как раньше (кнопки работают и там).
+  // R-GR-2: онбординг-UI (кнопки пресетов) — ТОЛЬКО в DM. Один короткий fallback
+  // в группу — только если DM не доставлен в момент добавления (без кнопок).
   try {
     await deps.sendMessage(Number(actorId), buildOnboardingText(title), {
       parseMode: "HTML",
       inlineButtons: buildOnboardingKeyboard(chatId),
     });
   } catch {
-    /* ignore — онбординг уже ушёл в группу */
+    // DM недоступен (нет /start) — короткая строка в группу, без кнопок пресетов.
+    try {
+      await deps.sendMessage(
+        Number(chatId),
+        "Чтобы настроить меня для этой группы, откройте личный чат со мной, нажмите /start и отправьте /setup.",
+      );
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -253,19 +249,8 @@ export async function runSetupCommand(
   deps: SetupDeps,
 ): Promise<string> {
   if (!ctx.isPrivate) {
-    // Ограничение D (согласовано): /setup разрешён в ГРУППЕ — но только для
-    // ЭТОЙ группы и только от её creator/administrator (Пакет B).
-    const rec = await deps.setup.get(ctx.chatId);
-    if (!rec || rec.status !== "pending") {
-      return "Эта группа не ожидает настройки. Список групп в ожидании — командой /setup в личных сообщениях.";
-    }
-    const check = await checkGroupAuthority(ctx.chatId, ctx.userId, rec, deps);
-    if (!check.ok) return check.reason;
-    await deps.sendMessage(Number(ctx.chatId), buildOnboardingText(rec.chatTitle ?? ctx.chatId), {
-      parseMode: "HTML",
-      inlineButtons: buildOnboardingKeyboard(ctx.chatId),
-    });
-    return "Отправил меню настройки в эту группу.";
+    // R-GR-2: онбординг-UI — только в DM. В группе /setup не отправляет keyboard.
+    return "Настройка групп — только в личных сообщениях с ботом. Откройте DM и отправьте /setup.";
   }
   if (!(await deps.users.canManage(ctx.userId))) {
     return "Недостаточно прав. Нужна роль owner или admin.";

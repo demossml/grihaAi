@@ -284,6 +284,17 @@
 - [x] Прочие пресеты (team/secretary/shop/only_me/safe_default) не затронуты; pending-silent (R1) сохранён
 - [x] Tests: 483 unit — зелёные; отчёт `ARCHIVIST_MODE_REPORT.md`
 
+## Phase 30 — Group Runtime Contract (R-GR-1…R-GR-12)
+
+- [x] R-GR-1/2: pending-группа — ноль ответов (даже на @mention); онбординг-кнопки только в DM, fallback в группу — одна короткая строка без кнопок; `/setup` — только в DM
+- [x] R-GR-3/4: `group-runtime.ts` (`prepareGroupTurn` + `processInboundMessage`) — каждый ход: ACL → configured → правила чата → hard-prefilter в коде → STT/медиа → агент; `formatRulesContext` → `[GROUP_RULES]`-префикс в prompt на каждый ход (пул)
+- [x] R-GR-5/6: изоляция через sessionKey (без субагентов на группу); R-GR-9: ответ в тот же чат/тему
+- [x] R-GR-7: `media-retry.sqlite` + `MediaRetryQueue` + фоновый воркер (60с, backoff 30·2^n ≤ 3600с, dead-letter); хуки в archiveHandler/documentIngest — file_id не теряется
+- [x] R-GR-8: `notify_poor_ocr` (default off, порог 0.4) — уведомление о плохом OCR только по флагу
+- [x] R-GR-10: caption_entities, STT, 429/retry_after, getChatMember — без регрессий; R-GR-11: typecheck+тесты зелёные; R-GR-12: docs (TELEGRAM-BOT.md «Group Runtime Contract»)
+- [x] Contract-текст добавлен в `packages/skills/skills/core/SKILL.md`
+- [x] Tests: 499 unit — зелёные; отчёт `GROUP_RUNTIME_CONTRACT_REPORT.md`
+
 
 
 

@@ -222,14 +222,14 @@ export class ChatArchiveService {
 
 /**
  * Точка входа из TelegramBridge: развести text/photo/document по сервису.
- * Возвращает { stored } — bridge работает тихо, без ack.
+ * Возвращает stored + флаги качества распознавания (R-GR-8).
  */
 export async function archiveFromTelegram(
   message: TelegramFileMessage & { text?: string },
   opts: { kind: "text" | "photo" | "document" },
   service: ChatArchiveService,
   deps: ArchiveDeps,
-): Promise<{ stored: boolean }> {
+): Promise<{ stored: boolean; needsReview?: boolean; confidence?: number }> {
   if (opts.kind === "text") {
     const text = message.text?.trim();
     if (!text) return { stored: false };
@@ -240,8 +240,12 @@ export async function archiveFromTelegram(
       fromUserId: message.from?.id,
       text,
     });
-    return { stored: record !== null };
+    return { stored: record !== null, needsReview: false, confidence: 1 };
   }
   const record = await service.archiveMedia(message, deps);
-  return { stored: record !== null };
+  return {
+    stored: record !== null,
+    needsReview: record?.needsReview,
+    confidence: record?.confidence,
+  };
 }

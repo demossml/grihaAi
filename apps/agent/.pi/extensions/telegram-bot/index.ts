@@ -11,6 +11,11 @@ import {
   archiveFromTelegram,
   getChatArchiveService,
 } from "../../../src/services/documents/index.js";
+import {
+  MediaRetryQueue,
+  startMediaRetryWorker,
+  type MediaRetryJob,
+} from "../../../src/services/documents/media-retry.js";
 import { downloadTelegramFileToDisk } from "../../../src/utils/telegram/telegram-files.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type GrishaAgent } from "./TelegramBridge.js";
@@ -20,7 +25,9 @@ import {
 } from "./TelegramBotController.js";
 import { TelegramSessionPool } from "./TelegramSessionPool.js";
 import { loadConfig, saveConfig } from "@griha/config";
-import { evaluatePreFilter } from "../user-rules/prefilter.js";import { getUserRulesService } from "../user-rules/UserRulesService.js";
+import { evaluatePreFilter } from "../user-rules/prefilter.js";
+import { formatRulesContext } from "../user-rules/format-rules-context.js";
+import { prepareGroupTurn, shouldNotifyPoorOcr } from "./group-runtime.js";import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
 import { getUsersService, resolveOwnerId } from "../../../src/services/UsersService.js";
@@ -155,11 +162,53 @@ function grishaAgent(): GrishaAgent {
   return async (input) => {
     if (!pool) return { text: "Гриша временно недоступен." };
     // D2: пул ключуется sessionKey (чай/тема), не только userId.
+    // R-GR-3: rulesContext передаётся в prompt на каждый ход.
     return pool.handleMessage(input.sessionKey, input.userId, input.message, {
       chatId: input.chatId,
       threadId: input.threadId,
+      rulesContext: input.rulesContext,
     });
   };
+}
+
+// ── Media retry (R-GR-7): сбой скачивания не теряет file_id ───────────────────
+let mediaRetry: MediaRetryQueue | null = null;
+let stopMediaWorker: (() => void) | null = null;
+
+function startMediaRetry(): void {
+  if (stopMediaWorker) return;
+  mediaRetry = new MediaRetryQueue();
+  const token = loadConfig()?.telegram?.botToken;
+  stopMediaWorker = startMediaRetryWorker({
+    queue: mediaRetry,
+    processJob: async (job: MediaRetryJob) => {
+      if (!token) throw new Error("no botToken");
+      const msg = {
+        chat: { id: Number(job.chatId), type: "supergroup" },
+        threadId: job.threadId,
+        messageId: job.messageId !== undefined ? Number(job.messageId) : undefined,
+        ...(job.kind === "photo"
+          ? { photo: [{ file_id: job.fileId, file_unique_id: job.fileUniqueId }] }
+          : { document: { file_id: job.fileId, file_unique_id: job.fileUniqueId } }),
+      };
+      await getChatArchiveService().archiveMedia(msg, {
+        download: async (fileId) => {
+          const dest = path.join(
+            os.tmpdir(),
+            `griha-retry-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          );
+          return downloadTelegramFileToDisk(token, fileId, dest);
+        },
+      });
+    },
+  });
+}
+
+function stopMediaRetry(): void {
+  stopMediaWorker?.();
+  stopMediaWorker = null;
+  mediaRetry?.close();
+  mediaRetry = null;
 }
 
 function getController(): TelegramBotController {
@@ -178,6 +227,16 @@ function getController(): TelegramBotController {
       {
         prefilter: (input) =>
           evaluatePreFilter(getUserRulesService().getHardRules(input.chatId), input),
+        // Group Runtime Contract: единый конвейер configured → rules → prefilter
+        // (R-GR-1/3/4) с rulesContext для каждого хода агента.
+        prepareTurn: (input) =>
+          prepareGroupTurn(input, {
+            isGroupConfigured: (chatId) => setup.isConfiguredSync(chatId),
+            getHardRules: (chatId) => getUserRulesService().getHardRules(chatId),
+            getSoftRules: (chatId) => getUserRulesService().getSoftRules(chatId),
+            evaluate: (rules, prefilterInput) => evaluatePreFilter(rules, prefilterInput),
+            formatRules: (hard, soft) => formatRulesContext(hard, soft),
+          }),
         rulesHandler: telegramRulesHandler,
         resetHandler: (sessionKey) => pool?.reset(sessionKey),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
@@ -261,29 +320,89 @@ function getController(): TelegramBotController {
                     os.tmpdir(),
                     `griha-doc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
                   );
-                  return downloadTelegramFileToDisk(token, fileId, dest);
+                  try {
+                    return await downloadTelegramFileToDisk(token, fileId, dest);
+                  } catch (err) {
+                    // R-GR-7: сбой скачивания → job в очередь ретраев, file_id не теряем.
+                    const media = mediaFileOf(m);
+                    if (media && mediaRetry) {
+                      await mediaRetry.enqueue({
+                        chatId: m.chat.id,
+                        threadId: m.threadId,
+                        messageId: m.messageId,
+                        fileId: media.fileId,
+                        fileUniqueId: media.fileUniqueId,
+                        kind: m.photo?.length ? "photo" : "document",
+                      });
+                    }
+                    throw err;
+                  }
                 },
               });
             },
           }),
         // Архивариус (listen_only): тихое сохранение текста/медиа в chat_archive.
-        archiveHandler: async (msg, ctx) =>
-          archiveFromTelegram(
-            msg as unknown as Parameters<typeof archiveFromTelegram>[0],
-            { kind: ctx.kind },
-            getChatArchiveService(),
-            {
-              download: async (fileId) => {
-                const token = loadConfig()?.telegram?.botToken;
-                if (!token) throw new Error("no botToken");
-                const dest = path.join(
-                  os.tmpdir(),
-                  `griha-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                );
-                return downloadTelegramFileToDisk(token, fileId, dest);
+        archiveHandler: async (msg, ctx) => {
+          const token = loadConfig()?.telegram?.botToken;
+          try {
+            const res = await archiveFromTelegram(
+              msg as unknown as Parameters<typeof archiveFromTelegram>[0],
+              { kind: ctx.kind },
+              getChatArchiveService(),
+              {
+                download: async (fileId) => {
+                  if (!token) throw new Error("no botToken");
+                  const dest = path.join(
+                    os.tmpdir(),
+                    `griha-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  );
+                  return downloadTelegramFileToDisk(token, fileId, dest);
+                },
               },
-            },
-          ),
+            );
+            // R-GR-8: уведомление о плохом OCR — только по policy-флагу чата.
+            if (
+              res.stored &&
+              ctx.kind !== "text" &&
+              (res.needsReview === true || (res.confidence ?? 1) < 0.4)
+            ) {
+              const rules = [
+                ...getUserRulesService().getHardRules(ctx.chatId),
+                ...getUserRulesService().getSoftRules(ctx.chatId),
+              ];
+              if (
+                shouldNotifyPoorOcr(rules, {
+                  needsReview: res.needsReview,
+                  confidence: res.confidence,
+                })
+              ) {
+                return {
+                  stored: true,
+                  notify: "Не удалось уверенно распознать документ. Пришлите, пожалуйста, более чёткое фото.",
+                };
+              }
+            }
+            return { stored: res.stored };
+          } catch (err: unknown) {
+            // R-GR-7: download/OCR упал → отложенный retry, без потери file_id.
+            const media = mediaFileOf(msg);
+            if (media && mediaRetry) {
+              await mediaRetry.enqueue({
+                chatId: ctx.chatId,
+                threadId: msg.threadId,
+                messageId: msg.messageId,
+                fileId: media.fileId,
+                fileUniqueId: media.fileUniqueId,
+                kind: ctx.kind === "photo" ? "photo" : "document",
+              });
+            }
+            console.error(
+              "[telegram-bot] archive failed (enqueued retry):",
+              err instanceof Error ? err.message : err,
+            );
+            return { stored: false };
+          }
+        },
       },
     );
   }
@@ -312,6 +431,8 @@ async function startBot(): Promise<boolean> {
   try {
     await bootstrapUsers();
     getController().start(token);
+    // R-GR-7: фоновый воркер ретраев медиа — с ботом стартует/останавливается.
+    startMediaRetry();
     return true;
   } catch (err: unknown) {
     console.error("[telegram-bot] startBot error:", err);
@@ -321,6 +442,21 @@ async function startBot(): Promise<boolean> {
 
 async function stopBot(): Promise<void> {
   await controller?.stop();
+  stopMediaRetry();
+}
+
+/** file_id/file_unique_id из фото (самый большой размер) или документа. */
+function mediaFileOf(
+  msg: { photo?: Array<{ file_id?: string; file_unique_id?: string }>; document?: { file_id?: string; file_unique_id?: string } },
+): { fileId: string; fileUniqueId?: string } | null {
+  if (msg.photo && msg.photo.length > 0) {
+    const last = msg.photo[msg.photo.length - 1];
+    if (last.file_id) return { fileId: last.file_id, fileUniqueId: last.file_unique_id };
+  }
+  if (msg.document?.file_id) {
+    return { fileId: msg.document.file_id, fileUniqueId: msg.document.file_unique_id };
+  }
+  return null;
 }
 
 export default function telegramBot(pi: ExtensionAPI): void {

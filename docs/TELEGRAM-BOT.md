@@ -252,21 +252,15 @@ await session.bindExtensions({ mode: "json" });
 ### Chat onboarding + пресеты правил
 
 - **Group setup contract (mandatory)**: пока группа pending — бот в ней **молчит по
-  контенту** (R1: prefilter → false, 0 токенов LLM, даже на @mention). Исключение
-  (согласовано с заказчиком, «Ограничение D»): **онбординг-сообщение и `/setup`
-  разрешены в группе** — это не диалог с агентом и не снимает silent.
-- Онбординг при добавлении бота: сообщение с кнопками пресетов уходит **в саму группу**
-  (бот в группе не ограничен «первым /start», в отличие от DM — надёжнее), а также
-  в DM добавившему. `/setup` в группе — только для этой группы и только от её
-  creator/administrator; `/setup` в DM — список pending-групп (≤5 keyboard) или
-  `/setup <chatId>` (та же проверка прав через getChatMember).
+  контенту** (R1/R-GR-1: prefilter → false, 0 токенов LLM, даже на @mention).
+- **R-GR-2**: онбординг-UI (кнопки пресетов) — **только в DM** добавившему;
+  если DM не доставлен в момент добавления — **один** короткий fallback в группу
+  (текст без кнопок). `/setup` — только в DM (в группе — «только в личных сообщениях»).
 - `safe_default` пишется при add (silent, R4), но status остаётся pending — настройка
   завершается только preset/skip (R5). Личные чаты не блокируются (R6). Callback
   пресетов — canManage/addedBy + групповой admin-статус или owner/admin бота (R7, FR-4).
   Никаких LLM-ответов «я пока не настроен» в pending-группе (R8).
-- При добавлении бота в группу (`my_chat_member`) сразу применяются **safe defaults** чата
-  (hard rules: `require_mention`, `reply_to_bot`, `ignore_bots`, `ignore_service`,
-  `ignore_if_other_mention`), а в группу и добавившему в DM уходит сообщение с кнопками пресетов.
+- Повторный add не спамит онбордингом (FR-8); онбординг идемпотентен.
 - Пресеты (`RulePresets.ts`): team / secretary / listener / shop / only_me + «Настроить самому»
   (детерминированный парсер + кнопки confirm/cancel) и «Оставить как есть».
   Callback-данные: `cs:{chatId}:{p:{preset}|custom|skip|confirm|cancel}` (≤64 байт).
@@ -278,6 +272,29 @@ await session.bindExtensions({ mode: "json" });
   only_my_messages[_user_id], require_mention/reply_to_bot, ignore_if_other_mention);
   soft-ключи (style/length/no_hallucinate_data/memory_write/language_mirror) подмешиваются
   в system prompt коротким блоком. `/setup` — список чатов в ожидании настройки.
+
+### Group Runtime Contract
+
+**Добавление в группу:** тишина в группе до настройки (completed|skipped); настройка — только в DM.
+
+**Каждое сообщение (единый конвейер `group-runtime.ts`):**
+1. ACL (`UsersService.isAllowed`);
+2. configured-проверка (pending-группа → silent);
+3. загрузка chat-scoped hard+soft правил;
+4. hard-prefilter в коде (`evaluatePreFilter` — R-GR-4);
+5. STT / медиа (инжест или архив с retry-очередью при сбое скачивания);
+6. агент с `rulesContext` (`[GROUP_RULES]`-префикс — каждый ход, не только первый);
+7. ответ в тот же чат и `message_thread_id` (R-GR-9).
+
+**Изоляция (R-GR-5/6):** `sessionKey = tg:{userId}:{chatId}[:t:{threadId}]`; отдельного
+OS-процесса/субагента на группу нет — изоляция через sessionKey + chat-scoped rules/data.
+
+**Media reliability (R-GR-7):** сбой скачивания → job в `media_retry_jobs`
+(`~/.grish-ai/media-retry.sqlite`), фоновый воркер (60с) с backoff
+`min(3600, 30·2^attempts)` с; после max_attempts — dead-letter.
+
+**Poor OCR notify (R-GR-8):** только при `notify_poor_ocr=true` в правилах чата
+(default off; порог `poor_ocr_confidence_below`, default 0.4) — listen_only/mention-only не ломается.
 
 ### Документы / расходы (MVP)
 

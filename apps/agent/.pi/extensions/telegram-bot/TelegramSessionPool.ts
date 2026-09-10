@@ -81,10 +81,12 @@ export type TelegramSessionFactory = (
   meta: TelegramSessionMeta,
 ) => Promise<AgentSession>;
 
-/** Контекст сессии: чат + тема форума (для каталога сессий на диске). */
+/** Контекст сессии: чат + тема форума (+ rulesContext хода для агента). */
 export interface TelegramSessionMeta {
   chatId?: string;
   threadId?: string;
+  /** R-GR-3: контекст правил чата, передаётся в prompt на КАЖДЫЙ ход. */
+  rulesContext?: string;
 }
 
 export interface TelegramSessionPoolOptions {
@@ -211,7 +213,7 @@ export class TelegramSessionPool {
     const entry = this.getOrCreate(sessionKey, userId, meta);
     const run = async (): Promise<TelegramReply> => {
       const session = await entry.sessionPromise;
-      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId);
+      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId, meta.rulesContext);
     };
     entry.queue = entry.queue.then(run, run);
     return entry.queue;
@@ -223,6 +225,7 @@ export class TelegramSessionPool {
     userId: string,
     message: string,
     threadId?: string,
+    rulesContext?: string,
   ): Promise<TelegramReply> {
     let settled = false;
     let resolveReply!: (value: TelegramReply) => void;
@@ -257,7 +260,9 @@ export class TelegramSessionPool {
     });
 
     try {
-      await session.prompt(message, {
+      // R-GR-3: rulesContext — явный per-turn префикс (не только первый ход).
+      const fullMessage = rulesContext ? `${rulesContext}\n\n${message}` : message;
+      await session.prompt(fullMessage, {
         source: "extension",
         ...(session.isStreaming ? { streamingBehavior: "followUp" as const } : {}),
       });

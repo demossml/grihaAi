@@ -58,47 +58,16 @@ const deps = (
 });
 
 describe("runSetupCommand (D5 + группы)", () => {
-  it("/setup в группе: pending группа + admin → keyboard в эту группу", async () => {
-    const setup = await makeSetup(1);
-    const sent: Array<{ chatId: number; text?: string; buttons?: InlineButton[][] }> = [];
-    const text = await runSetupCommand(
-      "",
-      { chatId: "-1001", userId: "42", isPrivate: false },
-      deps(setup, sent),
-    );
-    assert.ok(text.includes("в эту группу"));
-    assert.equal(sent.length, 1);
-    assert.equal(sent[0].chatId, -1001);
-    assert.ok(sent[0].buttons![0][0].callbackData === "cs:-1001:p:team");
-  });
-
-  it("/setup в группе: non-admin (не canManage) → отказ, keyboard не отправлен", async () => {
+  it("/setup в группе → «только в DM», keyboard не отправляется (R-GR-2)", async () => {
     const setup = await makeSetup(1);
     const sent: Array<{ chatId: number }> = [];
     const text = await runSetupCommand(
       "",
       { chatId: "-1001", userId: "42", isPrivate: false },
-      {
-        setup,
-        users: { canManage: async () => false },
-        sendMessage: async () => undefined,
-        getChatMember: async () => "member",
-      },
-    );
-    assert.ok(text.includes("администратора"));
-    assert.equal(sent.length, 0);
-  });
-
-  it("/setup в группе: группа не pending → «не ожидает настройки»", async () => {
-    const setup = await makeSetup(1);
-    const sent: Array<{ chatId: number }> = [];
-    const text = await runSetupCommand(
-      "",
-      { chatId: "-9999", userId: "42", isPrivate: false },
       deps(setup, sent),
     );
-    assert.ok(text.includes("не ожидает настройки"));
-    assert.equal(sent.length, 0);
+    assert.ok(text.includes("личных сообщениях"));
+    assert.equal(sent.length, 0, "в группу keyboard не уходит");
   });
 
   it("/setup в DM → keyboard на каждый pending (≤5)", async () => {

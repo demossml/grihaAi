@@ -143,7 +143,7 @@ describe("onboarding handlers", () => {
     rules,
   });
 
-  it("my_chat_member → safe_default + pending + онбординг в группу И в DM", async () => {
+  it("my_chat_member → safe_default + pending + DM с кнопками (R-GR-2: в группу НЕ пишем)", async () => {
     const { setup, rules } = makeSetup();
     const sent: Array<{ chatId: number; text: string; hasButtons: boolean }> = [];
     await onChatMemberAdded(
@@ -165,12 +165,10 @@ describe("onboarding handlers", () => {
     assert.equal(rules.replaced.length, 1);
     assert.equal(rules.replaced[0].meta.source, "preset:safe_default");
     assert.equal((await setup.get("-100"))?.status, "pending");
-    assert.equal(sent.length, 2, "группа + DM актору");
-    assert.equal(sent[0].chatId, -100, "онбординг сначала в группу");
+    assert.equal(sent.length, 1, "только DM, без сообщения в группу");
+    assert.equal(sent[0].chatId, 42);
     assert.ok(sent[0].text.includes("Отдел продаж"));
-    assert.ok(sent[0].hasButtons, "кнопки пресетов в группе");
-    assert.equal(sent[1].chatId, 42, "и в DM добавившему");
-    assert.ok(sent[1].hasButtons);
+    assert.ok(sent[0].hasButtons, "кнопки пресетов — в DM");
   });
 
   it("second add after completed → no DM, no rule rewrite", async () => {
@@ -196,10 +194,10 @@ describe("onboarding handlers", () => {
     );
 
     assert.equal(rules.replaced.length, replacedAfter);
-    assert.equal(sent.length, 2, "повторный add не спамит (первый add: группа + DM)");
+    assert.equal(sent.length, 1, "повторный add не спамит (первый add: только DM)");
   });
 
-  it("DM упал → онбординг всё равно ушёл в группу (с кнопками)", async () => {
+  it("DM упал → один короткий fallback в группу БЕЗ кнопок (R-GR-2)", async () => {
     const { setup, rules } = makeSetup();
     const toActor: string[] = [];
     const toGroup: Array<{ chatId: number; text: string; hasButtons: boolean }> = [];
@@ -219,11 +217,12 @@ describe("onboarding handlers", () => {
     );
 
     assert.equal(toActor.length, 1, "DM попытка была ровно одна");
-    assert.equal(toGroup.length, 1, "онбординг в группу ровно один");
-    assert.ok(toGroup[0].text.includes("Выберите сценарий"), "полное меню в группе");
-    assert.ok(toGroup[0].hasButtons, "кнопки пресетов в группе");
+    assert.equal(toGroup.length, 1, "fallback в группу ровно один");
+    assert.ok(toGroup[0].text.includes("/setup"), "короткая строка с подсказкой");
+    assert.ok(!toGroup[0].text.includes("Выберите сценарий"), "без меню пресетов");
+    assert.equal(toGroup[0].hasButtons, false, "без кнопок пресетов");
     assert.equal(rules.replaced.length, 1, "safe_default всё равно применён");
-    assert.equal(setup.isConfiguredSync("-100"), false, "онбординг не завершает настройку");
+    assert.equal(setup.isConfiguredSync("-100"), false, "fallback не завершает настройку");
   });
 
   it("FR-8: повторный add при pending не дублирует онбординг", async () => {
@@ -243,14 +242,14 @@ describe("onboarding handlers", () => {
       from: { id: 42 },
     };
     await onChatMemberAdded(base, depsLocal);
-    assert.equal(sent.length, 2, "первый add: группа + DM");
+    assert.equal(sent.length, 1, "первый add: только DM");
 
     // Бота кикнули и вернули (статус всё ещё pending) — онбординг не дублируется.
     await onChatMemberAdded(
       { ...base, oldStatus: "kicked", newStatus: "administrator" },
       depsLocal,
     );
-    assert.equal(sent.length, 2, "повторный add при pending не спамит");
+    assert.equal(sent.length, 1, "повторный add при pending не спамит");
     assert.equal(rules.replaced.length, 2, "safe_default переприменён идемпотентно");
   });
 
