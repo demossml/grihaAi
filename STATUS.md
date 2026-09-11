@@ -340,3 +340,22 @@
 - [x] Typing-heartbeat через OCR+агент; media-retry — полный pipeline
 - [x] Tests: 536 unit — зелёные; typecheck/build зелёные; отчёт
   `GROUP_PHOTO_VISION_REPORT.md`
+
+## Phase 35 — Telegram layer: normalization/channels, policy, storage, hardening (промпты 01–10)
+
+- [x] Единая нормализация `message|channel_post|edited_message|edited_channel_post`
+  (`normalizer.ts`); `sender_chat` отдельно от `from`; topics — единая логика
+- [x] Listener отделён от agent ACL: archive/медиа по chat policy, agent — только
+  ACL после archive-решения; voice в listener (STT+архив)
+- [x] Единый медиа-конвейер photo/document/voice: persistent MediaStorage
+  (`telegram_media` + `~/.grish-ai/media/telegram`), caption отдельно, STT-confidence,
+  reuse при дубль-доставке, статусная машина
+- [x] Chat Policy engine: версионированная policy + audit history, deterministic
+  evaluation; LLM structured extraction custom-правил с preview+confirm
+- [x] Reliability: jitter backoff, stale-processing recovery, transient/permanent,
+  dead-letter, атомарный дедуп
+- [x] Security: мутации /rules — только creator/administrator/canManage (fail closed);
+  sender_chat ≠ user; chat/topic изоляция
+- [x] Наблюдаемость: structured logs + метрики telegram_*
+- [x] Docs: TELEGRAM-AUDIT.md, TELEGRAM-ARCHITECTURE.md, TELEGRAM-E2E-MATRIX.md
+- [x] Tests: 633 unit — зелёные; typecheck/build зелёные

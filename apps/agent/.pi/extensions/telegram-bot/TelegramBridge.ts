@@ -240,9 +240,10 @@ function buildMediaAgentMessage(
 }
 
 export class TelegramBridge {
+  private readonly agent: GrishaAgent;
   constructor(
     private readonly allowedUserIds: number[],
-    private readonly agent: GrishaAgent,
+    agent: GrishaAgent,
     private readonly sender: TelegramReplySender,
     private readonly options?: {
       prefilter?: RulePreFilter;
@@ -316,8 +317,16 @@ export class TelegramBridge {
       ) => Promise<unknown>;
       /** Интервал пульса typing (тесты). Default 4000мс. */
       typingIntervalMs?: number;
+      /** PROMPT 10: метрики (agent invocations/denied). */
+      onMetric?: (name: string, n?: number) => void;
     },
-  ) {}
+  ) {
+    const rawAgent = agent;
+    this.agent = async (input) => {
+      this.options?.onMetric?.("telegram_agent_invocations");
+      return rawAgent(input);
+    };
+  }
 
   /** Send a reply with all attached extras (file, caption, buttons). */
   private sendReply(chatId: number, reply: GrishaAgentReply, threadId?: string): Promise<void> {
@@ -735,10 +744,14 @@ export class TelegramBridge {
     hasRealUser: boolean;
     send: TelegramReplySender;
   }): Promise<{ allowed: boolean; reason: string; handled: boolean }> {
-    if (!opts.hasRealUser) return { allowed: false, reason: "channel-no-user", handled: true };
+    if (!opts.hasRealUser) {
+      this.options?.onMetric?.("telegram_agent_denied");
+      return { allowed: false, reason: "channel-no-user", handled: true };
+    }
     if (this.options?.aclCheck) {
       const allowed = await this.options.aclCheck(String(opts.userId), String(opts.chatId));
       if (!allowed) {
+        this.options?.onMetric?.("telegram_agent_denied");
         // Политика v1: private → короткий отказ (если не ACL_DENY_REPLY=0);
         // группа — молча. LLM не вызывается.
         if (opts.chatType === "private" && process.env.ACL_DENY_REPLY !== "0") {
@@ -749,6 +762,7 @@ export class TelegramBridge {
       return { allowed: true, reason: "ok", handled: true };
     }
     if (!this.isAllowed(opts.userId)) {
+      this.options?.onMetric?.("telegram_agent_denied");
       // Legacy-whitelist: handled=false (полностью игнорируем, как раньше).
       return { allowed: false, reason: "not-allowed", handled: false };
     }

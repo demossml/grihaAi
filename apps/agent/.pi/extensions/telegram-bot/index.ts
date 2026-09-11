@@ -31,6 +31,7 @@ import { evaluatePreFilter } from "../user-rules/prefilter.js";
 import { formatRulesContext } from "../user-rules/format-rules-context.js";
 import { prepareGroupTurn, shouldNotifyPoorOcr } from "./group-runtime.js";
 import { makeGuardedRulesHandler } from "./rules-auth.js";
+import { incMetric } from "./metrics.js";
 import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { recordChatPolicyFromRules, rulesToChatPolicy } from "../user-rules/chat-policy.js";
 import { buildExtractionPrompt } from "../chat-setup/policy-extraction.js";
@@ -382,6 +383,17 @@ function getController(): TelegramBotController {
               },
               { archive: doArchive, ocrIngest: doOcrIngest },
             );
+            incMetric("telegram_media_total");
+            if (result.archived && !ctx.allowed) incMetric("telegram_listener_archived");
+            if (result.needsReview) {
+              if (ctx.kind === "voice") incMetric("telegram_stt_failed");
+              else incMetric("telegram_ocr_failed");
+            }
+            incMetric("telegram_media_processed");
+            console.log(
+              `[telegram-bot] media done chat=${ctx.chatId} kind=${ctx.kind} msg_id=${msg.messageId ?? "-"} ` +
+                `status=processed archived=${result.archived} expense=${result.ingestedExpense} confidence=${result.confidence.toFixed(2)}`,
+            );
             // R-GR-8: notify только по policy-флагу (listen_only — тишина по умолчанию).
             const notify =
               result.needsReview &&
@@ -417,6 +429,10 @@ function getController(): TelegramBotController {
               "[telegram-bot] media pipeline failed (enqueued retry):",
               message,
             );
+            incMetric("telegram_media_failed");
+            console.error(
+              `[telegram-bot] media failed chat=${ctx.chatId} kind=${ctx.kind} msg_id=${msg.messageId ?? "-"} status=failed error=${message}`,
+            );
             return { failed: true };
           }
         },
@@ -441,6 +457,7 @@ function getController(): TelegramBotController {
                 },
               },
             );
+            if (res.stored) incMetric("telegram_listener_archived");
             return { stored: res.stored };
           } catch (err: unknown) {
             console.error(

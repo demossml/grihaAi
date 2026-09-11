@@ -45,25 +45,27 @@
 
 | ID | Дефект | Файл / функция | Статус |
 |----|--------|----------------|--------|
-| D1 | `channel_post`, `edited_message`, `edited_channel_post` не маршрутизируются: зарегистрирован только `bot.on("message")`, `toTgUpdate` читает только `ctx.message` | `TelegramBotController.pollLoop`, `toTgUpdate` | исправлено (02) |
-| D2 | Early ACL блокирует listener-архив: `aclCheck` выполняется ДО prefilter/archive — участник без agent-ACL не архивируется даже в `listen_only` | `TelegramBridge.handleUpdate` | исправлено (03) |
-| D3 | Voice не архивируется в listener: ветка `msg.voice` уходит в `blocked-by-rules` без archive; `processMedia` принимает только photo/document | `TelegramBridge.handleUpdate`, `telegram-bot/index.ts` | исправлено (04) |
-| D4 | Медиа-файлы удаляются после обработки: `fs.rm(tempPath)` в finally; постоянного хранилища нет | `ListenerMediaPipeline.process`, `DocumentIngestService`, `index.ts` (transcribeVoice) | исправлено (05) |
-| D5 | Retry-джобы застревают в `processing` после crash: `claimDue` берёт только `pending` | `media-retry.ts` | исправлено (07) |
-| D6 | `/rules` меняет правила без admin-проверки (любой ACL-user; API error не проверяется) | `user-rules/commands.ts` (`runRulesCommand`) | исправлено (08) |
-| D7 | Sender channel post не моделируется: `from` может отсутствовать, `sender_chat` не читается, bridge вернёт `no-user` | `toTgUpdate`, `TelegramBridge.handleUpdate` | исправлено (02) |
-| D8 | Edited-сообщения теряются; нет версионности правок | controller/bridge | исправлено (02) |
-| D9 | Дедуп не атомарен: `findByFileUniqueId` + `insert` без UNIQUE — race при дубль-доставке | `DocumentsRepository` | исправлено (07) |
-| D10 | STT-confidence не используется во входящем voice-конвейере (`assessTranscriptConfidence` есть, но bridge берёт только текст) | `voice-intake.ts`, `index.ts` | исправлено (04) |
-| D11 | Caption не хранится отдельно от OCR-текста | `chat-archive`, `ListenerMediaPipeline` | исправлено (04) |
-| D12 | Custom-rules парсер — только regex; LLM structured flow с preview/подтверждением отсутствует | `chat-setup/RulePresets.ts` | исправлено (06) |
+| D1 | `channel_post`, `edited_message`, `edited_channel_post` не маршрутизируются | `TelegramBotController.pollLoop`, `toTgUpdate` | **исправлено** (02): `normalizer.ts` + 4 update-фильтра |
+| D2 | Early ACL блокирует listener-архив | `TelegramBridge.handleUpdate` | **исправлено** (03): ACL после archive-решения (`checkAgentAcl`) |
+| D3 | Voice не архивируется в listener | bridge/`processMedia` | **исправлено** (04): voice → STT+архив в едином конвейере |
+| D4 | Медиа-файлы удаляются после обработки | `ListenerMediaPipeline` | **исправлено** (05): `MediaStorage` + `telegram_media` |
+| D5 | Retry-джобы застревают в `processing` | `media-retry.ts` | **исправлено** (07): `requeueStaleProcessing` |
+| D6 | `/rules` без admin-проверки | `user-rules/commands.ts` | **исправлено** (08): `rules-auth.ts`, server-side getChatMember |
+| D7 | Sender channel post не моделируется | `toTgUpdate`, bridge | **исправлено** (02): `sender_chat` отдельно от `from` |
+| D8 | Edited-сообщения теряются | controller/bridge | **исправлено** (02): ревизии `is_edited`/`revision` |
+| D9 | Дедуп не атомарен | `DocumentsRepository.insert` | **исправлено** (07): транзакция + повторная проверка |
+| D10 | STT-confidence не используется в voice-конвейере | `voice-intake.ts` | **исправлено** (04): `assessTranscriptConfidence` в pipeline |
+| D11 | Caption не отделён от OCR-текста | archive/pipeline | **исправлено** (04): колонка `caption` |
+| D12 | Custom-rules — только regex | `RulePresets.ts` | **исправлено** (06): LLM structured extraction + validation + preview |
 
 ## Тест-harness
 
 - `npm test` — `tsx --test "tests/**/*.test.ts"` (workspace-запуск `npx turbo run test`).
 - `npm run typecheck` / `npx turbo run typecheck`.
 - `npm run build` — `tsc -p tsconfig.json`.
-- На момент аудита: 536 unit-тестов, 0 fail.
+- `npm run lint` — **не сконфигурирован** в проекте (нет lint-скриптов; строгость
+  обеспечивается `strict` TypeScript и отсутствием `any`/необоснованных `!`).
+- На момент финала: **633 unit-теста, 0 fail**; typecheck/build зелёные.
 - Ограничения окружения: живого Telegram API нет — E2E строится на FakeBot
   (`TelegramBotLike`) и fault-injection поверх DI; реальный E2E описан в
   `docs/TELEGRAM-E2E-MATRIX.md`.

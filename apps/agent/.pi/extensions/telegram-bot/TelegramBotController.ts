@@ -19,6 +19,7 @@ import {
   normalizeTelegramUpdate,
   type TelegramUpdateKind,
 } from "./normalizer.js";
+import { incMetric } from "./metrics.js";
 import {
   computeSendDelayMs,
   parseTelegramError,
@@ -689,6 +690,7 @@ export class TelegramBotController {
       );
       return;
     }
+    incMetric("telegram_updates_total");
     console.log(
       `[telegram-bot] incoming update kind=${kind} user=${msg?.from?.id ?? "?"} ` +
         `sender_chat=${msg?.senderChat?.id ?? "-"} chat=${msg?.chat?.id ?? "?"} type=${msg?.chat?.type ?? "?"} ` +
@@ -696,6 +698,7 @@ export class TelegramBotController {
         `content=${msg?.text ? "text" : msg?.photo?.length ? "photo" : msg?.document ? "document" : msg?.voice ? "voice" : msg?.contact ? "contact" : msg?.location ? "location" : "other"}`,
     );
     void bridge.handleUpdate(update).catch((err: unknown) => {
+      incMetric("telegram_updates_failed");
       console.error(
         "[telegram-bot] message handling failed:",
         err instanceof Error ? err.message : err,

@@ -115,9 +115,7 @@ export function rulesToChatPolicy(rules: UserRule[]): Omit<ChatPolicy, "version"
       ? replyToBot
         ? "mention_or_reply"
         : "mention"
-      : replyToBot
-        ? "reply"
-        : "always";
+      : "always"; // reply_to_bot сам по себе не ограничивает (без require_mention)
 
   const legacyOwner = [...rules].reverse().find((r) => isOnlyOwnerRule(r) && r.ownerUserId);
 
