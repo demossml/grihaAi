@@ -12,25 +12,36 @@ export interface TgUser {
   firstName?: string;
 }
 
+/** sender_chat (channel_post/собственное имя отправителя). */
+export interface TgSenderChat {
+  id?: number;
+  title?: string;
+}
+
 export interface TgDocument {
   file_id?: string;
 }
 
 export interface TgMessage {
   from?: TgUser;
+  /** Канал/группа-отправитель (channel_post); from при этом может отсутствовать. */
+  senderChat?: TgSenderChat;
   chat?: { id: number; type?: string };
   messageId?: number;
   /** Тема форума (message_thread_id); undefined в обычных группах/DM. */
   threadId?: string;
   isForum?: boolean;
   /**
-   * R1: заполнен ТОЛЬКО для group/supergroup контроллером
+   * R1: заполнен ТОЛЬКО для group/supergroup/channel контроллером
    * (getGroupConfigured). false = pending → silent. private — undefined.
    */
   groupConfigured?: boolean;
   text?: string;
   caption?: string;
-  voice?: { file_id?: string };
+  /** Правка (edited_message/edited_channel_post): архив хранит ревизии. */
+  isEdited?: boolean;
+  editDate?: number;
+  voice?: { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string };
   document?: {
     file_id?: string;
     file_unique_id?: string;
@@ -50,6 +61,8 @@ export interface TgMessage {
 
 export interface TgUpdate {
   updateId: number;
+  /** Единый update kind (PROMPT 02): message|channel_post|edited_message|edited_channel_post. */
+  updateKind?: "message" | "channel_post" | "edited_message" | "edited_channel_post";
   message?: TgMessage;
 }
 
@@ -101,6 +114,7 @@ export interface RulePreFilter {
     fromUserId: string;
     text: string;
     isGroup?: boolean;
+    isChannel?: boolean;
     fromIsBot?: boolean;
     isService?: boolean;
     botMentioned?: boolean;
@@ -169,20 +183,28 @@ function lastPhotoFileId(photo: Array<{ file_id?: string }>): string {
 }
 
 /**
- * Промпт агента для входящего медиа: распознанный текст OCR в центре,
+ * Промпт агента для входящего медиа: распознанный текст OCR/STT в центре,
  * file_id — справочно внизу (B2: агент видит содержимое, а не голый id).
  */
 function buildMediaAgentMessage(
-  base: string,
+  kind: "photo" | "document" | "voice",
   msg: TgMessage,
   fileId: string,
   media: ProcessMediaResult | null,
 ): string {
+  const base =
+    kind === "photo"
+      ? "Пользователь прислал изображение."
+      : kind === "voice"
+        ? "Пользователь прислал голосовое сообщение."
+        : "Пользователь прислал документ.";
   if (media?.failed) {
     return [
       base,
       msg.caption ? `Подпись: ${msg.caption}` : null,
-      "Не удалось распознать изображение.",
+      kind === "voice"
+        ? "Не удалось распознать голос."
+        : "Не удалось распознать изображение.",
       `telegram_file_id: ${fileId}`,
     ]
       .filter(Boolean)
@@ -191,15 +213,18 @@ function buildMediaAgentMessage(
   const ocrText = media?.rawText?.trim();
   const mime = msg.document?.mime_type ?? "";
   const fileName = msg.document?.file_name ?? "";
-  const isPdf = /pdf/i.test(mime) || /\.pdf$/i.test(fileName);
+  const isPdf = kind === "document" && (/pdf/i.test(mime) || /\.pdf$/i.test(fileName));
+  const textLabel = kind === "voice" ? "Распознанный текст (STT):" : "Распознанный текст (OCR):";
   return [
     base,
     msg.caption ? `Подпись: ${msg.caption}` : null,
     ocrText
-      ? `Распознанный текст (OCR):\n${ocrText}`
+      ? `${textLabel}\n${ocrText}`
       : isPdf
         ? "OCR: PDF не поддерживается vision-моделью — нужна ручная проверка документа."
-        : "OCR не извлёк текст (нужна проверка или vision недоступен).",
+        : kind === "voice"
+          ? "STT не извлёк текст (нужна проверка или STT недоступен)."
+          : "OCR не извлёк текст (нужна проверка или vision недоступен).",
     media?.expenseId ? `Документ сохранён в expenses id=${media.expenseId}` : null,
     `telegram_file_id: ${fileId}`,
   ]
@@ -262,7 +287,7 @@ export class TelegramBridge {
         ctx: {
           chatId: string;
           userId: string;
-          kind: "photo" | "document";
+          kind: "photo" | "document" | "voice";
           allowed: boolean;
           archive: boolean;
         },
@@ -270,7 +295,7 @@ export class TelegramBridge {
       /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
       archiveHandler?: (
         msg: TgMessage,
-        ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" },
+        ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" | "voice" },
       ) => Promise<{ stored: boolean; notify?: string }>;
       /** Group Runtime Contract: единая подготовка хода (configured → rules → prefilter). */
       prepareTurn?: (input: import("./group-runtime.js").PrepareTurnInput) => import("./group-runtime.js").PrepareTurnResult;
@@ -328,6 +353,8 @@ export class TelegramBridge {
     chatType: string,
   ): { process: boolean; suppressReply: boolean; archive: boolean; rulesContext: string } {
     const isGroup = chatType === "group" || chatType === "supergroup";
+    const isChannel = chatType === "channel";
+    const isManaged = isGroup || isChannel;
     const prepareTurn = this.options?.prepareTurn;
     if (prepareTurn) {
       // Group Runtime Contract: единые шаги configured → rules → prefilter (R-GR-1/3/4).
@@ -337,13 +364,14 @@ export class TelegramBridge {
         threadId: msg.threadId,
         chatType,
         isGroup,
+        isChannel,
         text,
         botMentioned: msg.botMentioned,
         repliedToBot: msg.repliedToBot,
         startsWithOtherMention: msg.startsWithOtherMention,
         fromIsBot: msg.fromIsBot,
         isService: msg.isService,
-        groupConfigured: isGroup ? (msg.groupConfigured ?? false) : undefined,
+        groupConfigured: isManaged ? (msg.groupConfigured ?? false) : undefined,
         caption: msg.caption,
         messageId: msg.messageId,
       });
@@ -363,13 +391,14 @@ export class TelegramBridge {
       fromUserId: String(userId),
       text,
       isGroup,
+      isChannel,
       fromIsBot: msg.fromIsBot,
       isService: msg.isService,
       botMentioned: msg.botMentioned,
       repliedToBot: msg.repliedToBot,
       startsWithOtherMention: msg.startsWithOtherMention,
-      // R1: pending-группа → false (silent). private → undefined (не применяется).
-      groupConfigured: isGroup ? (msg.groupConfigured ?? false) : undefined,
+      // R1: pending (group/supergroup/channel) → false (silent). private → undefined.
+      groupConfigured: isManaged ? (msg.groupConfigured ?? false) : undefined,
     });
     if (typeof result === "boolean") {
       return { process: result, suppressReply: false, archive: false, rulesContext: "" };
@@ -390,30 +419,24 @@ export class TelegramBridge {
   async handleUpdate(update: TgUpdate): Promise<{ handled: boolean; reason?: string }> {
     const msg = update.message;
     if (!msg?.chat) return { handled: false, reason: "no-message" };
-    const userId = msg.from?.id;
-    if (userId === undefined) return { handled: false, reason: "no-user" };
+    // Безопасный sender (PROMPT 02): from может отсутствовать (channel_post),
+    // тогда отправитель — sender_chat (не приравнивается к user-авторизации).
+    const senderUserId = msg.from?.id;
+    const senderChatId = msg.senderChat?.id;
+    if (senderUserId === undefined && senderChatId === undefined) {
+      return { handled: false, reason: "no-user" };
+    }
+    const userId = senderUserId ?? senderChatId!;
+    const hasRealUser = senderUserId !== undefined;
 
     const chatId = msg.chat.id;
     const chatType = msg.chat.type ?? "private";
+    const isChannel = chatType === "channel";
     const text = msg.text ?? "";
     // Все ответы этого апдейта уходят в тему входящего сообщения.
     const send = this.makeSender(msg.threadId);
 
-    // ── Early ACL: как можно раньше, ДО prefilter/агента (п.3 спеки). ────────
-    if (this.options?.aclCheck) {
-      const allowed = await this.options.aclCheck(String(userId), String(chatId));
-      if (!allowed) {
-        // Политика v1: private → короткий отказ (если не ACL_DENY_REPLY=0);
-        // группа — молча. LLM не вызывается.
-        if (chatType === "private" && process.env.ACL_DENY_REPLY !== "0") {
-          await send(chatId, "Нет доступа.");
-        }
-        return { handled: true, reason: "acl-denied" };
-      }
-    } else if (!this.isAllowed(userId)) {
-      return { handled: false, reason: "not-allowed" };
-    }
-
+    if (hasRealUser) {
     if (text === "/start") {
       // D9: в private — короткий hint про pending-группы, без спама клавиатурами.
       let extra = "";
@@ -508,15 +531,29 @@ export class TelegramBridge {
         if (intercepted) return { handled: true, reason: "setup-custom-text" };
       }
     }
+    } // hasRealUser (команды/custom-текст — только от реальных пользователей)
+
     if (msg.voice) {
       // D3: голос транскрибируется ДО агента (STT pipeline), агенту идёт текст.
       const fileId = msg.voice.file_id;
       if (!fileId) return { handled: false, reason: "empty" };
+
+      // PROMPT 04: единый медиа-конвейер (STT+архив по policy) при наличии hook.
+      const isManagedChat = chatType === "group" || chatType === "supergroup" || chatType === "channel";
+      const pending = isManagedChat && msg.groupConfigured === false;
+      if (this.options?.processMedia && !pending) {
+        return this.handleMedia(msg, chatId, userId, chatType, send, "voice");
+      }
+
+      // Legacy (без processMedia): STT → агент с транскриптом.
       const placeholder = msg.caption ?? "voice";
       const gate1 = this.evaluateInput(placeholder, userId, chatId, msg, chatType);
       if (!gate1.process) {
         return { handled: true, reason: "blocked-by-rules" };
       }
+      // Agent-path ACL ПОСЛЕ policy (PROMPT 03); channel/sender_chat — agent denied.
+      const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
+      if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
       this.options?.beforeAgent?.(chatId);
       // Heartbeat на время STT И агента; finally гарантирует остановку.
       const hb = this.startHeartbeat(chatId, msg);
@@ -578,10 +615,12 @@ export class TelegramBridge {
       // contact_upsert (crm) через обычный tool-цикл — approval/rules-логику
       // не обходим. Реакция 👍 — тривиальное подтверждение приёма на исходном
       // сообщении (содержательный ответ всё равно приходит текстом от агента).
-      if (msg.messageId !== undefined) this.options?.react?.(chatId, msg.messageId, "👍");
       const message = `Пользователь поделился контактом.\nИмя: ${msg.contact.first_name ?? ""} ${msg.contact.last_name ?? ""}\nТелефон: ${msg.contact.phone_number ?? "не указан"}`;
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
       if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
+      const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
+      if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
+      if (msg.messageId !== undefined) this.options?.react?.(chatId, msg.messageId, "👍");
       this.options?.beforeAgent?.(chatId);
       const hb = this.startHeartbeat(chatId, msg);
       try {
@@ -607,6 +646,8 @@ export class TelegramBridge {
       const message = `Пользователь поделился геолокацией: ${msg.location.latitude ?? "?"}, ${msg.location.longitude ?? "?"}`;
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
       if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
+      const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
+      if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
       this.options?.beforeAgent?.(chatId);
       const hb = this.startHeartbeat(chatId, msg);
       try {
@@ -632,12 +673,17 @@ export class TelegramBridge {
 
     // L1: listen_only без обращения — агент заблокирован; текст всё равно тихо
     // архивируется (если archive=true), индикатор «печатает» не включается.
+    // Архив решается ПО policy ДО agent ACL (PROMPT 03).
     if (gate.archive) {
       await this.archiveQuietly(msg, chatId, userId, "text", send);
       if (!gate.process) return { handled: true, reason: "archived-silent" };
     } else if (!gate.process) {
       return { handled: true, reason: "blocked-by-rules" };
     }
+
+    // Agent path — только после archive-решения и только для реальных users.
+    const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
+    if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
 
     this.options?.beforeAgent?.(chatId);
     // Heartbeat только когда пользователь получит ответ (не silent-archive).
@@ -661,6 +707,38 @@ export class TelegramBridge {
   }
 
   /**
+   * Agent-path ACL (PROMPT 03): вызывается ПОСЛЕ archive/медиа-решения и ДО
+   * агента. Archive по chat policy разрешён и без agent ACL (listener).
+   * Канал/sender_chat (без from): user-ACL неприменим → agent denied.
+   */
+  private async checkAgentAcl(opts: {
+    userId: number;
+    chatId: number;
+    chatType: string;
+    hasRealUser: boolean;
+    send: TelegramReplySender;
+  }): Promise<{ allowed: boolean; reason: string; handled: boolean }> {
+    if (!opts.hasRealUser) return { allowed: false, reason: "channel-no-user", handled: true };
+    if (this.options?.aclCheck) {
+      const allowed = await this.options.aclCheck(String(opts.userId), String(opts.chatId));
+      if (!allowed) {
+        // Политика v1: private → короткий отказ (если не ACL_DENY_REPLY=0);
+        // группа — молча. LLM не вызывается.
+        if (opts.chatType === "private" && process.env.ACL_DENY_REPLY !== "0") {
+          await opts.send(opts.chatId, "Нет доступа.");
+        }
+        return { allowed: false, reason: "acl-denied", handled: true };
+      }
+      return { allowed: true, reason: "ok", handled: true };
+    }
+    if (!this.isAllowed(opts.userId)) {
+      // Legacy-whitelist: handled=false (полностью игнорируем, как раньше).
+      return { allowed: false, reason: "not-allowed", handled: false };
+    }
+    return { allowed: true, reason: "ok", handled: true };
+  }
+
+  /**
    * Единая ветка photo/document (B2/B4): сначала download+OCR (или архив),
    * потом агент с распознанным текстом — не с голым file_id.
    *
@@ -675,18 +753,29 @@ export class TelegramBridge {
     userId: number,
     chatType: string,
     send: TelegramReplySender,
-    kind: "photo" | "document",
+    kind: "photo" | "document" | "voice",
   ): Promise<{ handled: boolean; reason?: string }> {
     const fileId =
-      kind === "photo" ? lastPhotoFileId(msg.photo ?? []) : msg.document?.file_id ?? "unknown";
-    const base = kind === "photo" ? "Пользователь прислал изображение." : "Пользователь прислал документ.";
+      kind === "photo"
+        ? lastPhotoFileId(msg.photo ?? [])
+        : kind === "voice"
+          ? msg.voice?.file_id ?? "unknown"
+          : msg.document?.file_id ?? "unknown";
+    const base =
+      kind === "photo"
+        ? "Пользователь прислал изображение."
+        : kind === "voice"
+          ? "Пользователь прислал голосовое сообщение."
+          : "Пользователь прислал документ.";
     // Вход prefilter'а — прежний (file_id-сообщение): решения правил не меняются.
     const message = `${base}\nfile_id: ${fileId}\nПодпись: ${msg.caption ?? "нет"}`;
     const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
 
     const isGroup = chatType === "group" || chatType === "supergroup";
-    const pendingGroup = isGroup && msg.groupConfigured === false;
-    const processMedia = pendingGroup ? undefined : this.options?.processMedia;
+    const isManaged = isGroup || chatType === "channel";
+    // R1: pending (group/supergroup/channel) → тишина, без OCR и без агента.
+    const pendingManaged = isManaged && msg.groupConfigured === false;
+    const processMedia = pendingManaged ? undefined : this.options?.processMedia;
 
     // Heartbeat на время OCR И агента (только когда будет ответ пользователю).
     const hb = gate.process && !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
@@ -709,7 +798,7 @@ export class TelegramBridge {
         if (gate.archive) {
           await this.archiveQuietly(msg, chatId, userId, kind, send);
         } else {
-          const ingest = pendingGroup ? undefined : this.options?.documentIngest;
+          const ingest = pendingManaged ? undefined : this.options?.documentIngest;
           if (ingest) {
             const ingested = await ingest(msg, { chatId: String(chatId), userId: String(userId) });
             if (ingested?.ack) {
@@ -725,9 +814,19 @@ export class TelegramBridge {
         return { handled: true, reason: gate.archive ? "archived-silent" : "blocked-by-rules" };
       }
 
+      // Agent path — только после media-решения; канал/sender_chat — denied.
+      const acl = await this.checkAgentAcl({
+        userId,
+        chatId,
+        chatType,
+        hasRealUser: msg.from?.id !== undefined,
+        send,
+      });
+      if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
+
       this.options?.beforeAgent?.(chatId);
       const agentMessage = processMedia
-        ? buildMediaAgentMessage(base, msg, fileId, media)
+        ? buildMediaAgentMessage(kind, msg, fileId, media)
         : message;
       const response = await this.agent({
         message: agentMessage,
@@ -755,7 +854,7 @@ export class TelegramBridge {
     msg: TgMessage,
     chatId: number,
     userId: number,
-    kind: "text" | "photo" | "document",
+    kind: "text" | "photo" | "document" | "voice",
     send: TelegramReplySender,
   ): Promise<void> {
     try {

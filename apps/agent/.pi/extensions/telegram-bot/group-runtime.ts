@@ -17,8 +17,9 @@ export interface PrepareTurnInput {
   chatId: string;
   userId: string;
   threadId?: string;
-  chatType: string; // private | group | supergroup
+  chatType: string; // private | group | supergroup | channel
   isGroup: boolean;
+  isChannel?: boolean;
   text: string;
   botMentioned?: boolean;
   repliedToBot?: boolean;
@@ -55,8 +56,8 @@ function blocked(reason: string): PrepareTurnResult {
 }
 
 export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps): PrepareTurnResult {
-  // 2) R-GR-1: pending-группа — нулевой ответ (даже на @mention).
-  if (input.isGroup && !deps.isGroupConfigured(input.chatId)) {
+  // 2) R-GR-1: pending (group/supergroup/channel) — нулевой ответ (даже на @mention).
+  if ((input.isGroup || input.isChannel === true) && !deps.isGroupConfigured(input.chatId)) {
     return blocked("group-not-configured");
   }
 
@@ -71,7 +72,8 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
     fromUserId: input.userId,
     text: input.text,
     isGroup: input.isGroup,
-    groupConfigured: input.isGroup ? true : undefined,
+    isChannel: input.isChannel,
+    groupConfigured: input.isGroup || input.isChannel === true ? true : undefined,
     botMentioned: input.botMentioned,
     repliedToBot: input.repliedToBot,
     startsWithOtherMention: input.startsWithOtherMention,

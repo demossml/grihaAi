@@ -7,6 +7,8 @@ export interface RulePreFilterInput {
   text: string;
   /** Группа/супергруппа (require_mention и т.п. применяются только в группах). */
   isGroup?: boolean;
+  /** Канал (channel_post): mention невозможен, archive — по policy. */
+  isChannel?: boolean;
   /** Сообщение от бота (grammy from.is_bot). */
   fromIsBot?: boolean;
   /** Служебное сообщение (new_chat_members и т.п.). */
@@ -149,8 +151,9 @@ export function evaluatePreFilter(
   hardRules: UserRule[],
   input: RulePreFilterInput,
 ): PreFilterOutcome {
-  // R1 / R6: pending-группа молчит (0 токенов LLM), даже на @mention.
-  if (input.isGroup && input.groupConfigured === false) return BLOCKED;
+  // R1 / R6: pending (group/supergroup/channel) молчит (0 токенов LLM), даже на @mention.
+  if ((input.isGroup || input.isChannel) && input.groupConfigured === false) return BLOCKED;
+  const isArchiveScope = input.isGroup === true || input.isChannel === true;
 
   // Structured keys (пресеты) — в первую очередь.
   const keys = new Set(hardRules.map((r) => r.key));
@@ -177,13 +180,13 @@ export function evaluatePreFilter(
       return {
         process: false,
         suppressReply: true,
-        archive: input.isGroup === true,
+        archive: isArchiveScope,
       };
     }
     return {
       process: true,
       suppressReply: false,
-      archive: input.isGroup === true,
+      archive: isArchiveScope,
     };
   }
 

@@ -8,6 +8,8 @@ import { DocumentsRepository } from "./DocumentsRepository.js";
 import { DocumentIngestService } from "./DocumentIngestService.js";
 import { ChatArchiveService } from "./chat-archive.js";
 import { ListenerMediaPipeline } from "./ListenerMediaPipeline.js";
+import { LocalMediaStorage } from "./media-storage.js";
+import { transcribeVoice } from "@griha/stt";
 import {
   createExtractor,
   type VisionOcrFn,
@@ -109,6 +111,12 @@ export function getListenerMediaPipeline(): ListenerMediaPipeline {
           "../../utils/telegram/telegram-files.js"
         );
         return downloadTelegramFileToDisk(token, fileId, dest);
+      },
+      {
+        // PROMPT 05: файл остаётся в ~/.grish-ai/media/telegram после обработки.
+        storage: new LocalMediaStorage(),
+        // PROMPT 04: voice → STT через @griha/stt (тот же бэкенд, что tool).
+        stt: async (filePath) => transcribeVoice(filePath, {}),
       },
     );
   }

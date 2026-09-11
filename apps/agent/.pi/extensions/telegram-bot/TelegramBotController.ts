@@ -14,8 +14,11 @@ import {
 } from "./TelegramBridge.js";
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import fs from "node:fs";
-import { normalizeThreadId } from "./threads.js";
-import { collectMentionFlags } from "./mentions.js";
+import {
+  isManagedChatType,
+  normalizeTelegramUpdate,
+  type TelegramUpdateKind,
+} from "./normalizer.js";
 import {
   computeSendDelayMs,
   parseTelegramError,
@@ -50,7 +53,13 @@ export interface TelegramChatMemberEvent {
 /** Minimal surface of a grammy Bot needed for long polling. */
 export interface TelegramBotLike {
   on(
-    filter: "message" | "callback_query:data" | "my_chat_member",
+    filter:
+      | "message"
+      | "channel_post"
+      | "edited_message"
+      | "edited_channel_post"
+      | "callback_query:data"
+      | "my_chat_member",
     handler: ((ctx: unknown) => unknown) | ((ctx: TelegramCallbackQueryContext) => unknown),
   ): void;
   start(): Promise<unknown>;
@@ -150,13 +159,13 @@ export interface TelegramBotControllerOptions {
       ) => Promise<unknown>;
     },
   ) => Promise<void>;
-  /** Единый медиа-конвейер (photo/document): OCR → archive → expenses до агента. */
+  /** Единый медиа-конвейер (photo/document/voice): OCR/STT → archive → expenses до агента. */
   processMedia?: (
     msg: TgMessage,
     ctx: {
       chatId: string;
       userId: string;
-      kind: "photo" | "document";
+      kind: "photo" | "document" | "voice";
       allowed: boolean;
       archive: boolean;
     },
@@ -164,7 +173,7 @@ export interface TelegramBotControllerOptions {
   /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
   archiveHandler?: (
     msg: TgMessage,
-    ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" },
+    ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" | "voice" },
   ) => Promise<{ stored: boolean; notify?: string }>;
   /** Group Runtime Contract: единая подготовка хода (configured → rules → prefilter). */
   prepareTurn?: (
@@ -349,29 +358,11 @@ export class TelegramBotController {
         },
       );
 
-      bot.on("message", (ctx: unknown) => {
-        const update = this.toTgUpdate(ctx);
-        if (!update) return;
-        const msg = update.message;
-        // FR-6: сервисные сообщения (new_chat_members/left_chat_member,
-        // new_chat_title, pinned_message и т.п.) — НЕ ввод для агента.
-        if (msg?.isService) {
-          console.log(
-            `[telegram-bot] service message chat=${msg.chat?.id ?? "?"} ignored (not agent input)`,
-          );
-          return;
-        }
-        console.log(
-          `[telegram-bot] incoming message from user=${msg?.from?.id ?? "?"} chat=${msg?.chat?.id ?? "?"} ` +
-            `kind=${msg?.text ? "text" : msg?.photo?.length ? "photo" : msg?.document ? "document" : msg?.voice ? "voice" : msg?.contact ? "contact" : msg?.location ? "location" : "other"}`,
-        );
-        void bridge.handleUpdate(update).catch((err: unknown) => {
-          console.error(
-            "[telegram-bot] message handling failed:",
-            err instanceof Error ? err.message : err,
-          );
+      for (const filter of ["message", "channel_post", "edited_message", "edited_channel_post"] as const) {
+        bot.on(filter, (ctx: unknown) => {
+          this.handleTelegramUpdate(ctx, filter, bridge);
         });
-      });
+      }
 
       bot.on("my_chat_member", (ctx: unknown) => {
         const event = this.toChatMemberEvent(ctx);
@@ -676,104 +667,81 @@ export class TelegramBotController {
     };
   }
 
-  private toTgUpdate(ctx: unknown): TgUpdate | null {
-    if (!ctx || typeof ctx !== "object") return null;
-    const c = ctx as {
-      update?: { update_id?: number };
-      message?: {
-        from?: { id?: number; first_name?: string; is_bot?: boolean };
-        chat?: { id?: number; type?: string; is_forum?: boolean };
-        message_id?: number;
-        message_thread_id?: number;
-        reply_to_message?: { from?: { id?: number }; message_thread_id?: number };
-        text?: string;
-        caption?: string;
-        entities?: Array<{ type?: string; offset?: number; length?: number; user?: { id?: number } }>;
-        caption_entities?: Array<{ type?: string; offset?: number; length?: number; user?: { id?: number } }>;
-        voice?: { file_id?: string };
-        document?: {
-          file_id?: string;
-          file_unique_id?: string;
-          file_name?: string;
-          mime_type?: string;
-        };
-        photo?: Array<{ file_id?: string; file_unique_id?: string }>;
-        contact?: { first_name?: string; last_name?: string; phone_number?: string };
-        location?: { latitude?: number; longitude?: number };
-        new_chat_members?: unknown;
-        left_chat_member?: unknown;
-        new_chat_title?: unknown;
-        new_chat_photo?: unknown;
-        delete_chat_photo?: unknown;
-        group_chat_created?: unknown;
-        supergroup_chat_created?: unknown;
-        channel_chat_created?: unknown;
-        pinned_message?: unknown;
-      };
-    };
-    const m = c.message;
-    if (!m?.chat) return null;
-
-    // Тема форума: из message_thread_id или fallback reply_to_message.
-    const threadId = normalizeThreadId(
-      m.message_thread_id ?? m.reply_to_message?.message_thread_id,
+  /**
+   * Единая точка входа для всех message-like update'ов (PROMPT 02):
+   * message | channel_post | edited_message | edited_channel_post.
+   * Служебные сообщения отсекаются ДО bridge/агента (FR-6).
+   */
+  private handleTelegramUpdate(
+    ctx: unknown,
+    kind: TelegramUpdateKind,
+    bridge: TelegramBridge,
+  ): void {
+    const update = this.toTgUpdate(ctx);
+    if (!update) return;
+    const msg = update.message;
+    if (msg?.isService) {
+      console.log(
+        `[telegram-bot] service message chat=${msg.chat?.id ?? "?"} ignored (not agent input)`,
+      );
+      return;
+    }
+    console.log(
+      `[telegram-bot] incoming update kind=${kind} user=${msg?.from?.id ?? "?"} ` +
+        `sender_chat=${msg?.senderChat?.id ?? "-"} chat=${msg?.chat?.id ?? "?"} type=${msg?.chat?.type ?? "?"} ` +
+        `msg_id=${msg?.messageId ?? "?"} thread=${msg?.threadId ?? "-"} edited=${msg?.isEdited ? "yes" : "no"} ` +
+        `content=${msg?.text ? "text" : msg?.photo?.length ? "photo" : msg?.document ? "document" : msg?.voice ? "voice" : msg?.contact ? "contact" : msg?.location ? "location" : "other"}`,
     );
-    const isForum = m.chat.is_forum === true;
-    // R1: для группы всегда boolean (pending → false → silent); private — undefined.
-    const chatType = m.chat.type ?? "private";
-    const isGroup = chatType === "group" || chatType === "supergroup";
-    const groupConfigured = isGroup
-      ? (this.options?.getGroupConfigured?.(String(m.chat.id ?? 0)) ?? false)
+    void bridge.handleUpdate(update).catch((err: unknown) => {
+      console.error(
+        "[telegram-bot] message handling failed:",
+        err instanceof Error ? err.message : err,
+      );
+    });
+  }
+
+  private toTgUpdate(ctx: unknown): TgUpdate | null {
+    const n = normalizeTelegramUpdate(ctx, { botSelf: this.options?.getBotSelf?.() });
+    if (!n) return null;
+
+    const chatIdNum = Number(n.chat.id);
+    const isManaged = isManagedChatType(n.chat.type);
+    // R1: для group/supergroup/channel всегда boolean (pending → false → silent);
+    // private — undefined.
+    const groupConfigured = isManaged
+      ? (this.options?.getGroupConfigured?.(n.chat.id) ?? false)
       : undefined;
 
-    // ── Pre-filter флаги (structured rules §9): mention/reply/bot/service. ──
-    const self = this.options?.getBotSelf?.();
-    const textOrCaption = m.text ?? m.caption ?? "";
-    // D1: entities (текст) + caption_entities (подпись к фото/документу).
-    const fromText = collectMentionFlags(textOrCaption, m.entities ?? [], self);
-    const fromCaption = collectMentionFlags(m.caption ?? "", m.caption_entities ?? [], self);
-    const botMentioned =
-      fromText.botMentioned || fromCaption.botMentioned ? true : undefined;
-    const startsWithOtherMention =
-      fromText.startsWithOtherMention || fromCaption.startsWithOtherMention ? true : undefined;
-    const replyFromId = m.reply_to_message?.from?.id;
-    const repliedToBot =
-      self && replyFromId !== undefined ? replyFromId === self.id : undefined;
-
-    const serviceFields = [
-      m.new_chat_members,
-      m.left_chat_member,
-      m.new_chat_title,
-      m.new_chat_photo,
-      m.delete_chat_photo,
-      m.group_chat_created,
-      m.supergroup_chat_created,
-      m.channel_chat_created,
-      m.pinned_message,
-    ];
-    const isService = serviceFields.some((f) => f !== undefined);
-
+    const sender = n.message.sender;
     return {
-      updateId: c.update?.update_id ?? 0,
+      updateId: n.updateId,
+      updateKind: n.updateKind,
       message: {
-        from: m.from ? { id: m.from.id ?? 0, firstName: m.from.first_name } : undefined,
-        chat: { id: m.chat.id ?? 0, type: m.chat.type },
-        messageId: m.message_id,
-        threadId,
-        isForum,
+        from: sender?.userId
+          ? { id: Number(sender.userId), firstName: sender.displayName }
+          : undefined,
+        senderChat: sender?.senderChatId
+          ? { id: Number(sender.senderChatId), title: sender.senderChatTitle }
+          : undefined,
+        chat: { id: chatIdNum, type: n.chat.type },
+        messageId: n.message.id !== "0" ? Number(n.message.id) : undefined,
+        threadId: n.message.threadId,
+        isForum: n.chat.isForum,
         groupConfigured,
-        text: m.text,
-        caption: m.caption,
-        voice: m.voice as { file_id?: string } | undefined,
-        document: m.document,
-        photo: m.photo,
-        contact: m.contact,
-        location: m.location,
-        fromIsBot: m.from?.is_bot === true,
-        isService,
-        botMentioned,
-        repliedToBot,
-        startsWithOtherMention,
+        text: n.message.text,
+        caption: n.message.caption,
+        voice: n.message.voice as { file_id?: string } | undefined,
+        document: n.message.document,
+        photo: n.message.photo,
+        contact: n.message.contact,
+        location: n.message.location,
+        fromIsBot: sender?.isBot === true,
+        isService: n.message.isService,
+        isEdited: n.message.isEdited,
+        editDate: n.message.editDate,
+        botMentioned: n.message.botMentioned,
+        repliedToBot: n.message.repliedToBot,
+        startsWithOtherMention: n.message.startsWithOtherMention,
       },
     };
   }

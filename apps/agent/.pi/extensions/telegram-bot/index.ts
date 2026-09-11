@@ -339,6 +339,9 @@ function getController(): TelegramBotController {
                   file_name?: string;
                   mime_type?: string;
                 } | undefined,
+                voice: msg.voice as
+                  | { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string }
+                  | undefined,
               },
               { archive: doArchive, ocrIngest: doOcrIngest },
             );
@@ -470,9 +473,13 @@ async function stopBot(): Promise<void> {
   stopMediaRetry();
 }
 
-/** file_id/file_unique_id из фото (самый большой размер) или документа. */
+/** file_id/file_unique_id из фото (самый большой размер), документа или voice. */
 function mediaFileOf(
-  msg: { photo?: Array<{ file_id?: string; file_unique_id?: string }>; document?: { file_id?: string; file_unique_id?: string } },
+  msg: {
+    photo?: Array<{ file_id?: string; file_unique_id?: string }>;
+    document?: { file_id?: string; file_unique_id?: string };
+    voice?: { file_id?: string; file_unique_id?: string };
+  },
 ): { fileId: string; fileUniqueId?: string } | null {
   if (msg.photo && msg.photo.length > 0) {
     const last = msg.photo[msg.photo.length - 1];
@@ -480,6 +487,9 @@ function mediaFileOf(
   }
   if (msg.document?.file_id) {
     return { fileId: msg.document.file_id, fileUniqueId: msg.document.file_unique_id };
+  }
+  if (msg.voice?.file_id) {
+    return { fileId: msg.voice.file_id, fileUniqueId: msg.voice.file_unique_id };
   }
   return null;
 }

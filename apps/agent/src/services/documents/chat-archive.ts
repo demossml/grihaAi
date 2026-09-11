@@ -17,7 +17,7 @@ import type { DocumentsRepository } from "./DocumentsRepository.js";
 import type { ExpenseDocument } from "./types.js";
 import type { TelegramFileMessage } from "./DocumentIngestService.js";
 
-export type ArchiveKind = "text" | "photo" | "document" | "expense";
+export type ArchiveKind = "text" | "photo" | "document" | "voice" | "expense";
 
 export interface ChatArchiveRecord {
   id: string;
@@ -33,6 +33,8 @@ export interface ChatArchiveRecord {
   currency?: string;
   /** Текст сообщения или OCR-текст медиа (сырой, как есть). */
   rawText?: string;
+  /** Подпись (caption) отдельно от OCR/STT-текста (PROMPT 04). */
+  caption?: string;
   fileId?: string;
   fileUniqueId?: string;
   fileName?: string;
@@ -46,6 +48,9 @@ export interface ChatArchiveRecord {
   ocrStatus?: "pending" | "done" | "failed";
   /** Ссылка на expense_documents после structured ingest (опционально). */
   expenseId?: string;
+  /** Правка (edited_message/edited_channel_post): версия записи. */
+  isEdited?: boolean;
+  revision?: number;
 }
 
 export interface ArchiveTextInput {
@@ -54,6 +59,8 @@ export interface ArchiveTextInput {
   messageId?: string | number;
   fromUserId?: string | number;
   text: string;
+  /** Правка исходного сообщения (edited_message/edited_channel_post). */
+  isEdited?: boolean;
 }
 
 /** Файл для архива: фото — самый большой размер (последний), документ — любой. */
@@ -94,13 +101,19 @@ export class ChatArchiveService {
     private readonly extractor: DocumentExtractor,
   ) {}
 
-  /** Архив текстового сообщения (дедуп по chat_id + message_id). */
+  /** Архив текстового сообщения (дедуп по chat_id + message_id; правки — ревизии). */
   async archiveText(input: ArchiveTextInput): Promise<ChatArchiveRecord | null> {
     const chatId = String(input.chatId);
     const messageId = input.messageId !== undefined ? String(input.messageId) : undefined;
     if (messageId !== undefined) {
       const existing = this.repo.findArchiveByMessageId(chatId, messageId);
-      if (existing) return existing;
+      if (existing) {
+        // Правка: обновляем текст и ревизию, дубликат не создаём (PROMPT 02).
+        if (input.isEdited || input.text !== existing.rawText) {
+          return this.repo.updateArchiveRevision(chatId, messageId, input.text);
+        }
+        return existing;
+      }
     }
     return this.repo.insertArchive({
       id: randomUUID(),
@@ -114,6 +127,8 @@ export class ChatArchiveService {
       confidence: 0,
       needsReview: false,
       createdAt: new Date().toISOString(),
+      isEdited: input.isEdited === true,
+      revision: 1,
     });
   }
 
@@ -230,7 +245,7 @@ export class ChatArchiveService {
  */
 export async function archiveFromTelegram(
   message: TelegramFileMessage & { text?: string },
-  opts: { kind: "text" | "photo" | "document" },
+  opts: { kind: "text" | "photo" | "document" | "voice" },
   service: ChatArchiveService,
   deps: ArchiveDeps,
 ): Promise<{ stored: boolean; needsReview?: boolean; confidence?: number }> {
@@ -243,6 +258,7 @@ export async function archiveFromTelegram(
       messageId: message.messageId,
       fromUserId: message.from?.id,
       text,
+      isEdited: (message as { isEdited?: boolean }).isEdited === true,
     });
     return { stored: record !== null, needsReview: false, confidence: 1 };
   }
