@@ -23,6 +23,9 @@ export type TelegramContentKind =
   | "photo"
   | "document"
   | "voice"
+  | "video"
+  | "video_note"
+  | "audio"
   | "contact"
   | "location"
   | "other";
@@ -77,6 +80,26 @@ export interface NormalizedMessage {
     file_size?: number;
   };
   voice?: { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string; file_size?: number };
+  video?: { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string; file_size?: number };
+  video_note?: { file_id?: string; file_unique_id?: string; duration?: number; file_size?: number };
+  audio?: {
+    file_id?: string;
+    file_unique_id?: string;
+    duration?: number;
+    mime_type?: string;
+    file_name?: string;
+    file_size?: number;
+  };
+
+  /** media_group_id альбома (G1). */
+  mediaGroupId?: string;
+  /** Ответ на сообщение (G8 — reply context). */
+  replyTo?: {
+    messageId?: number;
+    text?: string;
+    caption?: string;
+    fromUserId?: string;
+  };
 
   contact?: { first_name?: string; last_name?: string; phone_number?: string };
   location?: { latitude?: number; longitude?: number };
@@ -104,13 +127,23 @@ interface RawMessageLike {
   chat?: { id?: number; type?: string; title?: string; username?: string; is_forum?: boolean };
   message_id?: number;
   message_thread_id?: number;
-  reply_to_message?: { from?: { id?: number }; message_thread_id?: number };
+  reply_to_message?: {
+    from?: { id?: number };
+    message_thread_id?: number;
+    message_id?: number;
+    text?: string;
+    caption?: string;
+  };
   edit_date?: number;
   text?: string;
   caption?: string;
   entities?: MentionEntity[];
   caption_entities?: MentionEntity[];
-  voice?: { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string; file_size?: number };
+  voice?: RawMedia;
+  video?: RawMedia;
+  video_note?: { file_id?: string; file_unique_id?: string; duration?: number; file_size?: number };
+  audio?: RawMedia;
+  media_group_id?: string;
   document?: {
     file_id?: string;
     file_unique_id?: string;
@@ -141,6 +174,15 @@ interface RawContext {
   edited_channel_post?: RawMessageLike;
 }
 
+interface RawMedia {
+  file_id?: string;
+  file_unique_id?: string;
+  duration?: number;
+  mime_type?: string;
+  file_size?: number;
+  file_name?: string;
+}
+
 /** Достать сырое сообщение любого поддерживаемого update kind. */
 export function rawMessageOf(ctx: unknown): {
   kind: TelegramUpdateKind;
@@ -160,6 +202,9 @@ export function contentKindOf(m: RawMessageLike): TelegramContentKind {
   if (m.photo && m.photo.length > 0) return "photo";
   if (m.document) return "document";
   if (m.voice) return "voice";
+  if (m.video) return "video";
+  if (m.video_note) return "video_note";
+  if (m.audio) return "audio";
   if (m.contact) return "contact";
   if (m.location) return "location";
   if (typeof m.text === "string" && m.text.length > 0) return "text";
@@ -255,6 +300,25 @@ export function normalizeTelegramUpdate(
     mimeType = m.voice?.mime_type;
     fileSize = m.voice?.file_size;
     voiceDuration = m.voice?.duration;
+  } else if (contentKind === "video") {
+    telegramFileId = m.video?.file_id;
+    telegramFileUniqueId = m.video?.file_unique_id;
+    mimeType = m.video?.mime_type;
+    fileSize = m.video?.file_size;
+    voiceDuration = m.video?.duration;
+  } else if (contentKind === "video_note") {
+    telegramFileId = m.video_note?.file_id;
+    telegramFileUniqueId = m.video_note?.file_unique_id;
+    mimeType = "video/mp4";
+    fileSize = m.video_note?.file_size;
+    voiceDuration = m.video_note?.duration;
+  } else if (contentKind === "audio") {
+    telegramFileId = m.audio?.file_id;
+    telegramFileUniqueId = m.audio?.file_unique_id;
+    mimeType = m.audio?.mime_type;
+    fileName = m.audio?.file_name;
+    fileSize = m.audio?.file_size;
+    voiceDuration = m.audio?.duration;
   }
 
   const sender: NormalizedSender | undefined = m.from || m.sender_chat
@@ -300,6 +364,20 @@ export function normalizeTelegramUpdate(
       photo: m.photo,
       document: m.document,
       voice: m.voice,
+      video: m.video,
+      video_note: m.video_note,
+      audio: m.audio,
+      mediaGroupId: m.media_group_id,
+      replyTo: m.reply_to_message
+        ? {
+            messageId: m.reply_to_message.message_id,
+            text: m.reply_to_message.text,
+            caption: m.reply_to_message.caption,
+            fromUserId: m.reply_to_message.from?.id !== undefined
+              ? String(m.reply_to_message.from.id)
+              : undefined,
+          }
+        : undefined,
       contact: m.contact,
       location: m.location,
       isService: isServiceMessage(m),

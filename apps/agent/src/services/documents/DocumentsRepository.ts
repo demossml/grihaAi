@@ -456,6 +456,26 @@ export class DocumentsRepository {
     return this.findArchiveByMessageId(chatId, messageId);
   }
 
+  /** G10: правка медиа (новая подпись/OCR) — ревизия, без дубликата. */
+  updateArchiveMediaRevision(
+    chatId: string,
+    fileUniqueId: string,
+    patch: { rawText?: string; caption?: string },
+  ): ChatArchiveRecord | null {
+    const existing = this.findArchiveByFileUniqueId(chatId, fileUniqueId);
+    if (!existing) return null;
+    const rawText = patch.rawText !== undefined ? patch.rawText : existing.rawText;
+    const caption = patch.caption !== undefined ? patch.caption : existing.caption;
+    this.db
+      .prepare(
+        `UPDATE chat_archive
+         SET raw_text = ?, caption = ?, is_edited = 1, revision = revision + 1
+         WHERE chat_id = ? AND file_unique_id = ?`,
+      )
+      .run(rawText ?? null, caption ?? null, chatId, fileUniqueId);
+    return this.findArchiveByFileUniqueId(chatId, fileUniqueId);
+  }
+
   // ── telegram_media (PROMPT 05: постоянное хранение + статусы обработки) ────
 
   insertMedia(
@@ -495,6 +515,14 @@ export class DocumentsRepository {
     const row = this.db
       .prepare(`SELECT * FROM telegram_media WHERE chat_id = ? AND file_unique_id = ?`)
       .get(chatId, fileUniqueId) as MediaRow | undefined;
+    return row ? mediaRowToRecord(row) : null;
+  }
+
+  /** G2: отправить сохранённый файл по storage_key (только своего чата). */
+  findMediaByStorageKey(chatId: string, storageKey: string): TelegramMediaRecord | null {
+    const row = this.db
+      .prepare(`SELECT * FROM telegram_media WHERE chat_id = ? AND storage_key = ?`)
+      .get(chatId, storageKey) as MediaRow | undefined;
     return row ? mediaRowToRecord(row) : null;
   }
 

@@ -14,6 +14,8 @@ export interface TelegramFileSendInput {
   caption?: string;
   /** Тема форума (message_thread_id) — ответ в ту же тему. */
   threadId?: number;
+  /** G2: фото (sendPhoto) или документ (sendDocument, default). */
+  kind?: "photo" | "document";
 }
 
 export interface TelegramFileSendResult {

@@ -65,3 +65,21 @@
   SQLite/Storage с fake-скачиванием/STT. Реальный прогон — ручной E2E на боте.
 - Coverage-отчёт для Telegram layer не добавлен (нет coverage-инструмента в
   проекте); ветки покрыты тестами по сценариям выше.
+
+## Gaps G1–G11 (Telegram 100% for Grisha, 2026-09-11)
+
+| Scenario | Expected | Actual | Test |
+|---|---|---|---|
+| album из 3 фото | 1 logical batch, ≤1 agent turn | PASS | `gaps-g1-g11.test.ts` |
+| album разные group_id | отдельные flush'и | PASS | `gaps-g1-g11.test.ts` |
+| OCR 3-й вызов при limit=2 | без vision, файл сохранён | PASS | `gaps-g1-g11.test.ts` |
+| /start setup_-1001 в DM | setup для -1001 | PASS | `gaps-g1-g11.test.ts` |
+| /start setup_* в группе | подсказка DM | PASS | `gaps-g1-g11.test.ts` |
+| send_file kind=photo | sendPhoto с caption | PASS | `gaps-g1-g11.test.ts` |
+| reply context | [REPLY_TO] в промпте | PASS | `gaps-g1-g11.test.ts` |
+| audio → pipeline | storage + STT + архив kind=audio | PASS | `gaps-g1-g11.test.ts` |
+| video → pipeline | storage + архив needsReview (без STT) | PASS | `gaps-g1-g11.test.ts` |
+| video_note в normalizer | kind=video_note | PASS | `gaps-g1-g11.test.ts` |
+| /pin на reply | pinHandler c messageId | PASS | `gaps-g1-g11.test.ts` |
+| chat_join_request | уведомление владельцу (default) | PASS | `gaps-g1-g11.test.ts` |
+| edited photo | ревизия архива (caption/revision), без дубля | PASS | `gaps-g1-g11.test.ts` |

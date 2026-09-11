@@ -498,6 +498,7 @@ class FakeBot implements TelegramBotLike {
   handler: ((ctx: unknown) => unknown) | null = null;
   callbackHandler: ((ctx: TelegramCallbackQueryContext) => unknown) | null = null;
   chatMemberHandler: ((ctx: unknown) => unknown) | null = null;
+  joinRequestHandler: ((ctx: unknown) => unknown) | null = null;
   sent: Array<{
     chatId: number;
     text: string;
@@ -512,13 +513,25 @@ class FakeBot implements TelegramBotLike {
   private stopResolve: (() => void) | null = null;
 
   on(
-    filter: "message" | "callback_query:data" | "my_chat_member",
+    filter:
+      | "message"
+      | "channel_post"
+      | "edited_message"
+      | "edited_channel_post"
+      | "callback_query:data"
+      | "my_chat_member"
+      | "chat_join_request",
     handler: ((ctx: unknown) => unknown) | ((ctx: TelegramCallbackQueryContext) => unknown),
   ): void {
-    if (filter === "message") this.handler = handler as (ctx: unknown) => unknown;
-    else if (filter === "callback_query:data")
+    if (filter === "message" || filter === "channel_post" || filter === "edited_message" || filter === "edited_channel_post") {
+      this.handler = handler as (ctx: unknown) => unknown;
+    } else if (filter === "callback_query:data") {
       this.callbackHandler = handler as (ctx: TelegramCallbackQueryContext) => unknown;
-    else this.chatMemberHandler = handler as (ctx: unknown) => unknown;
+    } else if (filter === "my_chat_member") {
+      this.chatMemberHandler = handler as (ctx: unknown) => unknown;
+    } else {
+      this.joinRequestHandler = handler as (ctx: unknown) => unknown;
+    }
   }
 
   async start(): Promise<unknown> {

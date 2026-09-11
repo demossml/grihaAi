@@ -359,3 +359,17 @@
 - [x] Наблюдаемость: structured logs + метрики telegram_*
 - [x] Docs: TELEGRAM-AUDIT.md, TELEGRAM-ARCHITECTURE.md, TELEGRAM-E2E-MATRIX.md
 - [x] Tests: 633 unit — зелёные; typecheck/build зелёные
+
+## Phase 36 — Telegram 100% for Grisha: gaps G1–G11
+
+- [x] G1 альбомы (MediaGroupBuffer 1000мс, один batch, ≤1 ход агента)
+- [x] G2 outbound media: send_file kind=photo|document + storageKey из хранилища
+- [x] G3 OCR cost controls: per-chat rate limit + гейты размера/подсказок
+- [x] G4 /start setup_<chatId> deep link
+- [x] G5 video/video_note/audio: storage + STT (audio-подобные), video — needsReview
+- [x] G6 /pin (canManage + bot rights)
+- [x] G7 chat_join_request: default уведомление владельцу; автоодобрение — только policy
+- [x] G8 reply context ([REPLY_TO] в промпте)
+- [x] G10 edited media: ревизия архива; G11 метрики в /status
+- [x] G9 webhook — отложен (доки/отчёт)
+- [x] Tests: 649 unit — зелёные; typecheck/build зелёные; TELEGRAM_100_GAPS_REPORT.md

@@ -43,6 +43,10 @@ export const DEFAULT_ALLOWED_MIME = [
   "audio/mpeg",
   "audio/mp4",
   "audio/wav",
+  "audio/aac",
+  "video/mp4",
+  "video/webm",
+  "video/mpeg",
 ];
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -54,6 +58,10 @@ const EXT_BY_MIME: Record<string, string> = {
   "audio/mpeg": "mp3",
   "audio/mp4": "m4a",
   "audio/wav": "wav",
+  "audio/aac": "aac",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "video/mpeg": "mpeg",
 };
 
 export interface LocalMediaStorageOptions {

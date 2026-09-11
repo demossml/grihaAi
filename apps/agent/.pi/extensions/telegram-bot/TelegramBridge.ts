@@ -6,6 +6,11 @@
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import { buildTelegramSessionKey } from "./session-key.js";
 import { startTypingHeartbeat } from "./typing-heartbeat.js";
+import {
+  MediaGroupBuffer,
+  type AlbumBatch,
+  type AlbumItem,
+} from "./media-group-buffer.js";
 
 export interface TgUser {
   id: number;
@@ -42,6 +47,13 @@ export interface TgMessage {
   isEdited?: boolean;
   editDate?: number;
   voice?: { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string };
+  video?: { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string };
+  videoNote?: { file_id?: string; file_unique_id?: string; duration?: number };
+  audio?: { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string; file_name?: string };
+  /** media_group_id альбома (G1): item обрабатывается батчем. */
+  mediaGroupId?: string;
+  /** Ответ на сообщение (G8: reply context для агента). */
+  replyTo?: { messageId?: number; text?: string; caption?: string; fromUserId?: string };
   document?: {
     file_id?: string;
     file_unique_id?: string;
@@ -189,27 +201,40 @@ function lastPhotoFileId(photo: Array<{ file_id?: string }>): string {
   return last?.file_id ?? "unknown";
 }
 
+/** Базовый текст промпта по типу медиа. */
+function mediaBaseText(kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio"): string {
+  switch (kind) {
+    case "photo":
+      return "Пользователь прислал изображение.";
+    case "voice":
+      return "Пользователь прислал голосовое сообщение.";
+    case "video":
+      return "Пользователь прислал видео.";
+    case "video_note":
+      return "Пользователь прислал видеокружок (video_note).";
+    case "audio":
+      return "Пользователь прислал аудио.";
+    default:
+      return "Пользователь прислал документ.";
+  }
+}
+
 /**
  * Промпт агента для входящего медиа: распознанный текст OCR/STT в центре,
  * file_id — справочно внизу (B2: агент видит содержимое, а не голый id).
  */
 function buildMediaAgentMessage(
-  kind: "photo" | "document" | "voice",
+  kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio",
   msg: TgMessage,
   fileId: string,
   media: ProcessMediaResult | null,
 ): string {
-  const base =
-    kind === "photo"
-      ? "Пользователь прислал изображение."
-      : kind === "voice"
-        ? "Пользователь прислал голосовое сообщение."
-        : "Пользователь прислал документ.";
+  const base = mediaBaseText(kind);
   if (media?.failed) {
     return [
       base,
       msg.caption ? `Подпись: ${msg.caption}` : null,
-      kind === "voice"
+      kind === "voice" || kind === "audio" || kind === "video_note"
         ? "Не удалось распознать голос."
         : "Не удалось распознать изображение.",
       `telegram_file_id: ${fileId}`,
@@ -221,7 +246,8 @@ function buildMediaAgentMessage(
   const mime = msg.document?.mime_type ?? "";
   const fileName = msg.document?.file_name ?? "";
   const isPdf = kind === "document" && (/pdf/i.test(mime) || /\.pdf$/i.test(fileName));
-  const textLabel = kind === "voice" ? "Распознанный текст (STT):" : "Распознанный текст (OCR):";
+  const isAudioLike = kind === "voice" || kind === "audio" || kind === "video_note";
+  const textLabel = isAudioLike ? "Распознанный текст (STT):" : "Распознанный текст (OCR):";
   return [
     base,
     msg.caption ? `Подпись: ${msg.caption}` : null,
@@ -229,9 +255,11 @@ function buildMediaAgentMessage(
       ? `${textLabel}\n${ocrText}`
       : isPdf
         ? "OCR: PDF не поддерживается vision-моделью — нужна ручная проверка документа."
-        : kind === "voice"
+        : isAudioLike
           ? "STT не извлёк текст (нужна проверка или STT недоступен)."
-          : "OCR не извлёк текст (нужна проверка или vision недоступен).",
+          : kind === "video"
+            ? "Видео сохранено; покадровое распознавание не выполняется (нужна ручная проверка)."
+            : "OCR не извлёк текст (нужна проверка или vision недоступен).",
     media?.expenseId ? `Документ сохранён в expenses id=${media.expenseId}` : null,
     `telegram_file_id: ${fileId}`,
   ]
@@ -239,8 +267,96 @@ function buildMediaAgentMessage(
     .join("\n");
 }
 
+/** G1: элемент альбома из TgMessage. */
+export function albumItemOf(msg: TgMessage): AlbumItem | null {
+  const item = (kind: AlbumItem["kind"], fileId: string, fileUniqueId: string, mimeType?: string, duration?: number): AlbumItem => ({
+    updateId: 0,
+    messageId: msg.messageId ?? 0,
+    fileId,
+    fileUniqueId,
+    kind,
+    mimeType,
+    caption: msg.caption,
+    duration,
+  });
+  if (msg.photo?.length) {
+    const last = msg.photo[msg.photo.length - 1];
+    if (last.file_id) return item("photo", last.file_id, last.file_unique_id ?? last.file_id, "image/jpeg");
+  }
+  if (msg.document?.file_id) {
+    return item("document", msg.document.file_id, msg.document.file_unique_id ?? msg.document.file_id, msg.document.mime_type);
+  }
+  if (msg.voice?.file_id) {
+    return item("voice", msg.voice.file_id, msg.voice.file_unique_id ?? msg.voice.file_id, msg.voice.mime_type ?? "audio/ogg", msg.voice.duration);
+  }
+  if (msg.video?.file_id) {
+    return item("video", msg.video.file_id, msg.video.file_unique_id ?? msg.video.file_id, msg.video.mime_type, msg.video.duration);
+  }
+  if (msg.videoNote?.file_id) {
+    return item("video_note", msg.videoNote.file_id, msg.videoNote.file_unique_id ?? msg.videoNote.file_id, "video/mp4", msg.videoNote.duration);
+  }
+  if (msg.audio?.file_id) {
+    return item("audio", msg.audio.file_id, msg.audio.file_unique_id ?? msg.audio.file_id, msg.audio.mime_type ?? "audio/mpeg", msg.audio.duration);
+  }
+  return null;
+}
+
+/** G1: промпт агента для альбома (один на весь batch). */
+export function buildAlbumAgentMessage(
+  batch: AlbumBatch,
+  media: ProcessMediaResult | null | undefined,
+): string {
+  const lines: string[] = [
+    `Пользователь прислал альбом из ${batch.items.length} файлов.`,
+  ];
+  if (batch.caption) lines.push(`Подпись: ${batch.caption}`);
+  const texts = (media?.rawText ?? "")
+    .split(/\n?={3,}\n?|\n?---\n?/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (texts.length > 0) {
+    lines.push("Распознанный текст (OCR) по файлам:");
+    texts.forEach((t, i) => lines.push(`[файл ${i + 1}]\n${t}`));
+  } else {
+    lines.push("OCR не извлёк текст (нужна проверка или vision недоступен).");
+  }
+  if (media?.expenseId) lines.push(`Документы сохранены в expenses (id последнего: ${media.expenseId})`);
+  lines.push(`telegram_media_group_id: ${batch.groupId}`);
+  return lines.join("\n");
+}
+
+/** G8: контекст reply — агенту всегда видно, на что отвечают. */
+export function withReplyContext(message: string, msg: TgMessage): string {
+  const rt = msg.replyTo;
+  if (!rt) return message;
+  const content = rt.text ?? rt.caption ?? "";
+  if (!content.trim()) return message;
+  const block = [
+    "[REPLY_TO]",
+    `message_id: ${rt.messageId ?? "?"}`,
+    `текст: ${content}`,
+    "[/REPLY_TO]",
+  ].join("\n");
+  return `${block}\n\n${message}`;
+}
+
 export class TelegramBridge {
   private readonly agent: GrishaAgent;
+
+  /** G1: буфер альбомов + контекст gate на группу. */
+  private albumBuffer: MediaGroupBuffer | null = null;
+  private readonly albumGates = new Map<
+    string,
+    {
+      gate: { process: boolean; suppressReply: boolean; archive: boolean; rulesContext: string };
+      chatId: number;
+      userId: number;
+      chatType: string;
+      send: TelegramReplySender;
+      msg: TgMessage;
+    }
+  >();
+
   constructor(
     private readonly allowedUserIds: number[],
     agent: GrishaAgent,
@@ -297,15 +413,45 @@ export class TelegramBridge {
         ctx: {
           chatId: string;
           userId: string;
-          kind: "photo" | "document" | "voice";
+          kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio";
           allowed: boolean;
           archive: boolean;
         },
       ) => Promise<ProcessMediaResult | null>;
+      /** G1: окно буфера альбома (default 1000мс). */
+      albumBufferMs?: number;
+      /**
+       * G1: обработка альбома одним batch'ем (pipeline по каждому файлу,
+       * вернуть суммарный OCR-текст). Агент вызывается максимум один раз.
+       */
+      processMediaAlbum?: (
+        batch: import("./media-group-buffer.js").AlbumBatch,
+        ctx: {
+          chatId: string;
+          userId: string;
+          threadId?: string;
+          allowed: boolean;
+          archive: boolean;
+          suppressReply: boolean;
+          rulesContext: string;
+        },
+      ) => Promise<ProcessMediaResult | null>;
+      /** G6: /pin (reply) — handler сам проверяет права и пинит. */
+      pinHandler?: (
+        ctx: { chatId: string; userId: string; messageId?: number },
+      ) => Promise<string>;
+      /** G11: /status — расширенный вывод для admin (метрики). */
+      statusHandler?: (userId: string) => string | Promise<string>;
+      /** G4: deep link bot username для onboarding-подсказки. */
+      botUsername?: string;
       /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
       archiveHandler?: (
         msg: TgMessage,
-        ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" | "voice" },
+        ctx: {
+          chatId: string;
+          userId: string;
+          kind: "text" | "photo" | "document" | "voice" | "video" | "video_note" | "audio";
+        },
       ) => Promise<{ stored: boolean; notify?: string }>;
       /** Group Runtime Contract: единая подготовка хода (configured → rules → prefilter). */
       prepareTurn?: (input: import("./group-runtime.js").PrepareTurnInput) => import("./group-runtime.js").PrepareTurnResult;
@@ -455,7 +601,31 @@ export class TelegramBridge {
     const send = this.makeSender(msg.threadId);
 
     if (hasRealUser) {
-    if (text === "/start") {
+    if (text === "/start" || text.startsWith("/start ") || text.startsWith("/start@")) {
+      // G4: deep link payload — /start setup_-100123 (или /start@Bot setup_...).
+      const payload = text
+        .replace(/^\/start(?:@\w+)?\s*/, "")
+        .trim();
+      if (payload.startsWith("setup_")) {
+        const setupChatId = payload.slice("setup_".length).split("_")[0];
+        if (chatType !== "private") {
+          await send(
+            chatId,
+            `Настройка — только в личных сообщениях с ботом. Откройте DM и отправьте /start setup_${setupChatId}`,
+          );
+          return { handled: true };
+        }
+        const handler = this.options?.setupCommandHandler;
+        if (handler) {
+          const reply = await handler(
+            setupChatId,
+            { chatId: String(chatId), userId: String(userId), isPrivate: true },
+            send,
+          );
+          await send(chatId, reply);
+        }
+        return { handled: true };
+      }
       // D9: в private — короткий hint про pending-группы, без спама клавиатурами.
       let extra = "";
       if (chatType === "private" && this.options?.pendingGroupsHint) {
@@ -480,7 +650,27 @@ export class TelegramBridge {
       return { handled: true };
     }
     if (text === "/status") {
-      await send(chatId, "Гриша работает.");
+      // G11: admin видит метрики; остальным — короткий статус.
+      const statusHandler = this.options?.statusHandler;
+      const reply = statusHandler
+        ? await statusHandler(String(userId))
+        : "Гриша работает.";
+      await send(chatId, reply);
+      return { handled: true };
+    }
+    // G6: /pin — закрепить сообщение, на которое сделан reply.
+    if (text === "/pin" || text.startsWith("/pin ")) {
+      const handler = this.options?.pinHandler;
+      if (!handler) {
+        await send(chatId, "Закрепление недоступно.");
+        return { handled: true };
+      }
+      const reply = await handler({
+        chatId: String(chatId),
+        userId: String(userId),
+        messageId: msg.replyTo?.messageId,
+      });
+      await send(chatId, reply);
       return { handled: true };
     }
     if (text.startsWith("/rules")) {
@@ -558,6 +748,42 @@ export class TelegramBridge {
       }
     }
     } // hasRealUser (команды/custom-текст — только от реальных пользователей)
+
+    // G1: альбом (media_group_id) — батчем, максимум один ход агента.
+    if (msg.mediaGroupId && this.options?.processMediaAlbum) {
+      const item = albumItemOf(msg);
+      if (!item) return { handled: true, reason: "album-buffered" };
+      if (!this.albumBuffer) {
+        this.albumBuffer = new MediaGroupBuffer(
+          this.options.albumBufferMs ?? 1000,
+          (batch) => this.flushAlbum(batch),
+        );
+      }
+      if (!this.albumGates.has(msg.mediaGroupId)) {
+        const placeholder = msg.caption ? `[альбом] ${msg.caption}` : "[альбом фото/файлов]";
+        const gate = this.evaluateInput(placeholder, userId, chatId, msg, chatType);
+        this.albumGates.set(msg.mediaGroupId, {
+          gate,
+          chatId,
+          userId,
+          chatType,
+          send,
+          msg,
+        });
+      }
+      this.albumBuffer.add(msg.mediaGroupId, item);
+      return { handled: true, reason: "album-buffered" };
+    }
+
+    if (msg.video?.file_id) {
+      return this.handleMedia(msg, chatId, userId, chatType, send, "video");
+    }
+    if (msg.videoNote?.file_id) {
+      return this.handleMedia(msg, chatId, userId, chatType, send, "video_note");
+    }
+    if (msg.audio?.file_id) {
+      return this.handleMedia(msg, chatId, userId, chatType, send, "audio");
+    }
 
     if (msg.voice) {
       // D3: голос транскрибируется ДО агента (STT pipeline), агенту идёт текст.
@@ -716,7 +942,7 @@ export class TelegramBridge {
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {
       const response = await this.agent({
-        message: text,
+        message: withReplyContext(text, msg),
         userId,
         platform: "telegram",
         sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
@@ -769,6 +995,53 @@ export class TelegramBridge {
     return { allowed: true, reason: "ok", handled: true };
   }
 
+  /** G1: флаш альбома — pipeline по файлам, максимум один вызов агента. */
+  private async flushAlbum(batch: AlbumBatch): Promise<void> {
+    const ctx = this.albumGates.get(batch.groupId);
+    this.albumGates.delete(batch.groupId);
+    if (!ctx) return;
+    const { gate, chatId, userId, chatType, send, msg } = ctx;
+
+    const media = await this.options?.processMediaAlbum?.(batch, {
+      chatId: String(chatId),
+      userId: String(userId),
+      threadId: msg.threadId,
+      allowed: gate.process,
+      archive: gate.archive,
+      suppressReply: gate.suppressReply,
+      rulesContext: gate.rulesContext,
+    });
+    if (!gate.process) return; // слушатель: обработано фоном, агента нет
+
+    const acl = await this.checkAgentAcl({
+      userId,
+      chatId,
+      chatType,
+      hasRealUser: msg.from?.id !== undefined,
+      send,
+    });
+    if (!acl.allowed) return;
+
+    this.options?.beforeAgent?.(chatId);
+    const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
+    try {
+      const agentMessage = buildAlbumAgentMessage(batch, media);
+      const response = await this.agent({
+        message: agentMessage,
+        userId,
+        platform: "telegram",
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+        chatId: String(chatId),
+        threadId: msg.threadId,
+        rulesContext: gate.rulesContext || undefined,
+      });
+      if (gate.suppressReply) return;
+      await this.sendReply(chatId, response, msg.threadId);
+    } finally {
+      await hb?.stop();
+    }
+  }
+
   /**
    * Единая ветка photo/document (B2/B4): сначала download+OCR (или архив),
    * потом агент с распознанным текстом — не с голым file_id.
@@ -784,20 +1057,21 @@ export class TelegramBridge {
     userId: number,
     chatType: string,
     send: TelegramReplySender,
-    kind: "photo" | "document" | "voice",
+    kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio",
   ): Promise<{ handled: boolean; reason?: string }> {
     const fileId =
       kind === "photo"
         ? lastPhotoFileId(msg.photo ?? [])
         : kind === "voice"
           ? msg.voice?.file_id ?? "unknown"
-          : msg.document?.file_id ?? "unknown";
-    const base =
-      kind === "photo"
-        ? "Пользователь прислал изображение."
-        : kind === "voice"
-          ? "Пользователь прислал голосовое сообщение."
-          : "Пользователь прислал документ.";
+          : kind === "video"
+            ? msg.video?.file_id ?? "unknown"
+            : kind === "video_note"
+              ? msg.videoNote?.file_id ?? "unknown"
+              : kind === "audio"
+                ? msg.audio?.file_id ?? "unknown"
+                : msg.document?.file_id ?? "unknown";
+    const base = mediaBaseText(kind);
     // Вход prefilter'а — прежний (file_id-сообщение): решения правил не меняются.
     const message = `${base}\nfile_id: ${fileId}\nПодпись: ${msg.caption ?? "нет"}`;
     const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
@@ -857,7 +1131,7 @@ export class TelegramBridge {
 
       this.options?.beforeAgent?.(chatId);
       const agentMessage = processMedia
-        ? buildMediaAgentMessage(kind, msg, fileId, media)
+        ? withReplyContext(buildMediaAgentMessage(kind, msg, fileId, media), msg)
         : message;
       const response = await this.agent({
         message: agentMessage,
@@ -885,7 +1159,7 @@ export class TelegramBridge {
     msg: TgMessage,
     chatId: number,
     userId: number,
-    kind: "text" | "photo" | "document" | "voice",
+    kind: "text" | "photo" | "document" | "voice" | "video" | "video_note" | "audio",
     send: TelegramReplySender,
   ): Promise<void> {
     try {

@@ -18,9 +18,11 @@ import {
   startMediaRetryWorker,
   type MediaRetryJob,
 } from "../../../src/services/documents/media-retry.js";
+import { getOcrRateLimiter } from "../../../src/services/documents/ocr-limiter.js";
+import type { ListenerMediaResult } from "../../../src/services/documents/ListenerMediaPipeline.js";
 import { downloadTelegramFileToDisk } from "../../../src/utils/telegram/telegram-files.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { type GrishaAgent } from "./TelegramBridge.js";
+import { type GrishaAgent, type ProcessMediaResult, type TgMessage } from "./TelegramBridge.js";
 import {
   TelegramBotController,
   type TelegramBotFactory,
@@ -31,7 +33,8 @@ import { evaluatePreFilter } from "../user-rules/prefilter.js";
 import { formatRulesContext } from "../user-rules/format-rules-context.js";
 import { prepareGroupTurn, shouldNotifyPoorOcr } from "./group-runtime.js";
 import { makeGuardedRulesHandler } from "./rules-auth.js";
-import { incMetric } from "./metrics.js";
+import { incMetric, getTelegramMetrics } from "./metrics.js";
+import { getTelegramPinApi } from "./pin-bridge.js";
 import { getUserRulesService } from "../user-rules/UserRulesService.js";
 import { recordChatPolicyFromRules, rulesToChatPolicy } from "../user-rules/chat-policy.js";
 import { buildExtractionPrompt } from "../chat-setup/policy-extraction.js";
@@ -154,6 +157,12 @@ const realBotFactory: TelegramBotFactory = (token) => {
           ...(extra?.caption ? { caption: extra.caption } : {}),
           ...(extra?.messageThreadId ? { message_thread_id: extra.messageThreadId } : {}),
         }),
+      // G2: фото из локального файла (тот же InputFile-паттерн).
+      sendPhoto: (chatId, filePath, extra) =>
+        bot.api.sendPhoto(chatId, new InputFile(filePath), {
+          ...(extra?.caption ? { caption: extra.caption } : {}),
+          ...(extra?.messageThreadId ? { message_thread_id: extra.messageThreadId } : {}),
+        }),
       sendChatAction: (chatId, action, extra) =>
         bot.api.sendChatAction(chatId, action, {
           ...(extra?.messageThreadId !== undefined
@@ -165,6 +174,12 @@ const realBotFactory: TelegramBotFactory = (token) => {
         // grammy типизирует emoji как литеральный union — здесь строка из бриджа.
         bot.api.setMessageReaction(chatId, messageId, [{ type: "emoji", emoji: reaction as never }]),
       getChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
+      // G6: закрепить сообщение (тихо).
+      pinChatMessage: (chatId, messageId) =>
+        bot.api.pinChatMessage(chatId, messageId, { disable_notification: true }),
+      // G7: заявки на вступление.
+      approveChatJoinRequest: (chatId, userId) => bot.api.approveChatJoinRequest(chatId, userId),
+      declineChatJoinRequest: (chatId, userId) => bot.api.declineChatJoinRequest(chatId, userId),
     },
   };
 };
@@ -320,120 +335,114 @@ function getController(): TelegramBotController {
         getBotSelf: () => botSelf,
         // R1: pending-группа silent (онбординг не завершён → prefilter false).
         getGroupConfigured: (chatId) => setup.isConfiguredSync(chatId),
-        // Единый медиа-конвейер (photo/document): download → OCR → archive →
-        // expense. Одна точка для allowed-ходов (OCR до агента, B2/B4) и
-        // фоновых путей (listener / archive_ocr_ingest).
-        processMedia: async (msg, ctx) => {
-          const svc = getUserRulesService();
-          const rules = [...svc.getHardRules(ctx.chatId), ...svc.getSoftRules(ctx.chatId)];
-          const ruleStr = (key: string): string | undefined => {
-            const v = [...rules].reverse().find((r) => r.key === key)?.value;
-            return typeof v === "string" ? v : undefined;
-          };
-          const ingestMode = ruleStr("ingest_mode") ?? "mention";
-
-          // PROMPT 06: детерминированная версионированная policy из правил SQLite.
-          const policy = rulesToChatPolicy(rules);
-          const kindArchive =
-            ctx.kind === "photo"
-              ? policy.archive.photo
-              : ctx.kind === "document"
-                ? policy.archive.document
-                : policy.archive.voice;
-          const kindProcess =
-            ctx.kind === "photo"
-              ? policy.processing.photoOcr
-              : ctx.kind === "document"
-                ? policy.processing.documentOcr
-                : policy.processing.voiceStt;
-
-          const mentioned = msg.botMentioned === true || msg.repliedToBot === true;
-          const captionHint = /(чек|накладн|invoice|receipt|расход)/i.test(msg.caption ?? "");
-          const mentionIngest =
-            ingestMode === "always" || (ingestMode === "mention" && (mentioned || captionHint));
-
-          // OCR/STT только если: ход разрешён / архив / policy-processing / mention-инжест.
-          if (!ctx.allowed && !ctx.archive && !kindArchive && !kindProcess && !mentionIngest) {
-            return { skipped: true };
-          }
-
-          const doArchive = ctx.archive || kindArchive;
-          const doOcrIngest = kindProcess || mentionIngest;
-
-          try {
-            const result = await getListenerMediaPipeline().process(
+        // Единый медиа-конвейер (photo/document/voice/video/audio): download →
+        // OCR/STT → archive → expense. Одна точка для allowed-ходов (OCR до
+        // агента) и фоновых путей (listener / archive_ocr_ingest).
+        processMedia: async (msg, ctx) =>
+          runMediaPipelineFor(msg, {
+            chatId: ctx.chatId,
+            userId: ctx.userId,
+            kind: ctx.kind,
+            allowed: ctx.allowed,
+            archive: ctx.archive,
+          }),
+        // G1: альбом — каждый файл через тот же конвейер, один ответ агента.
+        albumBufferMs: 1000,
+        processMediaAlbum: async (batch, ctx) => {
+          const results: ProcessMediaResult[] = [];
+          for (const item of batch.items) {
+            const res = await runMediaPipelineFor(
+              item as unknown as TgMessage,
               {
                 chatId: ctx.chatId,
-                threadId: msg.threadId,
-                messageId: msg.messageId !== undefined ? String(msg.messageId) : undefined,
-                fromUserId: msg.from?.id !== undefined ? String(msg.from.id) : undefined,
-                caption: msg.caption,
-                botMentioned: msg.botMentioned,
-                repliedToBot: msg.repliedToBot,
-                photo: msg.photo as Array<{ file_id: string; file_unique_id?: string }> | undefined,
-                document: msg.document as {
-                  file_id: string;
-                  file_unique_id?: string;
-                  file_name?: string;
-                  mime_type?: string;
-                } | undefined,
-                voice: msg.voice as
-                  | { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string }
-                  | undefined,
+                userId: ctx.userId,
+                kind: item.kind,
+                allowed: ctx.allowed,
+                archive: ctx.archive,
               },
-              { archive: doArchive, ocrIngest: doOcrIngest },
+              { caption: item.caption, threadId: ctx.threadId, messageId: item.messageId },
             );
-            incMetric("telegram_media_total");
-            if (result.archived && !ctx.allowed) incMetric("telegram_listener_archived");
-            if (result.needsReview) {
-              if (ctx.kind === "voice") incMetric("telegram_stt_failed");
-              else incMetric("telegram_ocr_failed");
-            }
-            incMetric("telegram_media_processed");
-            console.log(
-              `[telegram-bot] media done chat=${ctx.chatId} kind=${ctx.kind} msg_id=${msg.messageId ?? "-"} ` +
-                `status=processed archived=${result.archived} expense=${result.ingestedExpense} confidence=${result.confidence.toFixed(2)}`,
-            );
-            // R-GR-8: notify только по policy-флагу (listen_only — тишина по умолчанию).
-            const notify =
-              result.needsReview &&
-              shouldNotifyPoorOcr(rules, {
-                needsReview: result.needsReview,
-                confidence: result.confidence,
-              })
-                ? "Не удалось уверенно распознать документ. Пришлите, пожалуйста, более чёткое фото."
-                : undefined;
-            return {
-              rawText: result.rawText,
-              confidence: result.confidence,
-              expenseId: result.expenseId,
-              ingestedExpense: result.ingestedExpense,
-              notify,
-            };
+            if (res) results.push(res);
+          }
+          const combinedRawText = results
+            .map((r, i) => (r.rawText ? `[файл ${i + 1}]\n${r.rawText}` : null))
+            .filter(Boolean)
+            .join("\n====\n");
+          const lastExpense = [...results].reverse().find((r) => r.expenseId)?.expenseId;
+          return {
+            rawText: combinedRawText || undefined,
+            confidence: results.length ? Math.max(...results.map((r) => r.confidence ?? 0)) : 0,
+            expenseId: lastExpense,
+            ingestedExpense: results.some((r) => r.ingestedExpense),
+          };
+        },
+        // G6: /pin — canManage + права бота (can_pin_messages) проверяются здесь.
+        pinHandler: async ({ chatId, userId, messageId }) => {
+          if (messageId === undefined) return "Сделайте /pin как ответ (reply) на сообщение.";
+          if (!(await users.canManage(userId))) return "Недостаточно прав (owner/admin).";
+          const pin = getTelegramPinApi();
+          if (!pin) return "Закрепление недоступно.";
+          try {
+            const ok = await pin(Number(chatId), Number(messageId));
+            return ok ? "Сообщение закреплено." : "Не удалось закрепить сообщение.";
           } catch (err: unknown) {
-            // R-GR-7: download упал → отложенный retry (полный pipeline), file_id не теряем.
-            // PROMPT 07: постоянные ошибки (mime/размер/404) НЕ ставятся в очередь.
-            const message = err instanceof Error ? err.message : String(err);
-            const media = mediaFileOf(msg);
-            if (media && mediaRetry && isTransientMediaError(message)) {
-              await mediaRetry.enqueue({
-                chatId: ctx.chatId,
-                threadId: msg.threadId,
-                messageId: msg.messageId,
-                fileId: media.fileId,
-                fileUniqueId: media.fileUniqueId,
-                kind: ctx.kind,
-              });
+            console.error("[telegram-bot] pin failed:", err instanceof Error ? err.message : err);
+            return "Не удалось закрепить сообщение (проверьте права бота в чате).";
+          }
+        },
+        // G11: /status — admin видит метрики.
+        statusHandler: async (userId) => {
+          if (!(await users.canManage(userId))) return "Гриша работает.";
+          const metrics = getTelegramMetrics();
+          const lines = Object.entries(metrics)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\n");
+          return `Гриша работает.\n\nМетрики:\n${lines || "(нет данных)"}`;
+        },
+        botUsername: botSelf?.username,
+        // G7: заявка на вступление — по умолчанию ТОЛЬКО уведомление владельцу
+        // (автоодобрение исключительно при явном правиле join_auto_approve).
+        joinRequestHandler: async (event, deps) => {
+          const chatId = String(event.chat.id);
+          const userId = String(event.from.id);
+          const rules = [
+            ...getUserRulesService().getHardRules(chatId),
+            ...getUserRulesService().getSoftRules(chatId),
+          ];
+          const autoApprove = [...rules].reverse().some(
+            (r) => r.key === "join_auto_approve" && (r.value === true || r.value === "true"),
+          );
+          const allowed = await users.isAllowed(userId, chatId);
+          const ownerId = resolveOwnerId(loadConfig());
+          const title = event.chat.title ?? chatId;
+          const who = `${event.from.firstName ?? "?"}${event.from.username ? ` (@${event.from.username})` : ""} id=${userId}`;
+          if (autoApprove && allowed) {
+            try {
+              await deps.approve(Number(chatId), Number(userId));
+              if (ownerId) {
+                await deps.sendMessage(
+                  Number(ownerId),
+                  `Заявка ${who} в «${title}» одобрена автоматически (join_auto_approve).`,
+                );
+              }
+            } catch (err: unknown) {
+              console.error(
+                "[telegram-bot] join auto-approve failed:",
+                err instanceof Error ? err.message : err,
+              );
             }
-            console.error(
-              "[telegram-bot] media pipeline failed (enqueued retry):",
-              message,
-            );
-            incMetric("telegram_media_failed");
-            console.error(
-              `[telegram-bot] media failed chat=${ctx.chatId} kind=${ctx.kind} msg_id=${msg.messageId ?? "-"} status=failed error=${message}`,
-            );
-            return { failed: true };
+            return;
+          }
+          if (ownerId) {
+            await deps
+              .sendMessage(
+                Number(ownerId),
+                `Заявка на вступление: ${who} в чат «${title}». ` +
+                  `Автоодобрение выключено (правило join_auto_approve).`,
+              )
+              .catch((err: unknown) =>
+                console.error("[telegram-bot] join notify failed:", err instanceof Error ? err.message : err),
+              );
           }
         },
         // Архивариус (listen_only): тихое сохранение ТЕКСТА (медиа — через processMedia).
@@ -538,12 +547,15 @@ async function stopBot(): Promise<void> {
   stopMediaRetry();
 }
 
-/** file_id/file_unique_id из фото (самый большой размер), документа или voice. */
+/** file_id/file_unique_id из фото (самый большой размер), документа или медиа. */
 function mediaFileOf(
   msg: {
     photo?: Array<{ file_id?: string; file_unique_id?: string }>;
     document?: { file_id?: string; file_unique_id?: string };
     voice?: { file_id?: string; file_unique_id?: string };
+    video?: { file_id?: string; file_unique_id?: string };
+    videoNote?: { file_id?: string; file_unique_id?: string };
+    audio?: { file_id?: string; file_unique_id?: string };
   },
 ): { fileId: string; fileUniqueId?: string } | null {
   if (msg.photo && msg.photo.length > 0) {
@@ -556,7 +568,167 @@ function mediaFileOf(
   if (msg.voice?.file_id) {
     return { fileId: msg.voice.file_id, fileUniqueId: msg.voice.file_unique_id };
   }
+  if (msg.video?.file_id) {
+    return { fileId: msg.video.file_id, fileUniqueId: msg.video.file_unique_id };
+  }
+  if (msg.videoNote?.file_id) {
+    return { fileId: msg.videoNote.file_id, fileUniqueId: msg.videoNote.file_unique_id };
+  }
+  if (msg.audio?.file_id) {
+    return { fileId: msg.audio.file_id, fileUniqueId: msg.audio.file_unique_id };
+  }
   return null;
+}
+
+/**
+ * Единый запуск медиа-конвейера для photo/document/voice/video/video_note/audio
+ * с policy-решениями и G3-рейт-лимитом. Используется и одиночными media-updates,
+ * и элементами альбома (G1).
+ */
+async function runMediaPipelineFor(
+  msg: TgMessage,
+  ctx: {
+    chatId: string;
+    userId: string;
+    kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio";
+    allowed: boolean;
+    archive: boolean;
+  },
+  overrides?: { caption?: string; threadId?: string; messageId?: number },
+): Promise<ProcessMediaResult | null> {
+  const svc = getUserRulesService();
+  const rules = [...svc.getHardRules(ctx.chatId), ...svc.getSoftRules(ctx.chatId)];
+  const ruleStr = (key: string): string | undefined => {
+    const v = [...rules].reverse().find((r) => r.key === key)?.value;
+    return typeof v === "string" ? v : undefined;
+  };
+  const ingestMode = ruleStr("ingest_mode") ?? "mention";
+  const policy = rulesToChatPolicy(rules);
+
+  const kindArchive =
+    ctx.kind === "photo"
+      ? policy.archive.photo
+      : ctx.kind === "document"
+        ? policy.archive.document
+        : ctx.kind === "voice" || ctx.kind === "audio" || ctx.kind === "video_note" || ctx.kind === "video"
+          ? policy.archive.voice
+          : false;
+  const kindProcess =
+    ctx.kind === "photo"
+      ? policy.processing.photoOcr
+      : ctx.kind === "document"
+        ? policy.processing.documentOcr
+        : policy.processing.voiceStt;
+
+  const caption = overrides?.caption ?? msg.caption;
+  const mentioned = msg.botMentioned === true || msg.repliedToBot === true;
+  const captionHint = /(чек|накладн|invoice|receipt|расход)/i.test(caption ?? "");
+  const mentionIngest =
+    ingestMode === "always" || (ingestMode === "mention" && (mentioned || captionHint));
+
+  if (!ctx.allowed && !ctx.archive && !kindArchive && !kindProcess && !mentionIngest) {
+    return { skipped: true };
+  }
+
+  // G3: per-chat rate limit — без vision/STT-вызова при превышении лимита.
+  const limiter = getOcrRateLimiter();
+  const rateOk = limiter.allow(ctx.chatId, policy.processing.maxOcrPerHour);
+
+  const doArchive = ctx.archive || kindArchive;
+  const doOcrIngest = kindProcess || mentionIngest;
+
+  try {
+    const result = await getListenerMediaPipeline().process(
+      {
+        chatId: ctx.chatId,
+        threadId: overrides?.threadId ?? msg.threadId,
+        messageId:
+          overrides?.messageId !== undefined
+            ? String(overrides.messageId)
+            : msg.messageId !== undefined
+              ? String(msg.messageId)
+              : undefined,
+        fromUserId: msg.from?.id !== undefined ? String(msg.from.id) : undefined,
+        caption,
+        botMentioned: msg.botMentioned,
+        repliedToBot: msg.repliedToBot,
+        isEdited: msg.isEdited === true,
+        photo: msg.photo as Array<{ file_id: string; file_unique_id?: string }> | undefined,
+        document: msg.document as {
+          file_id: string;
+          file_unique_id?: string;
+          file_name?: string;
+          mime_type?: string;
+        } | undefined,
+        voice: msg.voice as
+          | { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string }
+          | undefined,
+        video: msg.video as
+          | { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string }
+          | undefined,
+        video_note: msg.videoNote as { file_id: string; file_unique_id?: string; duration?: number } | undefined,
+        audio: msg.audio as
+          | { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string; file_name?: string }
+          | undefined,
+      },
+      {
+        archive: doArchive,
+        ocrIngest: doOcrIngest,
+        skipExtraction: !rateOk,
+        ocrMinBytes: policy.processing.minFileSizeBytes,
+        ocrMaxBytes: policy.processing.maxFileSizeBytes,
+        skipOcrIfNoHint: policy.processing.skipIfNoDocumentHint,
+      },
+    );
+    incMetric("telegram_media_total");
+    if (result.archived && !ctx.allowed) incMetric("telegram_listener_archived");
+    if (result.needsReview) {
+      if (ctx.kind === "voice" || ctx.kind === "audio" || ctx.kind === "video_note") {
+        incMetric("telegram_stt_failed");
+      } else if (ctx.kind === "photo" || ctx.kind === "document") {
+        incMetric("telegram_ocr_failed");
+      }
+    }
+    incMetric("telegram_media_processed");
+    console.log(
+      `[telegram-bot] media done chat=${ctx.chatId} kind=${ctx.kind} msg_id=${msg.messageId ?? "-"} ` +
+        `status=${rateOk ? "processed" : "rate-limited"} archived=${result.archived} expense=${result.ingestedExpense} confidence=${result.confidence.toFixed(2)}`,
+    );
+    const notify =
+      result.needsReview &&
+      shouldNotifyPoorOcr(rules, {
+        needsReview: result.needsReview,
+        confidence: result.confidence,
+      })
+        ? "Не удалось уверенно распознать документ. Пришлите, пожалуйста, более чёткое фото."
+        : undefined;
+    return {
+      rawText: result.rawText,
+      confidence: result.confidence,
+      expenseId: result.expenseId,
+      ingestedExpense: result.ingestedExpense,
+      notify,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const media = mediaFileOf(msg);
+    if (media && mediaRetry && isTransientMediaError(message)) {
+      await mediaRetry.enqueue({
+        chatId: ctx.chatId,
+        threadId: overrides?.threadId ?? msg.threadId,
+        messageId: overrides?.messageId ?? msg.messageId,
+        fileId: media.fileId,
+        fileUniqueId: media.fileUniqueId,
+        kind: ctx.kind,
+      });
+    }
+    console.error("[telegram-bot] media pipeline failed (enqueued retry):", message);
+    incMetric("telegram_media_failed");
+    console.error(
+      `[telegram-bot] media failed chat=${ctx.chatId} kind=${ctx.kind} msg_id=${msg.messageId ?? "-"} status=failed error=${message}`,
+    );
+    return { failed: true };
+  }
 }
 
 export default function telegramBot(pi: ExtensionAPI): void {

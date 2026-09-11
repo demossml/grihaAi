@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { getConfigDir } from "@griha/config";
 
-export type MediaRetryKind = "photo" | "document" | "voice";
+export type MediaRetryKind = "photo" | "document" | "voice" | "video" | "video_note" | "audio";
 export type MediaRetryStatus = "pending" | "processing" | "done" | "dead";
 
 export interface MediaRetryJob {

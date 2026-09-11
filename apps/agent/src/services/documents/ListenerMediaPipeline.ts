@@ -22,8 +22,15 @@ import type { ChatArchiveRecord } from "./chat-archive.js";
 import type { MediaRetryJob } from "./media-retry.js";
 import { assessTranscriptConfidence } from "../../utils/telegram/voice-intake.js";
 import { buildStorageKey, type MediaStorage } from "./media-storage.js";
+import { ocrSizeAndHintGate } from "./ocr-limiter.js";
 
-export type MediaKind = "photo" | "document" | "voice";
+export type MediaKind =
+  | "photo"
+  | "document"
+  | "voice"
+  | "video"
+  | "video_note"
+  | "audio";
 
 export interface ListenerMediaInput {
   chatId: string;
@@ -33,6 +40,8 @@ export interface ListenerMediaInput {
   caption?: string;
   botMentioned?: boolean;
   repliedToBot?: boolean;
+  /** G10: правка исходного медиа (edited_message) — ревизия архива. */
+  isEdited?: boolean;
   photo?: Array<{ file_id: string; file_unique_id?: string }>;
   document?: {
     file_id: string;
@@ -41,6 +50,9 @@ export interface ListenerMediaInput {
     mime_type?: string;
   };
   voice?: { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string };
+  video?: { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string };
+  video_note?: { file_id: string; file_unique_id?: string; duration?: number };
+  audio?: { file_id: string; file_unique_id?: string; duration?: number; mime_type?: string; file_name?: string };
 }
 
 export interface VoiceResult {
@@ -65,6 +77,12 @@ export interface ListenerMediaOptions {
   archive?: boolean;
   /** Писать expense_documents при распознанных полях (default true). */
   ocrIngest?: boolean;
+  /** G3: пропустить извлечение (rate limit/gates) — только storage + archive. */
+  skipExtraction?: boolean;
+  /** G3: гейты размера/подсказок (проверяются после download). */
+  ocrMinBytes?: number;
+  ocrMaxBytes?: number;
+  skipOcrIfNoHint?: boolean;
 }
 
 export interface ListenerMediaProcessFn {
@@ -122,6 +140,33 @@ function resolveFile(input: ListenerMediaInput): {
       fileUniqueId: input.voice.file_unique_id ?? input.voice.file_id,
       mimeType: input.voice.mime_type ?? "audio/ogg",
       duration: input.voice.duration,
+    };
+  }
+  if (input.video?.file_id) {
+    return {
+      kind: "video",
+      fileId: input.video.file_id,
+      fileUniqueId: input.video.file_unique_id ?? input.video.file_id,
+      mimeType: input.video.mime_type ?? "video/mp4",
+      duration: input.video.duration,
+    };
+  }
+  if (input.video_note?.file_id) {
+    return {
+      kind: "video_note",
+      fileId: input.video_note.file_id,
+      fileUniqueId: input.video_note.file_unique_id ?? input.video_note.file_id,
+      mimeType: "video/mp4",
+      duration: input.video_note.duration,
+    };
+  }
+  if (input.audio?.file_id) {
+    return {
+      kind: "audio",
+      fileId: input.audio.file_id,
+      fileUniqueId: input.audio.file_unique_id ?? input.audio.file_id,
+      mimeType: input.audio.mime_type ?? "audio/mpeg",
+      duration: input.audio.duration,
     };
   }
   return null;
@@ -202,11 +247,36 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
       }
       if (storedId !== null) this.repo.updateMediaStatus(storedId, "processing");
 
-      // ── 3) extraction: photo/document → OCR; voice → STT ───────────────────
+      // ── 3) extraction: photo/document → OCR; voice/audio/video_note → STT;
+      //        video → без извлечения (честный needsReview, G5); G3 gates ─────
+      const audioLike = file.kind === "voice" || file.kind === "audio" || file.kind === "video_note";
       let extracted: Awaited<ReturnType<DocumentExtractor["extract"]>> | null = null;
       let voice: VoiceResult | null = null;
-      if (file.kind === "voice") {
+      let skipExtraction = opts.skipExtraction === true;
+      if (!skipExtraction && !audioLike && file.kind !== "video") {
+        // G3: размер/подсказка — только для OCR-видов (photo/document).
+        try {
+          const stat = await fs.stat(tempPath);
+          const gate = ocrSizeAndHintGate({
+            sizeBytes: stat.size,
+            caption: input.caption,
+            policy: {
+              minFileSizeBytes: opts.ocrMinBytes,
+              maxFileSizeBytes: opts.ocrMaxBytes,
+              skipIfNoDocumentHint: opts.skipOcrIfNoHint,
+            },
+          });
+          if (!gate.ok) skipExtraction = true;
+        } catch {
+          /* stat упал — продолжаем с извлечением */
+        }
+      }
+      if (skipExtraction) {
+        // G3: rate limit/gates — файл сохранён, извлечение не выполняем.
+      } else if (audioLike) {
         voice = await this.transcribe(tempPath);
+      } else if (file.kind === "video") {
+        // Покадровый OCR видео — future work; сохраняем и честно помечаем.
       } else {
         try {
           extracted = await this.extractor.extract({
@@ -238,8 +308,8 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
       let expenseId: string | undefined;
       let ingestedExpense = false;
 
-      // ── 5) structured ingest (только photo/document; voice — никогда не expense) ──
-      if (file.kind !== "voice" && ocrIngest && hasUseful && extracted) {
+      // ── 5) structured ingest (только photo/document; voice/audio/video — никогда не expense) ──
+      if ((file.kind === "photo" || file.kind === "document") && ocrIngest && hasUseful && extracted) {
         if (!(await this.repo.findByFileUniqueId(input.chatId, file.fileUniqueId))) {
           const doc: ExpenseDocument = {
             id: randomUUID(),
@@ -280,11 +350,22 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
           file.fileUniqueId,
         );
         if (existingArchive) {
+          // G10: правка медиа — обновляем raw/caption и ревизию, не дублируем.
+          if (input.isEdited) {
+            this.repo.updateArchiveMediaRevision(input.chatId, file.fileUniqueId, {
+              rawText: existingArchive.rawText,
+              caption: input.caption,
+            });
+          }
           archived = true; // уже был
         } else {
           const archiveKind: ChatArchiveRecord["kind"] =
-            file.kind === "voice" ? "voice" : isExpense ? "expense" : file.kind;
-          const rawText = file.kind === "voice" ? voice?.transcript || undefined : extracted?.rawText;
+            audioLike || file.kind === "video"
+              ? file.kind
+              : isExpense
+                ? "expense"
+                : file.kind;
+          const rawText = audioLike ? voice?.transcript || undefined : extracted?.rawText;
           this.repo.insertArchive({
             id: randomUUID(),
             chatId: input.chatId,
@@ -303,10 +384,8 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
             fileName: file.fileName,
             mimeType: file.mimeType,
             itemsJson: extracted?.items?.length ? JSON.stringify(extracted.items) : undefined,
-            confidence:
-              file.kind === "voice" ? voice?.confidence ?? 0 : extracted?.confidence ?? 0,
-            needsReview:
-              file.kind === "voice" ? voice?.needsReview ?? true : extracted?.needsReview ?? true,
+            confidence: audioLike ? voice?.confidence ?? 0 : extracted?.confidence ?? 0,
+            needsReview: audioLike ? voice?.needsReview ?? true : extracted?.needsReview ?? true,
             createdAt: now,
             ocrStatus: rawText ? "done" : "failed",
             expenseId,
@@ -315,14 +394,16 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
         }
       }
 
-      if (storedId !== null) {
+      if (storedId !== null && !skipExtraction) {
         const hasContent =
-          file.kind === "voice"
+          audioLike
             ? Boolean(voice?.transcript)
-            : extracted != null &&
-              (Boolean(extracted.rawText) ||
-                extracted.total != null ||
-                Boolean(extracted.supplier));
+            : file.kind === "video"
+              ? true // файл сохранён; извлечения по дизайну нет (G5)
+              : extracted != null &&
+                (Boolean(extracted.rawText) ||
+                  extracted.total != null ||
+                  Boolean(extracted.supplier));
         this.repo.updateMediaStatus(
           storedId,
           hasContent ? "processed" : "failed",
@@ -334,11 +415,9 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
         archived,
         ingestedExpense,
         expenseId,
-        confidence:
-          file.kind === "voice" ? voice?.confidence ?? 0 : extracted?.confidence ?? 0,
-        needsReview:
-          file.kind === "voice" ? voice?.needsReview ?? true : extracted?.needsReview ?? true,
-        rawText: file.kind === "voice" ? voice?.transcript || undefined : extracted?.rawText,
+        confidence: audioLike ? voice?.confidence ?? 0 : extracted?.confidence ?? 0,
+        needsReview: audioLike ? voice?.needsReview ?? true : extracted?.needsReview ?? true,
+        rawText: audioLike ? voice?.transcript || undefined : extracted?.rawText,
         caption: input.caption,
       };
     } catch (err: unknown) {

@@ -33,6 +33,7 @@ import {
   type TelegramFileSendInput,
   type TelegramFileSendResult,
 } from "./file-send-bridge.js";
+import { setTelegramPinApi } from "./pin-bridge.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -51,6 +52,14 @@ export interface TelegramChatMemberEvent {
   from: { id: number };
 }
 
+/** G7: заявка на вступление в чат. */
+export interface TelegramJoinRequestEvent {
+  chat: { id: number; type?: string; title?: string };
+  from: { id: number; firstName?: string; username?: string };
+  userChatId: number;
+  bio?: string;
+}
+
 /** Minimal surface of a grammy Bot needed for long polling. */
 export interface TelegramBotLike {
   on(
@@ -60,7 +69,8 @@ export interface TelegramBotLike {
       | "edited_message"
       | "edited_channel_post"
       | "callback_query:data"
-      | "my_chat_member",
+      | "my_chat_member"
+      | "chat_join_request",
     handler: ((ctx: unknown) => unknown) | ((ctx: TelegramCallbackQueryContext) => unknown),
   ): void;
   start(): Promise<unknown>;
@@ -80,6 +90,12 @@ export interface TelegramBotLike {
       filePath: string,
       extra?: { caption?: string; messageThreadId?: number },
     ): Promise<unknown>;
+    /** G2: фото из локального файла. */
+    sendPhoto?(
+      chatId: number,
+      filePath: string,
+      extra?: { caption?: string; messageThreadId?: number },
+    ): Promise<unknown>;
     sendChatAction(
       chatId: number,
       action: "typing" | "upload_document",
@@ -88,6 +104,11 @@ export interface TelegramBotLike {
     setMyCommands(commands: Array<{ command: string; description: string }>): Promise<unknown>;
     setMessageReaction(chatId: number, messageId: number, reaction: string): Promise<unknown>;
     getChatMember(chatId: number, userId: number): Promise<{ status: string }>;
+    /** G6: закрепить сообщение. */
+    pinChatMessage?(chatId: number, messageId: number): Promise<unknown>;
+    /** G7: approve/decline join request. */
+    approveChatJoinRequest?(chatId: number, userId: number): Promise<unknown>;
+    declineChatJoinRequest?(chatId: number, userId: number): Promise<unknown>;
   };
 }
 
@@ -162,21 +183,55 @@ export interface TelegramBotControllerOptions {
       ) => Promise<unknown>;
     },
   ) => Promise<void>;
-  /** Единый медиа-конвейер (photo/document/voice): OCR/STT → archive → expenses до агента. */
+  /** Единый медиа-конвейер (photo/document/voice/video/audio): OCR/STT → archive → expenses до агента. */
   processMedia?: (
     msg: TgMessage,
     ctx: {
       chatId: string;
       userId: string;
-      kind: "photo" | "document" | "voice";
+      kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio";
       allowed: boolean;
       archive: boolean;
     },
   ) => Promise<ProcessMediaResult | null>;
+  /** G1: окно буфера альбома. */
+  albumBufferMs?: number;
+  /** G1: обработка альбома одним batch'ем. */
+  processMediaAlbum?: (
+    batch: import("./media-group-buffer.js").AlbumBatch,
+    ctx: {
+      chatId: string;
+      userId: string;
+      threadId?: string;
+      allowed: boolean;
+      archive: boolean;
+      suppressReply: boolean;
+      rulesContext: string;
+    },
+  ) => Promise<ProcessMediaResult | null>;
+  /** G6: /pin handler. */
+  pinHandler?: (ctx: { chatId: string; userId: string; messageId?: number }) => Promise<string>;
+  /** G7: заявка на вступление (chat_join_request). */
+  joinRequestHandler?: (
+    event: TelegramJoinRequestEvent,
+    deps: {
+      sendMessage: (chatId: number, text: string, extra?: { parseMode?: "HTML" }) => Promise<unknown>;
+      approve: (chatId: number, userId: number) => Promise<unknown>;
+      decline: (chatId: number, userId: number) => Promise<unknown>;
+    },
+  ) => Promise<void>;
+  /** G11: /status для admin (метрики). */
+  statusHandler?: (userId: string) => string | Promise<string>;
+  /** G4: bot username для deep links. */
+  botUsername?: string;
   /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
   archiveHandler?: (
     msg: TgMessage,
-    ctx: { chatId: string; userId: string; kind: "text" | "photo" | "document" | "voice" },
+    ctx: {
+      chatId: string;
+      userId: string;
+      kind: "text" | "photo" | "document" | "voice" | "video" | "video_note" | "audio";
+    },
   ) => Promise<{ stored: boolean; notify?: string }>;
   /** Group Runtime Contract: единая подготовка хода (configured → rules → prefilter). */
   prepareTurn?: (
@@ -287,6 +342,12 @@ export class TelegramBotController {
     // (текущий bot instance + per-chat очередь + retry). Метод читает this.bot
     // в момент вызова, поэтому регистрация в конструкторе валидна при реконнектах.
     setTelegramFileSender((input) => this.sendFileToChat(input));
+    // G6: /pin — тот же паттерн (текущий bot instance).
+    setTelegramPinApi(async (chatId, messageId) => {
+      if (!this.bot?.api.pinChatMessage) return false;
+      await this.bot.api.pinChatMessage(chatId, messageId);
+      return true;
+    });
   }
 
   isRunning(): boolean {
@@ -355,6 +416,11 @@ export class TelegramBotController {
           transcribeVoice: this.options?.transcribeVoice,
           customSetupInterceptor: this.options?.customSetupInterceptor,
           processMedia: this.options?.processMedia,
+          albumBufferMs: this.options?.albumBufferMs,
+          processMediaAlbum: this.options?.processMediaAlbum,
+          pinHandler: this.options?.pinHandler,
+          statusHandler: this.options?.statusHandler,
+          botUsername: this.options?.botUsername,
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,
           // Typing heartbeat: тот же thread, что у входящего сообщения.
@@ -410,6 +476,35 @@ export class TelegramBotController {
               err instanceof Error ? err.message : err,
             );
           });
+      });
+
+      // G7: заявка на вступление в группу/канал.
+      bot.on("chat_join_request", (ctx: unknown) => {
+        const event = this.toJoinRequestEvent(ctx);
+        if (!event) return;
+        void (async () => {
+          try {
+            await this.options?.joinRequestHandler?.(event, {
+              sendMessage: (chatId, text, extra) =>
+                bot.api.sendMessage(chatId, text, {
+                  ...(extra?.parseMode ? { parseMode: extra.parseMode } : {}),
+                }),
+              approve: (chatId, userId) =>
+                bot.api.approveChatJoinRequest
+                  ? bot.api.approveChatJoinRequest(chatId, userId)
+                  : Promise.reject(new Error("approveChatJoinRequest unavailable")),
+              decline: (chatId, userId) =>
+                bot.api.declineChatJoinRequest
+                  ? bot.api.declineChatJoinRequest(chatId, userId)
+                  : Promise.reject(new Error("declineChatJoinRequest unavailable")),
+            });
+          } catch (err: unknown) {
+            console.error(
+              "[telegram-bot] chat_join_request handler failed:",
+              err instanceof Error ? err.message : err,
+            );
+          }
+        })();
       });
 
       // Рекламируем реально существующие команды (меню в поле ввода Telegram).
@@ -646,15 +741,28 @@ export class TelegramBotController {
     let result: unknown;
     let ok = false;
     await this.sendQueue.enqueue(input.chatId, async () => {
-      ok = await this.sendWithRetry(
-        async () => {
-          result = await bot.api.sendDocument(input.chatId, input.filePath, {
-            caption: input.caption,
-            messageThreadId: input.threadId,
-          });
-        },
-        "sendDocument:send_file",
-      );
+      const kind = input.kind ?? "document";
+      if (kind === "photo" && bot.api.sendPhoto) {
+        ok = await this.sendWithRetry(
+          async () => {
+            result = await bot.api.sendPhoto!(input.chatId, input.filePath, {
+              caption: input.caption,
+              messageThreadId: input.threadId,
+            });
+          },
+          "sendPhoto:send_file",
+        );
+      } else {
+        ok = await this.sendWithRetry(
+          async () => {
+            result = await bot.api.sendDocument(input.chatId, input.filePath, {
+              caption: input.caption,
+              messageThreadId: input.threadId,
+            });
+          },
+          "sendDocument:send_file",
+        );
+      }
     });
 
     if (!ok) {
@@ -737,6 +845,11 @@ export class TelegramBotController {
         text: n.message.text,
         caption: n.message.caption,
         voice: n.message.voice as { file_id?: string } | undefined,
+        video: n.message.video as { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string } | undefined,
+        videoNote: n.message.video_note as { file_id?: string; file_unique_id?: string; duration?: number } | undefined,
+        audio: n.message.audio as { file_id?: string; file_unique_id?: string; duration?: number; mime_type?: string; file_name?: string } | undefined,
+        mediaGroupId: n.message.mediaGroupId,
+        replyTo: n.message.replyTo,
         document: n.message.document,
         photo: n.message.photo,
         contact: n.message.contact,
@@ -749,6 +862,47 @@ export class TelegramBotController {
         repliedToBot: n.message.repliedToBot,
         startsWithOtherMention: n.message.startsWithOtherMention,
       },
+    };
+  }
+
+  /** G7: грамми/сырой chat_join_request → нейтральное событие. */
+  private toJoinRequestEvent(ctx: unknown): TelegramJoinRequestEvent | null {
+    if (!ctx || typeof ctx !== "object") return null;
+    const c = ctx as {
+      chat?: { id?: number; type?: string; title?: string };
+      chatJoinRequest?: {
+        chat?: { id?: number; type?: string; title?: string };
+        from?: { id?: number; first_name?: string; username?: string };
+        user_chat_id?: number;
+        bio?: string;
+      };
+      chat_join_request?: {
+        chat?: { id?: number; type?: string; title?: string };
+        from?: { id?: number; first_name?: string; username?: string };
+        user_chat_id?: number;
+        bio?: string;
+      };
+      update?: { chat_join_request?: unknown };
+    };
+    const jr = c.chatJoinRequest ?? c.chat_join_request ?? (c.update?.chat_join_request as {
+      chat?: { id?: number; type?: string; title?: string };
+      from?: { id?: number; first_name?: string; username?: string };
+      user_chat_id?: number;
+      bio?: string;
+    } | undefined);
+    if (!jr) return null;
+    const chat = jr.chat ?? c.chat;
+    const from = jr.from;
+    if (!chat?.id || !from?.id) return null;
+    return {
+      chat: { id: chat.id, type: chat.type, title: chat.title },
+      from: {
+        id: from.id,
+        firstName: from.first_name,
+        username: from.username,
+      },
+      userChatId: jr.user_chat_id ?? from.id,
+      bio: jr.bio,
     };
   }
 

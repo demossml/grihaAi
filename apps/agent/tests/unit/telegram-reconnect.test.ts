@@ -22,11 +22,19 @@ class FakeBot implements TelegramBotLike {
   private stopResolve: (() => void) | null = null;
 
   on(
-    filter: "message" | "callback_query:data" | "my_chat_member",
+    filter:
+      | "message"
+      | "channel_post"
+      | "edited_message"
+      | "edited_channel_post"
+      | "callback_query:data"
+      | "my_chat_member"
+      | "chat_join_request",
     handler: (ctx: unknown) => unknown,
   ): void {
-    if (filter === "message") this.handler = handler;
-    else if (filter === "callback_query:data") this.callbackHandler = handler;
+    if (filter === "message" || filter === "channel_post" || filter === "edited_message" || filter === "edited_channel_post") {
+      this.handler = handler;
+    } else if (filter === "callback_query:data") this.callbackHandler = handler;
   }
 
   async start(): Promise<unknown> {

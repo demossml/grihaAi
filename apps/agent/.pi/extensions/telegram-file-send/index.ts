@@ -23,9 +23,15 @@ import {
   getTelegramFileSender,
 } from "../telegram-bot/file-send-bridge.js";
 import { validateSendFile } from "../telegram-bot/file-send.js";
+import { getDocumentsRepository } from "../../../src/services/documents/index.js";
+import { LocalMediaStorage } from "../../../src/services/documents/media-storage.js";
 
 const SendFileSchema = Type.Object({
-  filePath: Type.String({ minLength: 1 }),
+  filePath: Type.Optional(Type.String({ minLength: 1 })),
+  /** G2: отправить сохранённый медиа-файл из архива (вместо filePath). */
+  storageKey: Type.Optional(Type.String({ minLength: 1 })),
+  /** G2: photo (sendPhoto) или document (default). */
+  kind: Type.Optional(Type.Union([Type.Literal("photo"), Type.Literal("document")])),
   caption: Type.Optional(Type.String({ maxLength: 1024 })),
 });
 type SendFileParams = Static<typeof SendFileSchema>;
@@ -67,7 +73,25 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
         return fail("Нет доступа: отправка файлов этому пользователю запрещена.");
       }
 
-      const valid = validateSendFile(params.filePath, {
+      // G2: filePath ИЛИ storageKey (файл из постоянного хранилища медиа).
+      let resolvedPath: string;
+      if (params.storageKey) {
+        const rec = getDocumentsRepository().findMediaByStorageKey(chatId, params.storageKey);
+        if (!rec) {
+          return fail("Файл по storageKey не найден (или принадлежит другому чату).");
+        }
+        const storage = new LocalMediaStorage();
+        resolvedPath = storage.pathOf(rec.storageKey);
+        if (!(await storage.exists(rec.storageKey))) {
+          return fail("Физический файл отсутствует в хранилище медиа.");
+        }
+      } else if (params.filePath) {
+        resolvedPath = params.filePath;
+      } else {
+        return fail("Укажите filePath или storageKey.");
+      }
+
+      const valid = validateSendFile(resolvedPath, {
         allowedRoots: [os.tmpdir(), process.cwd(), getConfigDir()],
       });
       if (!valid.ok) return fail(valid.error);
@@ -88,6 +112,7 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
         filePath: valid.resolvedPath,
         caption: params.caption,
         threadId: threadId !== undefined ? Number(threadId) : undefined,
+        kind: params.kind,
       });
 
       if (!result.ok) {

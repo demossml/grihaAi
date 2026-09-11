@@ -17,7 +17,15 @@ import type { DocumentsRepository } from "./DocumentsRepository.js";
 import type { ExpenseDocument } from "./types.js";
 import type { TelegramFileMessage } from "./DocumentIngestService.js";
 
-export type ArchiveKind = "text" | "photo" | "document" | "voice" | "expense";
+export type ArchiveKind =
+  | "text"
+  | "photo"
+  | "document"
+  | "voice"
+  | "video"
+  | "video_note"
+  | "audio"
+  | "expense";
 
 export interface ChatArchiveRecord {
   id: string;

@@ -36,6 +36,11 @@ export interface ChatPolicy {
     photoOcr: boolean;
     documentOcr: boolean;
     voiceStt: boolean;
+    /** G3: лимит vision-вызовов на чат в час. */
+    maxOcrPerHour?: number;
+    minFileSizeBytes?: number;
+    maxFileSizeBytes?: number;
+    skipIfNoDocumentHint?: boolean;
   };
   agent: {
     enabled: boolean;
@@ -88,6 +93,14 @@ function truthy(v: unknown): boolean {
   return v === true || v === "true" || v === 1;
 }
 
+function toNumber(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) && Number(v) > 0) {
+    return Number(v);
+  }
+  return undefined;
+}
+
 function lastValue(rules: UserRule[], key: string): unknown {
   for (let i = rules.length - 1; i >= 0; i--) {
     const r = rules[i];
@@ -134,6 +147,10 @@ export function rulesToChatPolicy(rules: UserRule[]): Omit<ChatPolicy, "version"
       photoOcr: listenOnly || ocrIngest,
       documentOcr: listenOnly || ocrIngest,
       voiceStt: listenOnly || archiveMedia,
+      maxOcrPerHour: toNumber(lastValue(rules, "ocr_max_per_hour")),
+      minFileSizeBytes: toNumber(lastValue(rules, "ocr_min_bytes")),
+      maxFileSizeBytes: toNumber(lastValue(rules, "ocr_max_bytes")),
+      skipIfNoDocumentHint: truthy(lastValue(rules, "ocr_skip_no_hint")),
     },
     agent: { enabled: true },
     inbound: {

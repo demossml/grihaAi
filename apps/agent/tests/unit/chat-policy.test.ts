@@ -60,7 +60,15 @@ describe("rulesToChatPolicy", () => {
     ]);
     assert.equal(p.response.mode, "mention_or_reply");
     assert.deepEqual(p.archive, { text: true, photo: true, document: true, voice: true });
-    assert.deepEqual(p.processing, { photoOcr: true, documentOcr: true, voiceStt: true });
+    assert.deepEqual(p.processing, {
+      photoOcr: true,
+      documentOcr: true,
+      voiceStt: true,
+      maxOcrPerHour: undefined,
+      minFileSizeBytes: undefined,
+      maxFileSizeBytes: undefined,
+      skipIfNoDocumentHint: false,
+    });
     assert.equal(p.agent.enabled, true);
   });
 
