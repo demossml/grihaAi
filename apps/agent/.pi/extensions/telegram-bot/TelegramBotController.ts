@@ -107,6 +107,8 @@ export const DEFAULT_TELEGRAM_COMMANDS: Array<{ command: string; description: st
 export interface TelegramBotControllerOptions {
   prefilter?: RulePreFilter;
   rulesHandler?: TelegramRulesHandler;
+  /** server-side getChatMember для авторизации мутаций /rules (PROMPT 08). */
+  rulesGetChatMember?: (chatId: number, userId: number) => Promise<{ status: string }>;
   resetHandler?: TelegramResetHandler;
   /** Shared approve/deny logic (approval-gate) — used by both /approve|/deny text and callback buttons. */
   approvalHandler?: TelegramApprovalHandler;
@@ -321,6 +323,7 @@ export class TelegramBotController {
         {
           prefilter: this.options?.prefilter,
           rulesHandler: this.options?.rulesHandler,
+          rulesGetChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
           resetHandler: this.options?.resetHandler,
           approvalHandler: this.options?.approvalHandler,
           // Индикатор «печатает…» перед тем, как агент начнёт отвечать.

@@ -90,6 +90,27 @@ export function mediaRetryBackoffSeconds(attempts: number): number {
   return Math.min(3600, 30 * Math.pow(2, Math.max(1, attempts)));
 }
 
+/** PROMPT 07: bounded backoff + jitter (0.8..1.2), без tight loop. */
+export function mediaRetryJitterMs(attempts: number): number {
+  const base = mediaRetryBackoffSeconds(attempts) * 1000;
+  const jitter = 0.8 + Math.random() * 0.4;
+  return Math.round(base * jitter);
+}
+
+/** PROMPT 07: постоянные ошибки (валидация/лимиты/404) не ретраятся. */
+const PERMANENT_ERROR_PATTERNS = [
+  /mime not allowed/i,
+  /too large/i,
+  /escapes root/i,
+  /no botToken/i,
+  /no supported file/i,
+  /Telegram (getFile|file download) failed: (400|401|403|404)/i,
+];
+
+export function isTransientMediaError(message: string): boolean {
+  return !PERMANENT_ERROR_PATTERNS.some((re) => re.test(message));
+}
+
 export function getMediaRetryDbPath(): string {
   return path.join(getConfigDir(), "media-retry.sqlite");
 }
@@ -181,7 +202,7 @@ export class MediaRetryQueue {
       .run(new Date().toISOString(), id);
   }
 
-  /** attempts++ и backoff; attempts >= max_attempts → dead. */
+  /** attempts++ и backoff (с jitter); attempts >= max_attempts → dead. */
   async markFailure(id: string, error: string): Promise<void> {
     const row = this.db
       .prepare(`SELECT * FROM media_retry_jobs WHERE id = ?`)
@@ -192,7 +213,7 @@ export class MediaRetryQueue {
     const nextAttemptAt =
       status === "dead"
         ? row.next_attempt_at
-        : new Date(Date.now() + mediaRetryBackoffSeconds(attempts) * 1000).toISOString();
+        : new Date(Date.now() + mediaRetryJitterMs(attempts)).toISOString();
     this.db
       .prepare(
         `UPDATE media_retry_jobs
@@ -200,6 +221,40 @@ export class MediaRetryQueue {
          WHERE id = ?`,
       )
       .run(attempts, status, nextAttemptAt, error, new Date().toISOString(), id);
+  }
+
+  /** Постоянная ошибка (валидация/лимиты): сразу dead, без ретраев. */
+  async markPermanentDead(id: string, error: string): Promise<void> {
+    this.db
+      .prepare(
+        `UPDATE media_retry_jobs
+         SET status = 'dead', last_error = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(error, new Date().toISOString(), id);
+  }
+
+  /**
+   * PROMPT 07: crash recovery — job'ы, застрявшие в 'processing' дольше
+   * порога (воркер упал), возвращаются в очередь; переполнившие попытки — dead.
+   */
+  async requeueStaleProcessing(staleBeforeMs: number): Promise<number> {
+    const cutoff = new Date(Date.now() - staleBeforeMs).toISOString();
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `UPDATE media_retry_jobs SET status = 'dead', updated_at = ?
+         WHERE status = 'processing' AND updated_at <= ? AND attempts + 1 >= max_attempts`,
+      )
+      .run(now, cutoff);
+    const info = this.db
+      .prepare(
+        `UPDATE media_retry_jobs
+         SET status = 'pending', attempts = attempts + 1, next_attempt_at = ?, updated_at = ?
+         WHERE status = 'processing' AND updated_at <= ?`,
+      )
+      .run(now, now, cutoff);
+    return info.changes;
   }
 }
 
@@ -209,25 +264,33 @@ export interface MediaWorkerOptions {
   processJob: (job: MediaRetryJob) => Promise<void>;
   intervalMs?: number;
   claimLimit?: number;
+  /** Порог stale-processing recovery (default 10 минут). */
+  staleProcessingMs?: number;
 }
 
 /** Запустить фоновый воркер; возвращает функцию остановки. */
 export function startMediaRetryWorker(opts: MediaWorkerOptions): () => void {
   const intervalMs = opts.intervalMs ?? 60_000;
   const claimLimit = opts.claimLimit ?? 3;
+  const staleMs = opts.staleProcessingMs ?? 10 * 60_000;
 
   const tick = async (): Promise<void> => {
     try {
+      // PROMPT 07: после crash job'ы не остаются в 'processing' навсегда.
+      await opts.queue.requeueStaleProcessing(staleMs);
       const jobs = await opts.queue.claimDue(claimLimit);
       for (const job of jobs) {
         try {
           await opts.processJob(job);
           await opts.queue.markDone(job.id);
         } catch (err: unknown) {
-          await opts.queue.markFailure(
-            job.id,
-            err instanceof Error ? err.message : String(err),
-          );
+          const message = err instanceof Error ? err.message : String(err);
+          // Разделяем transient/permanent: валидацию/лимиты не ретраим.
+          if (isTransientMediaError(message)) {
+            await opts.queue.markFailure(job.id, message);
+          } else {
+            await opts.queue.markPermanentDead(job.id, message);
+          }
         }
       }
     } catch (err: unknown) {

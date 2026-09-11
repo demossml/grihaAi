@@ -13,11 +13,14 @@ import {
   buildConfirmKeyboard,
   buildOnboardingKeyboard,
   buildOnboardingText,
+  dedupeByKey,
   describeRules,
   parseCustomRulesText,
   PRESETS,
   type PresetId,
+  type PresetRule,
 } from "./RulePresets.js";
+import { extractPolicyPatch, policyPatchToRules } from "./policy-extraction.js";
 
 export interface MyChatMemberEvent {
   oldStatus: string;
@@ -227,14 +230,27 @@ export async function handleSetupCallback(
 /** §8.1: custom-текст в DM (waitingCustom) → parse + кнопки подтверждения. */
 export async function tryHandleCustomText(
   input: { userId: string; chatId: string; text: string; isPrivate: boolean },
-  deps: { setup: ChatSetupService },
+  deps: {
+    setup: ChatSetupService;
+    /** PROMPT 06: LLM structured extraction (опционально; fallback — regex). */
+    llmExtract?: (prompt: string) => Promise<string>;
+  },
   send: (chatId: number, text: string, extra?: { inlineButtons?: InlineButton[][] }) => Promise<void>,
 ): Promise<boolean> {
   if (!input.isPrivate) return false;
   const rec = await deps.setup.getWaitingForActor(input.userId);
   if (!rec) return false;
 
-  const rules = parseCustomRulesText(input.text, input.userId);
+  // PROMPT 06: LLM → structured JSON → validation; при неудаче — детерминированный regex.
+  let rules: PresetRule[];
+  if (deps.llmExtract) {
+    const patch = await extractPolicyPatch(input.text, deps.llmExtract);
+    rules = patch
+      ? dedupeByKey([...PRESETS.safe_default.rules, ...policyPatchToRules(patch)])
+      : parseCustomRulesText(input.text, input.userId);
+  } else {
+    rules = parseCustomRulesText(input.text, input.userId);
+  }
   await deps.setup.setPendingRules(rec.chatId, rules);
   await send(Number(input.chatId), describeRules(rules), {
     inlineButtons: buildConfirmKeyboard(rec.chatId),

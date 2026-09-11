@@ -326,7 +326,10 @@ export class DocumentsRepository {
     this.db.close();
   }
 
-  /** Вставка с дедупом: тот же file_unique_id + chat_id → вернуть existing. */
+  /**
+   * Вставка с дедупом: тот же file_unique_id + chat_id → вернуть existing.
+   * Атомарно (транзакция) — повторная доставка Telegram не создаёт дубль (PROMPT 07).
+   */
   async insert(doc: ExpenseDocument): Promise<ExpenseDocument> {
     if (doc.fileUniqueId) {
       const existing = await this.findByFileUniqueId(doc.chatId, doc.fileUniqueId);
@@ -334,38 +337,48 @@ export class DocumentsRepository {
     }
     const id = doc.id || randomUUID();
     const now = new Date().toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO expense_documents
-         (id, chat_id, thread_id, message_id, from_user_id, file_id, file_unique_id, file_name, mime_type,
-          kind, doc_date, supplier, total, currency, raw_text, items_json,
-          confidence, needs_review, source, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        doc.chatId,
-        doc.threadId ?? null,
-        doc.messageId ?? null,
-        doc.fromUserId ?? null,
-        doc.fileId ?? null,
-        doc.fileUniqueId ?? null,
-        doc.fileName ?? null,
-        doc.mimeType ?? null,
-        doc.kind,
-        doc.docDate,
-        doc.supplier ?? null,
-        doc.total ?? null,
-        doc.currency || "RUB",
-        doc.rawText ?? null,
-        doc.itemsJson ?? null,
-        doc.confidence,
-        doc.needsReview ? 1 : 0,
-        doc.source,
-        now,
-        now,
-      );
-    return (await this.getById(id))!;
+    const runInsert = this.db.transaction((): string => {
+      if (doc.fileUniqueId) {
+        const inside = this.db
+          .prepare(`SELECT id FROM expense_documents WHERE chat_id = ? AND file_unique_id = ?`)
+          .get(doc.chatId, doc.fileUniqueId) as { id: string } | undefined;
+        if (inside) return inside.id;
+      }
+      this.db
+        .prepare(
+          `INSERT INTO expense_documents
+           (id, chat_id, thread_id, message_id, from_user_id, file_id, file_unique_id, file_name, mime_type,
+            kind, doc_date, supplier, total, currency, raw_text, items_json,
+            confidence, needs_review, source, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          doc.chatId,
+          doc.threadId ?? null,
+          doc.messageId ?? null,
+          doc.fromUserId ?? null,
+          doc.fileId ?? null,
+          doc.fileUniqueId ?? null,
+          doc.fileName ?? null,
+          doc.mimeType ?? null,
+          doc.kind,
+          doc.docDate,
+          doc.supplier ?? null,
+          doc.total ?? null,
+          doc.currency || "RUB",
+          doc.rawText ?? null,
+          doc.itemsJson ?? null,
+          doc.confidence,
+          doc.needsReview ? 1 : 0,
+          doc.source,
+          now,
+          now,
+        );
+      return id;
+    });
+    const insertedId = runInsert();
+    return (await this.getById(insertedId))!;
   }
 
   async findByFileUniqueId(chatId: string, fileUniqueId: string): Promise<ExpenseDocument | null> {

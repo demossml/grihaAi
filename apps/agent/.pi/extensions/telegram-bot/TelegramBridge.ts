@@ -135,7 +135,14 @@ export interface RulePreFilter {
 
 /** Handles Telegram /rules commands (chat scope + owner auto-substituted). */
 export interface TelegramRulesHandler {
-  (args: string, ctx: { chatId: string; userId: string }): string;
+  (
+    args: string,
+    ctx: { chatId: string; userId: string; chatType?: string },
+    deps?: {
+      /** server-side проверка статуса actor'а (PROMPT 08). */
+      getChatMember?: (chatId: number, userId: number) => Promise<{ status: string }>;
+    },
+  ): string | Promise<string>;
 }
 
 /** Resets the isolated session for a session key (`/new` в конкретном чате/теме). */
@@ -240,6 +247,8 @@ export class TelegramBridge {
     private readonly options?: {
       prefilter?: RulePreFilter;
       rulesHandler?: TelegramRulesHandler;
+      /** server-side getChatMember для авторизации мутаций /rules (PROMPT 08). */
+      rulesGetChatMember?: (chatId: number, userId: number) => Promise<{ status: string }>;
       resetHandler?: TelegramResetHandler;
       approvalHandler?: TelegramApprovalHandler;
       /** Fired right before the agent is asked to reply (chat action signal). */
@@ -469,7 +478,15 @@ export class TelegramBridge {
       const handler = this.options?.rulesHandler;
       if (handler) {
         const args = text.slice("/rules".length).trim();
-        const reply = handler(args, { chatId: String(chatId), userId: String(userId) });
+        const reply = await handler(
+          args,
+          { chatId: String(chatId), userId: String(userId), chatType },
+          {
+            getChatMember: this.options.rulesGetChatMember
+              ? (c, u) => this.options!.rulesGetChatMember!(c, u)
+              : undefined,
+          },
+        );
         await send(chatId, reply);
         return { handled: true };
       }

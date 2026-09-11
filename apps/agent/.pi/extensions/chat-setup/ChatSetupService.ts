@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getConfigDir } from "@griha/config";
 import { getUserRulesService, type UserRulesService } from "../user-rules/UserRulesService.js";
+import { recordChatPolicyFromRules } from "../user-rules/chat-policy.js";
 import {
   PRESETS,
   presetRulesWithActor,
@@ -169,6 +170,16 @@ export class ChatSetupService {
       source: `preset:${presetId}`,
       actorId: opts.actorId,
     });
+    // PROMPT 06: версионированная policy + audit trail (best-effort).
+    try {
+      recordChatPolicyFromRules(
+        chatId,
+        [...this.rules.getHardRules(chatId), ...this.rules.getSoftRules(chatId)],
+        { source: `preset:${presetId}`, actorId: opts.actorId },
+      );
+    } catch (err: unknown) {
+      console.warn("[chat-setup] policy record failed:", err instanceof Error ? err.message : err);
+    }
     if (!opts.silent) {
       await this.markCompleted(chatId, presetId);
     }
@@ -214,6 +225,16 @@ export class ChatSetupService {
       source: "custom",
       actorId,
     });
+    // PROMPT 06: версионированная policy + audit trail (best-effort).
+    try {
+      recordChatPolicyFromRules(
+        chatId,
+        [...this.rules.getHardRules(chatId), ...this.rules.getSoftRules(chatId)],
+        { source: "custom", actorId },
+      );
+    } catch (err: unknown) {
+      console.warn("[chat-setup] policy record failed:", err instanceof Error ? err.message : err);
+    }
     await this.markCompleted(chatId, "custom");
   }
 

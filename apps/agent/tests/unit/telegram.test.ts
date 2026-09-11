@@ -408,7 +408,7 @@ describe("telegram bridge", () => {
     });
 
     assert.equal(handledArgs, "add не отвечай чужим");
-    assert.deepEqual(handledCtx, { chatId: "999", userId: "123" });
+    assert.deepEqual(handledCtx, { chatId: "999", userId: "123", chatType: "private" });
     assert.equal(sent, "список правил");
   });
 

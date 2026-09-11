@@ -14,6 +14,7 @@ import {
 } from "../../../src/services/documents/index.js";
 import {
   MediaRetryQueue,
+  isTransientMediaError,
   startMediaRetryWorker,
   type MediaRetryJob,
 } from "../../../src/services/documents/media-retry.js";
@@ -28,7 +29,12 @@ import { TelegramSessionPool } from "./TelegramSessionPool.js";
 import { loadConfig, saveConfig } from "@griha/config";
 import { evaluatePreFilter } from "../user-rules/prefilter.js";
 import { formatRulesContext } from "../user-rules/format-rules-context.js";
-import { prepareGroupTurn, shouldNotifyPoorOcr } from "./group-runtime.js";import { getUserRulesService } from "../user-rules/UserRulesService.js";
+import { prepareGroupTurn, shouldNotifyPoorOcr } from "./group-runtime.js";
+import { makeGuardedRulesHandler } from "./rules-auth.js";
+import { getUserRulesService } from "../user-rules/UserRulesService.js";
+import { recordChatPolicyFromRules, rulesToChatPolicy } from "../user-rules/chat-policy.js";
+import { buildExtractionPrompt } from "../chat-setup/policy-extraction.js";
+import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
 import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
 import { getUsersService, resolveOwnerId } from "../../../src/services/UsersService.js";
@@ -228,7 +234,10 @@ function getController(): TelegramBotController {
             evaluate: (rules, prefilterInput) => evaluatePreFilter(rules, prefilterInput),
             formatRules: (hard, soft) => formatRulesContext(hard, soft),
           }),
-        rulesHandler: telegramRulesHandler,
+        rulesHandler: makeGuardedRulesHandler({
+          run: (args, ctx) => telegramRulesHandler(args, ctx),
+          users,
+        }),
         resetHandler: (sessionKey) => pool?.reset(sessionKey),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
         aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
@@ -284,9 +293,29 @@ function getController(): TelegramBotController {
           }
         },
         customSetupInterceptor: (input, send) =>
-          tryHandleCustomText(input, { setup }, async (chatId, text, extra) => {
-            await send(chatId, text, undefined, extra);
-          }),
+          tryHandleCustomText(
+            input,
+            {
+              setup,
+              // PROMPT 06: LLM structured extraction (fallback — regex внутри).
+              llmExtract: async (text) => {
+                try {
+                  const cfg = loadConfig();
+                  if (!cfg) throw new Error("no config");
+                  return await createHttpLearningLlm(cfg)(buildExtractionPrompt(text));
+                } catch (err: unknown) {
+                  console.warn(
+                    "[telegram-bot] LLM policy extraction failed (regex fallback):",
+                    err instanceof Error ? err.message : err,
+                  );
+                  throw err;
+                }
+              },
+            },
+            async (chatId, text, extra) => {
+              await send(chatId, text, undefined, extra);
+            },
+          ),
         getBotSelf: () => botSelf,
         // R1: pending-группа silent (онбординг не завершён → prefilter false).
         getGroupConfigured: (chatId) => setup.isConfiguredSync(chatId),
@@ -296,31 +325,39 @@ function getController(): TelegramBotController {
         processMedia: async (msg, ctx) => {
           const svc = getUserRulesService();
           const rules = [...svc.getHardRules(ctx.chatId), ...svc.getSoftRules(ctx.chatId)];
-          const ruleVal = (key: string): boolean =>
-            [...rules].reverse().some((r) => r.key === key && (r.value === true || r.value === "true"));
           const ruleStr = (key: string): string | undefined => {
             const v = [...rules].reverse().find((r) => r.key === key)?.value;
             return typeof v === "string" ? v : undefined;
           };
-          const listenOnly = ruleVal("listen_only");
-          const archiveOcrIngest = ruleVal("archive_ocr_ingest");
-          const archiveMedia = ruleVal("archive_media");
           const ingestMode = ruleStr("ingest_mode") ?? "mention";
 
-          // B3: listener / archive_ocr_ingest — force-инжест, mention не блокирует.
-          const forceOcr = listenOnly || archiveOcrIngest;
+          // PROMPT 06: детерминированная версионированная policy из правил SQLite.
+          const policy = rulesToChatPolicy(rules);
+          const kindArchive =
+            ctx.kind === "photo"
+              ? policy.archive.photo
+              : ctx.kind === "document"
+                ? policy.archive.document
+                : policy.archive.voice;
+          const kindProcess =
+            ctx.kind === "photo"
+              ? policy.processing.photoOcr
+              : ctx.kind === "document"
+                ? policy.processing.documentOcr
+                : policy.processing.voiceStt;
+
           const mentioned = msg.botMentioned === true || msg.repliedToBot === true;
           const captionHint = /(чек|накладн|invoice|receipt|расход)/i.test(msg.caption ?? "");
           const mentionIngest =
             ingestMode === "always" || (ingestMode === "mention" && (mentioned || captionHint));
 
-          // OCR только если: ход разрешён / архив / policy-инжест / mention-инжест.
-          if (!ctx.allowed && !ctx.archive && !forceOcr && !mentionIngest) {
+          // OCR/STT только если: ход разрешён / архив / policy-processing / mention-инжест.
+          if (!ctx.allowed && !ctx.archive && !kindArchive && !kindProcess && !mentionIngest) {
             return { skipped: true };
           }
 
-          const doArchive = ctx.archive || archiveMedia || listenOnly || archiveOcrIngest;
-          const doOcrIngest = forceOcr || mentionIngest;
+          const doArchive = ctx.archive || kindArchive;
+          const doOcrIngest = kindProcess || mentionIngest;
 
           try {
             const result = await getListenerMediaPipeline().process(
@@ -363,8 +400,10 @@ function getController(): TelegramBotController {
             };
           } catch (err: unknown) {
             // R-GR-7: download упал → отложенный retry (полный pipeline), file_id не теряем.
+            // PROMPT 07: постоянные ошибки (mime/размер/404) НЕ ставятся в очередь.
+            const message = err instanceof Error ? err.message : String(err);
             const media = mediaFileOf(msg);
-            if (media && mediaRetry) {
+            if (media && mediaRetry && isTransientMediaError(message)) {
               await mediaRetry.enqueue({
                 chatId: ctx.chatId,
                 threadId: msg.threadId,
@@ -376,7 +415,7 @@ function getController(): TelegramBotController {
             }
             console.error(
               "[telegram-bot] media pipeline failed (enqueued retry):",
-              err instanceof Error ? err.message : err,
+              message,
             );
             return { failed: true };
           }
@@ -438,6 +477,15 @@ async function bootstrapUsers(): Promise<void> {
       getUserRulesService().replaceChatManagedRules(
         rec.chatId,
         presetRulesWithActor("listener", actorId),
+        { source: "preset:listener", actorId },
+      );
+      // PROMPT 06: версионированная policy + history.
+      recordChatPolicyFromRules(
+        rec.chatId,
+        [
+          ...getUserRulesService().getHardRules(rec.chatId),
+          ...getUserRulesService().getSoftRules(rec.chatId),
+        ],
         { source: "preset:listener", actorId },
       );
       console.log(`[telegram-bot] listener defaults ensured for chat ${rec.chatId}`);
