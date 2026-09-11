@@ -11,6 +11,7 @@ import {
   getChatArchiveService,
   getListenerMediaPipeline,
   processMediaRetryJob,
+  setExpenseBriefNotifier,
 } from "../../../src/services/documents/index.js";
 import {
   MediaRetryQueue,
@@ -42,6 +43,7 @@ import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning
 import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
 import { getUsersService, resolveOwnerId } from "../../../src/services/UsersService.js";
+import { formatExpenseBrief } from "../../../src/services/documents/groupHistoryTools.js";
 import { handleUsersCommand } from "../../../src/services/users-command.js";
 import {
   getChatSetupService,
@@ -570,6 +572,7 @@ async function startBot(): Promise<boolean> {
   try {
     await bootstrapUsers();
     getController().start(token);
+    wireExpenseBriefNotify(getController());
     // R-GR-7: фоновый воркер ретраев медиа — с ботом стартует/останавливается.
     startMediaRetry();
     return true;
@@ -577,6 +580,38 @@ async function startBot(): Promise<boolean> {
     console.error("[telegram-bot] startBot error:", err);
     return false;
   }
+}
+
+/**
+ * §4: тихий брифинг по распознанному чеку. Только при правиле
+ * notify_expense_brief=true в чате; получатель — addedByUserId настройки чата
+ * или owner бота (DM). Сбой отправки молча игнорируется (не спамим в группу).
+ */
+function wireExpenseBriefNotify(ctl: TelegramBotController): void {
+  setExpenseBriefNotifier(async (info) => {
+    try {
+      const rules = [
+        ...getUserRulesService().getHardRules(info.chatId),
+        ...getUserRulesService().getSoftRules(info.chatId),
+      ];
+      const enabled = [...rules].reverse().some(
+        (r) => r.key === "notify_expense_brief" && (r.value === true || r.value === "true"),
+      );
+      if (!enabled) return;
+      const rec = await getChatSetupService().get(info.chatId);
+      const owner = resolveOwnerId(loadConfig());
+      const addedBy =
+        rec?.addedByUserId && rec.addedByUserId !== "0" ? rec.addedByUserId : undefined;
+      const recipient = addedBy ?? (owner ? String(owner) : undefined);
+      if (!recipient) return;
+      await ctl.sendNotify(Number(recipient), formatExpenseBrief(info));
+    } catch (err: unknown) {
+      console.error(
+        "[telegram-bot] expense brief failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  });
 }
 
 async function stopBot(): Promise<void> {

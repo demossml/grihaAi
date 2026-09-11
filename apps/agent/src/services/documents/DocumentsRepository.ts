@@ -150,6 +150,7 @@ interface ArchiveRow {
   is_edited: number;
   revision: number;
   caption: string | null;
+  storage_key?: string | null;
 }
 
 /** State machine обработки медиа (PROMPT 07). */
@@ -247,7 +248,19 @@ function archiveRowToRecord(row: ArchiveRow): ChatArchiveRecord {
     isEdited: row.is_edited !== 0,
     revision: row.revision,
     caption: row.caption ?? undefined,
+    storageKey: row.storage_key ?? undefined,
   };
+}
+
+/** Запрос истории группы (H5: limit уже заклэмплен вызывающим). */
+export interface ArchiveListQuery {
+  chatId: string;
+  threadId?: string;
+  limit: number;
+  beforeMessageId?: string;
+  kinds?: string[];
+  fromDate?: string;
+  toDate?: string;
 }
 
 function rowToDoc(row: DocRow): ExpenseDocument {
@@ -474,6 +487,88 @@ export class DocumentsRepository {
       )
       .run(rawText ?? null, caption ?? null, chatId, fileUniqueId);
     return this.findArchiveByFileUniqueId(chatId, fileUniqueId);
+  }
+
+  // ── История групп (group_history / group_recent, H1–H5) ────────────────────
+
+  /**
+   * Сообщения архива чата с фильтрами. Порядок: новые первыми.
+   * storageKey берётся из telegram_media (коррелированный подзапрос — без
+   * дублей при повторной доставке одного file_unique_id).
+   */
+  listMessages(q: ArchiveListQuery): ChatArchiveRecord[] {
+    const conds = ["ca.chat_id = ?"];
+    const params: Array<string | number> = [q.chatId];
+    if (q.threadId !== undefined) {
+      conds.push("ca.thread_id = ?");
+      params.push(q.threadId);
+    }
+    if (q.beforeMessageId !== undefined) {
+      conds.push("ca.message_id IS NOT NULL");
+      conds.push("CAST(ca.message_id AS INTEGER) < ?");
+      params.push(Number(q.beforeMessageId) || 0);
+    }
+    if (q.kinds && q.kinds.length > 0) {
+      conds.push(`ca.kind IN (${q.kinds.map(() => "?").join(", ")})`);
+      params.push(...q.kinds);
+    }
+    if (q.fromDate) {
+      conds.push("ca.created_at >= ?");
+      params.push(q.fromDate);
+    }
+    if (q.toDate) {
+      conds.push("ca.created_at <= ?");
+      params.push(`${q.toDate}T23:59:59.999Z`);
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT ca.*,
+                (SELECT tm.storage_key FROM telegram_media tm
+                  WHERE tm.chat_id = ca.chat_id AND tm.file_unique_id = ca.file_unique_id
+                  ORDER BY tm.updated_at DESC LIMIT 1) AS storage_key
+         FROM chat_archive ca
+         WHERE ${conds.join(" AND ")}
+         ORDER BY ca.created_at DESC, CAST(COALESCE(ca.message_id, '0') AS INTEGER) DESC
+         LIMIT ?`,
+      )
+      .all(...params, q.limit) as ArchiveRow[];
+    return rows.map(archiveRowToRecord);
+  }
+
+  /** Недавние события по списку чатов (group_recent): created_at >= sinceIso. */
+  listRecent(q: { chatIds: string[]; sinceIso: string; limit: number }): ChatArchiveRecord[] {
+    if (q.chatIds.length === 0) return [];
+    const placeholders = q.chatIds.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(
+        `SELECT ca.*,
+                (SELECT tm.storage_key FROM telegram_media tm
+                  WHERE tm.chat_id = ca.chat_id AND tm.file_unique_id = ca.file_unique_id
+                  ORDER BY tm.updated_at DESC LIMIT 1) AS storage_key
+         FROM chat_archive ca
+         WHERE ca.chat_id IN (${placeholders}) AND ca.created_at >= ?
+         ORDER BY ca.created_at DESC
+         LIMIT ?`,
+      )
+      .all(...q.chatIds, q.sinceIso, q.limit) as ArchiveRow[];
+    return rows.map(archiveRowToRecord);
+  }
+
+  /** Топ чатов по последней активности (для group_recent без chatId, cap 10). */
+  topRecentChats(chatIds: string[], limit: number): string[] {
+    if (chatIds.length === 0) return [];
+    const placeholders = chatIds.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(
+        `SELECT chat_id, MAX(created_at) AS last_at
+         FROM chat_archive
+         WHERE chat_id IN (${placeholders})
+         GROUP BY chat_id
+         ORDER BY last_at DESC
+         LIMIT ?`,
+      )
+      .all(...chatIds, limit) as Array<{ chat_id: string }>;
+    return rows.map((r) => r.chat_id);
   }
 
   // ── telegram_media (PROMPT 05: постоянное хранение + статусы обработки) ────

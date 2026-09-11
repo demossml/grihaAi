@@ -59,6 +59,8 @@ export interface ChatArchiveRecord {
   /** Правка (edited_message/edited_channel_post): версия записи. */
   isEdited?: boolean;
   revision?: number;
+  /** H4: ключ постоянного хранилища медиа (не путь на диске) — только для чтения. */
+  storageKey?: string;
 }
 
 export interface ArchiveTextInput {

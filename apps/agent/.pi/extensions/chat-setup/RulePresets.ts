@@ -21,7 +21,8 @@ export type RuleKey =
   | "no_hallucinate_data"
   | "archive_media"
   | "archive_ocr_ingest"
-  | "notify_poor_ocr";
+  | "notify_poor_ocr"
+  | "notify_expense_brief";
 
 export type RuleValue = boolean | string;
 

@@ -102,6 +102,21 @@ export interface ListenerMediaDeps {
   stt?: SttFn;
   /** Фабрика рабочего temp-файла (тесты). */
   makeTemp?: () => Promise<string>;
+  /**
+   * §4 тихий брифинг по чеку (owner DM): вызывается только при успешном
+   * structured ingest и наличии суммы. Сбой уведомления НЕ ломает конвейер.
+   */
+  notifyExpenseBrief?: (info: ExpenseBriefInfo) => Promise<void>;
+}
+
+/** Данные брифинга: без file_id/путей — только бизнес-поля. */
+export interface ExpenseBriefInfo {
+  chatId: string;
+  threadId?: string;
+  supplier?: string;
+  total: number;
+  currency?: string;
+  docDate?: string;
 }
 
 /** Файл: фото — самый большой размер (последний), документ/voice — любой. */
@@ -337,6 +352,24 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
           const inserted = await this.repo.insert(doc);
           expenseId = inserted.id;
           ingestedExpense = true;
+          // §4: тихий брифинг — только по факту инжеста И суммы (не needsReview-only).
+          if (extracted.total != null && this.deps.notifyExpenseBrief) {
+            try {
+              await this.deps.notifyExpenseBrief({
+                chatId: input.chatId,
+                threadId: normalizeThreadId(input.threadId),
+                supplier: extracted.supplier,
+                total: extracted.total,
+                currency: extracted.currency ?? "RUB",
+                docDate: extracted.docDate,
+              });
+            } catch (err: unknown) {
+              console.error(
+                "[listener-media] expense brief notify failed:",
+                err instanceof Error ? err.message : err,
+              );
+            }
+          }
         } else {
           expenseId = (await this.repo.findByFileUniqueId(input.chatId, file.fileUniqueId))?.id;
         }

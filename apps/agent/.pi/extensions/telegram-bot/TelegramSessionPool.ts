@@ -26,6 +26,8 @@ import crmExtension from "../crm/index.js";
 import travelExtension from "../travel/index.js";
 import connector from "../connector/index.js";
 import telegramFileSend from "../telegram-file-send/index.js";
+import documents from "../documents/index.js";
+import groupMemory from "../group-memory/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { sanitizeDirSegment } from "./session-key.js";
 
@@ -71,6 +73,8 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   travelExtension,
   connector,
   telegramFileSend,
+  documents,
+  groupMemory,
   providerBootstrap,
 ];
 

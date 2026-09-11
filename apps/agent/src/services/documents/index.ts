@@ -14,11 +14,33 @@ import {
   createExtractor,
   type VisionOcrFn,
 } from "./extractors/types.js";
+import type { ExpenseBriefInfo, ListenerMediaDeps } from "./ListenerMediaPipeline.js";
 
 let repository: DocumentsRepository | null = null;
 let ingestService: DocumentIngestService | null = null;
 let archiveService: ChatArchiveService | null = null;
 let listenerPipeline: ListenerMediaPipeline | null = null;
+
+/**
+ * Общие deps слушателя (живут по ссылке — notify можно подключить в рантайме
+ * из telegram-bot, не пересоздавая pipeline).
+ */
+const listenerDeps: ListenerMediaDeps = {
+  // PROMPT 05: файл остаётся в ~/.grish-ai/media/telegram после обработки.
+  storage: new LocalMediaStorage(),
+  // PROMPT 04: voice → STT через @griha/stt (тот же бэкенд, что tool).
+  stt: async (filePath) => transcribeVoice(filePath, {}),
+};
+
+/**
+ * §4 тихий брифинг по чекам: подключить отправителя (owner DM) в рантайме.
+ * Вызывается pipeline'ом только после успешного expense-ingest с суммой.
+ */
+export function setExpenseBriefNotifier(
+  fn: ((info: ExpenseBriefInfo) => Promise<void>) | undefined,
+): void {
+  listenerDeps.notifyExpenseBrief = fn;
+}
 
 /**
  * Тот же vision-backend, что и analyze_image в личном чате: читает файл в
@@ -112,12 +134,7 @@ export function getListenerMediaPipeline(): ListenerMediaPipeline {
         );
         return downloadTelegramFileToDisk(token, fileId, dest);
       },
-      {
-        // PROMPT 05: файл остаётся в ~/.grish-ai/media/telegram после обработки.
-        storage: new LocalMediaStorage(),
-        // PROMPT 04: voice → STT через @griha/stt (тот же бэкенд, что tool).
-        stt: async (filePath) => transcribeVoice(filePath, {}),
-      },
+      listenerDeps,
     );
   }
   return listenerPipeline;

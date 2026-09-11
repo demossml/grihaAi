@@ -354,6 +354,23 @@ export class TelegramBotController {
     return this.running;
   }
 
+  /**
+   * Тихий outbound notify (expense brief → owner DM): текущий bot instance +
+   * per-chat очередь + retry. Plain text, без кнопок. Если бот не поднят —
+   * молча пропускаем (уведомление не критично).
+   */
+  async sendNotify(chatId: number, text: string): Promise<boolean> {
+    if (!this.bot) return false;
+    let ok = false;
+    await this.sendQueue.enqueue(chatId, async () => {
+      ok = await this.sendWithRetry(
+        () => this.bot!.api.sendMessage(chatId, text, {}),
+        "sendNotify",
+      );
+    });
+    return ok;
+  }
+
   private sleep(ms: number): Promise<void> {
     if (this.options?.sleep) return this.options.sleep(ms);
     return new Promise((resolve) => setTimeout(resolve, ms));
