@@ -15,6 +15,11 @@ export interface MentionFlags {
   startsWithOtherMention: boolean;
 }
 
+/** Нормализация username для сравнения: без ведущего @, нижний регистр. */
+export function normUser(u: string): string {
+  return u.replace(/^@/, "").toLowerCase();
+}
+
 /**
  * self без username → match по username невозможен (documented behavior);
  * text_mention по id работает всегда.
@@ -32,7 +37,7 @@ export function collectMentionFlags(
     const mentionText = text.slice(offset, offset + length);
     if (e.type === "mention") {
       const isSelf = Boolean(
-        self?.username && mentionText.toLowerCase() === `@${self.username}`.toLowerCase(),
+        self?.username && normUser(mentionText) === normUser(self.username),
       );
       if (isSelf) botMentioned = true;
       else if (offset === 0) startsWithOtherMention = true;

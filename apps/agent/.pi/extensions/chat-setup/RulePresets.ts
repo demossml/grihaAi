@@ -33,6 +33,23 @@ export interface PresetRule {
 
 export type PresetId = "safe_default" | "team" | "secretary" | "listener" | "shop" | "only_me";
 
+/** A3: маркерное hard-правило пресета — для repair на старте. */
+export function presetMarkerKey(presetId: PresetId): RuleKey | null {
+  switch (presetId) {
+    case "listener":
+      return "listen_only";
+    case "only_me":
+      return "only_my_messages";
+    case "safe_default":
+    case "team":
+    case "secretary":
+    case "shop":
+      return "require_mention";
+    default:
+      return null;
+  }
+}
+
 export const PRESETS: Record<PresetId, { title: string; description: string; rules: PresetRule[] }> = {
   safe_default: {
     title: "Безопасный режим",

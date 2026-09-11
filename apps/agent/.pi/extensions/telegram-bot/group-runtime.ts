@@ -51,8 +51,17 @@ export interface PrepareTurnDeps {
   formatRules: (hard: UserRule[], soft: UserRule[]) => string;
 }
 
-function blocked(reason: string): PrepareTurnResult {
-  return { process: false, reason, suppressReply: false, archive: false, rulesContext: "" };
+function blocked(
+  reason: string,
+  extra?: { archive?: boolean; suppressReply?: boolean },
+): PrepareTurnResult {
+  return {
+    process: false,
+    reason,
+    suppressReply: extra?.suppressReply ?? false,
+    archive: extra?.archive ?? false,
+    rulesContext: "",
+  };
 }
 
 export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps): PrepareTurnResult {
@@ -81,7 +90,14 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
     isService: input.isService,
   };
   const gate = deps.evaluate(hard, prefilterInput);
-  if (!gate.process) return blocked("prefilter");
+  if (!gate.process) {
+    // A1/L-A3: prefilter запретил агента, но archive/suppressReply НЕ теряются —
+    // listener без mention должен тихо архивировать (process:false, archive:true).
+    return blocked("prefilter", {
+      archive: gate.archive === true,
+      suppressReply: gate.suppressReply === true,
+    });
+  }
 
   return {
     process: true,

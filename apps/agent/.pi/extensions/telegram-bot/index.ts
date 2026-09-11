@@ -52,7 +52,7 @@ import {
   runSetupCommand,
   tryHandleCustomText,
 } from "../chat-setup/handlers.js";
-import { presetRulesWithActor } from "../chat-setup/RulePresets.js";
+import { presetRulesWithActor, presetMarkerKey, type PresetId } from "../chat-setup/RulePresets.js";
 import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
 import { transcribeVoice } from "@griha/stt";
@@ -64,6 +64,32 @@ void sharedTelegramFetcher.refreshIps().catch(() => {});
 
 // self-инфо бота (id/username) — для расчёта mention/reply флагов pre-filter'а.
 let botSelf: { id: number; username?: string } | undefined;
+
+/**
+ * A2: self-инфо с ретраями (getMe может упасть на нестабильной сети).
+ * Вызывается ДО обработки сообщений; env-fallback TELEGRAM_BOT_USERNAME,
+ * если API не вернул username.
+ */
+async function ensureBotSelf(
+  api: { getMe(): Promise<{ id: number; username?: string }> },
+  maxAttempts = 5,
+): Promise<{ id: number; username?: string } | undefined> {
+  for (let i = 1; i <= maxAttempts; i++) {
+    try {
+      const me = await api.getMe();
+      const username = me.username ?? process.env.TELEGRAM_BOT_USERNAME;
+      console.log(`[telegram-bot] getMe ok: id=${me.id} username=${username ?? ""}`);
+      return { id: me.id, username };
+    } catch (err: unknown) {
+      console.error(
+        `[telegram-bot] getMe failed ${i}/${maxAttempts}`,
+        err instanceof Error ? err.message : err,
+      );
+      await new Promise((r) => setTimeout(r, 1000 * i));
+    }
+  }
+  return undefined;
+}
 
 /**
  * Adapts the real grammy Bot to the framework-free `TelegramBotLike` surface.
@@ -118,20 +144,23 @@ const realBotFactory: TelegramBotFactory = (token) => {
       void bot.on(filter, handler as never);
     },
     start: async () => {
-      // D6: self-инфо для mention/reply-флагов — до group traffic; retry при
-      // каждом новом bot instance (pollLoop), с логом ошибки.
+      // A2: self-инфо для mention/reply-флагов — ДО обработки сообщений, с
+      // ретраями (getMe на нестабильной сети). username логируется.
       if (!botSelf) {
-        try {
-          const me = await bot.api.getMe();
-          botSelf = { id: me.id, username: me.username };
-        } catch (err: unknown) {
-          console.error(
-            "[telegram-bot] getMe failed:",
-            err instanceof Error ? err.message : err,
-          );
-        }
+        botSelf = await ensureBotSelf(bot.api);
       }
-      return bot.start();
+      // A4: явный список allowed_updates — не тянем ненужные update-типы.
+      return bot.start({
+        allowed_updates: [
+          "message",
+          "edited_message",
+          "channel_post",
+          "edited_channel_post",
+          "callback_query",
+          "my_chat_member",
+          "chat_join_request",
+        ],
+      });
     },
     stop: () => bot.stop(),
     api: {
@@ -494,30 +523,38 @@ async function bootstrapUsers(): Promise<void> {
   // R1: hydrate chat-setup cache до старта long polling (isConfiguredSync).
   const setup = getChatSetupService();
   setup.loadSync();
-  // Миграция существующих listener-чатов: дописываем archive_ocr_ingest/
-  // reply_to_bot (идемпотентно — managed-правила перезаписываются полным сетом).
+  // Миграция/repair правил completed-чатов: если у пресета нет его маркерного
+  // hard-правила в SQLite — перезаписать managed-правила пресетом (идемпотентно,
+  // статус НЕ трогаем). A3.
   for (const rec of await setup.list()) {
-    if (rec.status !== "completed" || rec.presetId !== "listener") continue;
-    const actorId = rec.addedByUserId ?? "0";
+    if (rec.status !== "completed" || !rec.presetId) continue;
+    const presetId = rec.presetId as PresetId;
+    const hard = getUserRulesService().getHardRules(rec.chatId);
+    const marker = presetMarkerKey(presetId);
+    if (!marker) continue;
+    const needsRepair = !hard.some((r) => r.key === marker);
+    if (!needsRepair) continue;
+    const actorId = rec.addedByUserId ?? "system-repair";
     try {
       getUserRulesService().replaceChatManagedRules(
         rec.chatId,
-        presetRulesWithActor("listener", actorId),
-        { source: "preset:listener", actorId },
+        presetRulesWithActor(presetId, actorId),
+        { source: `repair:${presetId}`, actorId },
       );
-      // PROMPT 06: версионированная policy + history.
       recordChatPolicyFromRules(
         rec.chatId,
         [
           ...getUserRulesService().getHardRules(rec.chatId),
           ...getUserRulesService().getSoftRules(rec.chatId),
         ],
-        { source: "preset:listener", actorId },
+        { source: `repair:${presetId}`, actorId },
       );
-      console.log(`[telegram-bot] listener defaults ensured for chat ${rec.chatId}`);
+      console.log(
+        `[chat-setup] repaired preset rules for chatId=${rec.chatId} preset=${rec.presetId}`,
+      );
     } catch (err: unknown) {
       console.error(
-        `[telegram-bot] listener migration failed for chat ${rec.chatId}:`,
+        `[chat-setup] repair failed for chat ${rec.chatId}:`,
         err instanceof Error ? err.message : err,
       );
     }
