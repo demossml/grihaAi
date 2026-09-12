@@ -23,3 +23,8 @@ tags: [documents, finance]
 - Default: current topic only when the question is asked inside a topic.
 - If user says «по всей группе» / «во всех темах» → scope=chat.
 - Never invent cross-topic totals without tool scope=chat.
+
+## Full history / PDF
+- «За весь период» = no fromDate/toDate — the tool queries all records.
+- Для PDF-отчёта используй `expenses_report_pdf`, никогда не собирай данные руками.
+- Итог отчёта = сумма всех записей чата (темы, если указана).

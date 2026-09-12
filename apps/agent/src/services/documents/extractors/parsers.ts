@@ -30,18 +30,54 @@ function parseNumber(raw: string): number | undefined {
   return n;
 }
 
-/** Сумма из текста: «15400 ₽», «итого 1 500,50 руб», «сумма: 15400». */
+/**
+ * Итог из чека (R1): приоритет строке «ИТОГ/ИТОГО/к оплате», НИКОГДА не
+ * «НДС N%» / «СУММА НДС». Проценты за суммы не берём.
+ */
 export function parseTotalFromText(text: string): number | undefined {
   if (!text) return undefined;
-  // «итого/сумма/оплачено ... 12345.67 руб»
-  const labeled =
-    /(?:итого|сумма|оплачено|total|sum)\D{0,12}(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:₽|руб|rub|р\.)?/i.exec(
+
+  // 1) Явная строка итога: «ИТОГО =20515.00», «ИТОГ 1234.56», «к оплате: 1 234,56»
+  const explicit =
+    /(?:итого|итог|всего\s+к\s+оплате|к\s+оплате|total\s+due|grand\s+total)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
       text,
     );
-  if (labeled) return parseNumber(labeled[1]);
-  // просто число + валюта
-  const money = /(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:₽|руб|rub|rur|р\.)/i.exec(text);
-  if (money) return parseNumber(money[1]);
+  if (explicit) {
+    const n = parseNumber(explicit[1]);
+    if (n !== undefined) return n;
+  }
+
+  // 2) Строка фактической оплаты: «НАЛИЧНЫМИ 175.00», «оплачено 1 500,50».
+  const paid =
+    /(?:наличными|безналичными|оплачено)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
+      text,
+    );
+  if (paid) {
+    const n = parseNumber(paid[1]);
+    if (n !== undefined) return n;
+  }
+
+  // Строки без НДС/налогов/процентов — только на них ищем суммы ниже.
+  const cleaned = text
+    .split(/\r?\n/)
+    .filter((l) => !/(?:ндс|нас)\b|%\s*$|налог/i.test(l))
+    .join("\n");
+
+  // 3) Число с явной валютой — предпочитаем ПОСЛЕДНЕЕ (обычно итог чека).
+  const allMoney = [
+    ...cleaned.matchAll(/(\d[\d\s\u00a0]*(?:[.,]\d{1,2})?)\s*(?:₽|руб\.?|rub|rur|р\.)/gi),
+  ];
+  if (allMoney.length > 0) {
+    const n = parseNumber(allMoney[allMoney.length - 1][1]);
+    if (n !== undefined) return n;
+  }
+
+  // 4) «сумма: N» без валюты — только на чистых строках (СУММА НДС уже отсечена).
+  const sumLabeled = /(?:сумма|итого)\s*[:=]\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
+    cleaned,
+  );
+  if (sumLabeled) return parseNumber(sumLabeled[1]);
+
   return undefined;
 }
 

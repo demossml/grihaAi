@@ -43,7 +43,7 @@ export interface ExpensesQuery {
   fromDate?: string;
   /** OPTIONAL YYYY-MM-DD inclusive */
   toDate?: string;
-  /** default 50 for list, max 200 */
+  /** default 50 for list; «весь период» (без дат) может доходить до 10 000 */
   limit?: number;
 }
 

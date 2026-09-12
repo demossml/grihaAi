@@ -20,13 +20,32 @@ export interface InlineButton {
 export interface SessionFileRecord {
   filePath: string;
   caption?: string;
+  /** R3: Telegram шлёт ТОЛЬКО файл — без текста, подписи и кнопок. */
+  attachmentOnly?: boolean;
+  /** R3: идемпотентность — повторная отправка с тем же ключом игнорируется. */
+  dedupeKey?: string;
+}
+
+export interface SetSessionFileOptions {
+  attachmentOnly?: boolean;
+  dedupeKey?: string;
 }
 
 const fileRegistry = new Map<string, SessionFileRecord>();
 const buttonsRegistry = new Map<string, InlineButton[][]>();
 
-export function setSessionFile(sessionId: string, filePath: string, caption?: string): void {
-  fileRegistry.set(sessionId, { filePath, caption });
+export function setSessionFile(
+  sessionId: string,
+  filePath: string,
+  caption?: string,
+  options?: SetSessionFileOptions,
+): void {
+  fileRegistry.set(sessionId, {
+    filePath,
+    caption,
+    attachmentOnly: options?.attachmentOnly,
+    dedupeKey: options?.dedupeKey,
+  });
 }
 
 /** Return and clear the pending file for a session, if any (compat wrapper). */

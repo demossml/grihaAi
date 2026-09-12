@@ -20,6 +20,7 @@
     "@griha/stt": "*",
     "@json-render/core": "^0.20.0",
     "@json-render/react-pdf": "^0.20.0",
+    "@react-pdf/renderer": "^4.9.0",
     "better-sqlite3": "^13.0.3",
     "grammy": "^1.46.0",
     "https-proxy-agent": "^7.0.6",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
+    "@types/react": "^19.2.0",
     "tsx": "^4.23.13"
   }
 }

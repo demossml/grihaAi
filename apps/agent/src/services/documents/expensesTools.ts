@@ -104,7 +104,10 @@ export async function expensesListHandler(
 ): Promise<string> {
   const q = await resolveQuery(args, ctx);
   if ("error" in q) return q.error;
-  const result: ExpensesQueryResult = await repo.query({ ...q, limit: 50 });
+  // R4: «весь период» (без дат) = все записи; период — обычный лимит.
+  const isFullHistory = !args.fromDate && !args.toDate && !args.period;
+  const limit = isFullHistory ? 10_000 : 50;
+  const result: ExpensesQueryResult = await repo.query({ ...q, limit });
   if (result.count === 0) return "Записей по заданным фильтрам нет.";
   const scope = result.fullHistory ? "вся история чата" : "выбранный период";
   const lines = result.documents.map(

@@ -7,6 +7,11 @@ import {
 } from "../../../src/utils/reports/report-schemas.js";
 import { renderPdfReport, renderPresentation } from "../../../src/utils/reports/report-renderer.js";
 import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
+import { getDocumentsRepository } from "../../../src/services/documents/index.js";
+import { buildExpenseReportAttachment } from "../../../src/services/documents/expenseReportTools.js";
+import { getUserRulesService } from "../user-rules/UserRulesService.js";
+import { getSessionContext } from "../user-rules/context.js";
+import { getUsersService } from "../../../src/services/UsersService.js";
 
 /**
  * Deterministic document generation.
@@ -67,6 +72,52 @@ export default function reportGenerator(pi: ExtensionAPI): void {
       _onUpdate: unknown,
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ path?: string; error?: string }>> {
+      // R5: expense-report НИКОГДА не рендерится из LLM-данных — данные из БД.
+      if (params.reportType === "expense-report") {
+        const tctx = getSessionContext(ctx.sessionManager.getSessionId());
+        // Период (если LLM его явно передал) резолвится в даты; иначе — весь период.
+        const period = typeof params.data.period === "string" ? params.data.period : undefined;
+        let fromDate: string | undefined;
+        let toDate: string | undefined;
+        if (period) {
+          try {
+            const { resolvePeriod } = await import(
+              "../../../src/services/documents/extractors/parsers.js"
+            );
+            ({ fromDate, toDate } = resolvePeriod(period));
+          } catch {
+            /* неизвестный period → весь период */
+          }
+        }
+        const built = await buildExpenseReportAttachment(
+          { fromDate, toDate },
+          {
+            chatId: tctx?.chatId,
+            userId: tctx?.userId,
+            canManage: (userId) => getUsersService().canManage(userId),
+          },
+          getDocumentsRepository(),
+        );
+        if ("error" in built) {
+          return { content: [{ type: "text", text: built.error }], details: { error: built.error } };
+        }
+        // R3: hard-rule «только файл» → файл без текста/подписи, dedupeKey гасит дубли.
+        const hardRules = tctx?.chatId ? getUserRulesService().getHardRules(tctx.chatId) : [];
+        const attachmentOnly = hardRules.some(
+          (r) => r.key === "report_attachment_only" && (r.value === true || r.value === "true"),
+        );
+        setSessionFile(
+          ctx.sessionManager.getSessionId(),
+          built.filePath,
+          attachmentOnly ? undefined : built.caption,
+          { attachmentOnly, dedupeKey: built.dedupeKey },
+        );
+        return {
+          content: [{ type: "text", text: attachmentOnly ? "" : `Report generated: ${built.filePath}` }],
+          details: { path: built.filePath },
+        };
+      }
+
       const schema = REPORT_SCHEMAS[params.reportType];
       if (!Check(schema, params.data)) {
         const errors = Errors(schema, params.data).map((e) => e.message).join("; ");

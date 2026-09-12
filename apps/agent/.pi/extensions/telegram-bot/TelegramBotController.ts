@@ -675,7 +675,8 @@ export class TelegramBotController {
     filePath?: string,
     extra?: TelegramSendExtra,
   ): Promise<void> {
-    const rawChunks = splitTelegramText(text);
+    // R3: attachmentOnly приходит с text="" — пустое сообщение не шлём.
+    const rawChunks = text && text.trim() !== "" ? splitTelegramText(text) : [];
     let textOk = true;
     for (let i = 0; i < rawChunks.length; i++) {
       const chunkHtml = formatTelegramHtml(rawChunks[i]);

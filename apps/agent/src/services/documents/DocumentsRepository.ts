@@ -687,7 +687,8 @@ export class DocumentsRepository {
     const toDate = q.toDate ?? null;
     const threadId = q.threadId ?? null;
     const supplierNeedle = q.supplier?.trim() ? q.supplier.trim().toLowerCase() : null;
-    const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
+    // R4: «весь период» не должен молча резаться — потолок 10 000 записей.
+    const limit = Math.min(Math.max(q.limit ?? 50, 1), 10_000);
 
     // supplier-фильтр — в JS: sqlite lower() не умеет кириллицу.
     const rows = this.db

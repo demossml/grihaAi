@@ -86,6 +86,10 @@ export interface GrishaAgentReply {
   documentCaption?: string;
   /** Optional inline keyboard rows (e.g. approval buttons). */
   inlineButtons?: InlineButton[][];
+  /** R3: отправить ТОЛЬКО файл — без текста, подписи и кнопок. */
+  attachmentOnly?: boolean;
+  /** R3: ключ идемпотентности (пул уже погасил дубли по нему). */
+  dedupeKey?: string;
 }
 
 /**
@@ -476,6 +480,10 @@ export class TelegramBridge {
 
   /** Send a reply with all attached extras (file, caption, buttons). */
   private sendReply(chatId: number, reply: GrishaAgentReply, threadId?: string): Promise<void> {
+    // R3: «только файл» — ровно один outbound: документ без текста/подписи/кнопок.
+    if (reply.attachmentOnly && reply.filePath) {
+      return this.sender(chatId, "", reply.filePath, { threadId });
+    }
     return this.sender(chatId, reply.text, reply.filePath, {
       inlineButtons: reply.inlineButtons,
       documentCaption: reply.documentCaption,

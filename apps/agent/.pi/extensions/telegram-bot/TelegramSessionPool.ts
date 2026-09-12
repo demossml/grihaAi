@@ -113,6 +113,10 @@ export interface TelegramReply {
   documentCaption?: string;
   /** Inline keyboard rows (e.g. approval buttons queued by tools this turn). */
   inlineButtons?: InlineButton[][];
+  /** R3: отправить ТОЛЬКО файл (без текста/подписи/кнопок). */
+  attachmentOnly?: boolean;
+  /** R3: идемпотентность — повторная отправка с тем же ключом гасится. */
+  dedupeKey?: string;
 }
 
 /**
@@ -124,6 +128,8 @@ export class TelegramSessionPool {
   private readonly sessions = new Map<string, SessionEntry>();
   private readonly sessionFactory: TelegramSessionFactory;
   private readonly cwd: string;
+  /** R3: уже отправленные attachmentOnly-файлы (sessionId|dedupeKey → ts). */
+  private readonly sentAttachments = new Map<string, number>();
 
   constructor(options: TelegramSessionPoolOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
@@ -185,6 +191,26 @@ export class TelegramSessionPool {
   /** Number of currently pooled sessions. */
   activeCount(): number {
     return this.sessions.size;
+  }
+
+  // ── R3: идемпотентность отправки attachmentOnly-файлов ─────────────────────
+
+  /** TTL дедупа: 10 минут (сессии обычно живут дольше, дубли — в пределах хода). */
+  private static readonly ATTACHMENT_DEDUPE_TTL_MS = 10 * 60 * 1000;
+
+  private wasAttachmentSent(key: string): boolean {
+    const ts = this.sentAttachments.get(key);
+    return ts !== undefined && Date.now() - ts < TelegramSessionPool.ATTACHMENT_DEDUPE_TTL_MS;
+  }
+
+  private markAttachmentSent(key: string): void {
+    if (this.sentAttachments.size > 200) {
+      const cutoff = Date.now() - TelegramSessionPool.ATTACHMENT_DEDUPE_TTL_MS;
+      for (const [k, ts] of this.sentAttachments) {
+        if (ts < cutoff) this.sentAttachments.delete(k);
+      }
+    }
+    this.sentAttachments.set(key, Date.now());
   }
 
   /** Session keys с активной сессией (для admin status). */
@@ -255,11 +281,26 @@ export class TelegramSessionPool {
       // plus inline buttons (approval-gate) queued during the turn.
       const file = takeSessionFileRecord(sessionId);
       const inlineButtons = takeSessionInlineButtons(sessionId);
+
+      // R3: «только файл» — не слать текст/подпись/кнопки.
+      const attachmentOnly = Boolean(file?.attachmentOnly && file.filePath);
+      if (attachmentOnly && file?.dedupeKey) {
+        const key = `${sessionId}|${file.dedupeKey}`;
+        if (this.wasAttachmentSent(key)) {
+          // Дубль: файл уже уходил в этой сессии — подавляем повтор.
+          finish({ text: "" });
+          return;
+        }
+        this.markAttachmentSent(key);
+      }
+
       finish({
-        text: text && text.trim() ? text : "Гриша не ответил.",
+        text: attachmentOnly ? "" : text && text.trim() ? text : "Гриша не ответил.",
         filePath: file?.filePath,
-        documentCaption: file?.caption,
-        inlineButtons,
+        documentCaption: attachmentOnly ? undefined : file?.caption,
+        inlineButtons: attachmentOnly ? undefined : inlineButtons,
+        attachmentOnly: attachmentOnly || undefined,
+        dedupeKey: file?.dedupeKey,
       });
     });
 
