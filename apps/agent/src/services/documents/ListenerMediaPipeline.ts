@@ -23,6 +23,10 @@ import type { MediaRetryJob } from "./media-retry.js";
 import { assessTranscriptConfidence } from "../../utils/telegram/voice-intake.js";
 import { buildStorageKey, type MediaStorage } from "./media-storage.js";
 import { ocrSizeAndHintGate } from "./ocr-limiter.js";
+import type {
+  ClassifyExpenseInput,
+  ClassifyExpenseResult,
+} from "./classify-expense.js";
 
 export type MediaKind =
   | "photo"
@@ -107,6 +111,11 @@ export interface ListenerMediaDeps {
    * structured ingest и наличии суммы. Сбой уведомления НЕ ломает конвейер.
    */
   notifyExpenseBrief?: (info: ExpenseBriefInfo) => Promise<void>;
+  /**
+   * F2/F3: классификация после OCR (свободная категория + позиции).
+   * Сбой классификации не блокирует ingest — category=null.
+   */
+  classifyExpense?: (input: ClassifyExpenseInput) => Promise<ClassifyExpenseResult>;
 }
 
 /** Данные брифинга: без file_id/путей — только бизнес-поля. */
@@ -323,6 +332,25 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
       let expenseId: string | undefined;
       let ingestedExpense = false;
 
+      // ── F2/F3: классификация (свободная категория/позиции) — после OCR, до БД.
+      let classification: ClassifyExpenseResult | undefined;
+      if (extracted?.rawText && this.deps.classifyExpense) {
+        try {
+          classification = await this.deps.classifyExpense({
+            chatId: input.chatId,
+            rawText: extracted.rawText,
+            supplier: extracted.supplier,
+            total: extracted.total,
+            memoryHints: [], // заполняет вызывающий (documents/index.ts)
+          });
+        } catch (err: unknown) {
+          console.error(
+            "[listener-media] classify failed:",
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+
       // ── 5) structured ingest (только photo/document; voice/audio/video — никогда не expense) ──
       if ((file.kind === "photo" || file.kind === "document") && ocrIngest && hasUseful && extracted) {
         if (!(await this.repo.findByFileUniqueId(input.chatId, file.fileUniqueId))) {
@@ -346,6 +374,9 @@ export class ListenerMediaPipeline implements ListenerMediaProcessFn {
             confidence: extracted.confidence,
             needsReview: extracted.needsReview,
             source: "telegram",
+            category: classification?.category ?? null,
+            tags: classification?.tags,
+            lineItems: classification?.lineItems ?? null,
             createdAt: now,
             updatedAt: now,
           };

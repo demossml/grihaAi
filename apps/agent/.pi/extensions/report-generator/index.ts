@@ -10,6 +10,7 @@ import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import { buildExpenseReportAttachment } from "../../../src/services/documents/expenseReportTools.js";
 import { getUserRulesService } from "../user-rules/UserRulesService.js";
+import { getChatSetupService } from "../chat-setup/ChatSetupService.js";
 import { getSessionContext } from "../user-rules/context.js";
 import { getUsersService } from "../../../src/services/UsersService.js";
 
@@ -94,6 +95,9 @@ export default function reportGenerator(pi: ExtensionAPI): void {
           {
             chatId: tctx?.chatId,
             userId: tctx?.userId,
+            chatTitle: tctx?.chatId
+              ? (await getChatSetupService().get(tctx.chatId))?.chatTitle
+              : undefined,
             canManage: (userId) => getUsersService().canManage(userId),
           },
           getDocumentsRepository(),

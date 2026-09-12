@@ -15,6 +15,15 @@ import {
   type VisionOcrFn,
 } from "./extractors/types.js";
 import type { ExpenseBriefInfo, ListenerMediaDeps } from "./ListenerMediaPipeline.js";
+import {
+  classifyExpense,
+  hintsToLines,
+  memoryHintMatch,
+  type ClassifyExpenseInput,
+  type ClassifyExpenseResult,
+  type ClassifyLlm,
+} from "./classify-expense.js";
+import { createHttpLearningLlm } from "../../utils/learning/http-learning.js";
 
 let repository: DocumentsRepository | null = null;
 let ingestService: DocumentIngestService | null = null;
@@ -30,7 +39,38 @@ const listenerDeps: ListenerMediaDeps = {
   storage: new LocalMediaStorage(),
   // PROMPT 04: voice → STT через @griha/stt (тот же бэкенд, что tool).
   stt: async (filePath) => transcribeVoice(filePath, {}),
+  // F2/F3: классификация после OCR — chat-scoped память → LLM → честный null.
+  classifyExpense: buildDefaultClassifier(),
 };
+
+/**
+ * F2.1/F3: классификатор по умолчанию. Сначала — детерминированная память
+ * чата (expense_learning), затем лёгкий LLM с подсказками. Сбой — честный {}
+ * (category=null), ingest не блокируется.
+ */
+function buildDefaultClassifier(): (input: ClassifyExpenseInput) => Promise<ClassifyExpenseResult> {
+  return async (input) => {
+    const repo = getDocumentsRepository();
+    const hints = repo.listExpenseLearning(input.chatId);
+    const fromMemory = memoryHintMatch(
+      { supplier: input.supplier, rawText: input.rawText },
+      hints,
+    );
+    if (fromMemory) return { category: fromMemory };
+    const cfg = loadConfig();
+    if (!cfg) return {};
+    let llm: ClassifyLlm | undefined;
+    try {
+      llm = createHttpLearningLlm(cfg);
+    } catch {
+      llm = undefined;
+    }
+    return classifyExpense(
+      { ...input, memoryHints: hintsToLines(hints) },
+      { llm },
+    );
+  };
+}
 
 /**
  * §4 тихий брифинг по чекам: подключить отправителя (owner DM) в рантайме.

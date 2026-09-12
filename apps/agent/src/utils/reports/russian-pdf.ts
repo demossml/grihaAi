@@ -60,12 +60,27 @@ export interface ExpensePdfRow {
   total?: number;
   currency?: string;
   needsReview?: boolean;
+  /** Свободная категория (F3). */
+  category?: string | null;
+  tags?: string[];
+}
+
+/** Секция разреза отчёта: имя измерения + под-итог. */
+export interface ExpensePdfSection {
+  label: string;
+  rows: ExpensePdfRow[];
+  subtotal: number;
 }
 
 export interface ExpensePdfOptions {
-  title: string;
+  /** F7: «Отчёт по расходам — группа «{chatTitle}»» (не chatId). */
+  chatTitle: string;
   /** «весь период» или «2026-01-01 — 2026-03-01». */
   periodLabel: string;
+  /** Разрез: supplier | category | tag | none (свободная строка). */
+  dimension?: string;
+  /** Секции с под-итогами; при отсутствии — одна секция «Все записи». */
+  sections?: ExpensePdfSection[];
   rows: ExpensePdfRow[];
   totalAmount: number;
   currency: string;
@@ -75,9 +90,14 @@ export interface ExpensePdfOptions {
   fontCandidates?: string[];
 }
 
+const DARK = "#1F3864";
+const GREEN = "#2E9E5B";
+const ROW_ALT = "#EEF2F8";
+
 /**
- * Рендер отчёта по расходам с кириллицей: title, период, таблица
- * date | supplier | total, footer count + сумма ru-RU.
+ * Рендер отчёта по расходам (F7): заголовок 20pt с названием группы,
+ * период/разрез, секции с под-итогами, таблица с чередованием строк,
+ * зелёный блок ИТОГО.
  */
 export async function renderExpensePdfRussian(opts: ExpensePdfOptions): Promise<string> {
   await ensureRussianFont(opts.fontCandidates);
@@ -87,16 +107,87 @@ export async function renderExpensePdfRussian(opts: ExpensePdfOptions): Promise<
   );
 
   const styles = StyleSheet.create({
-    page: { padding: 40, fontFamily: "DejaVu", fontSize: 11, color: "#1a1a1a" },
-    title: { fontSize: 18, fontWeight: "bold", color: "#1f3864", marginBottom: 4 },
-    period: { fontSize: 11, color: "#555", marginBottom: 16 },
-    headerRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#333", paddingVertical: 4, fontWeight: "bold" },
-    row: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#ddd", paddingVertical: 4 },
-    colDate: { flex: 2 },
-    colSupplier: { flex: 5 },
-    colAmount: { flex: 2, textAlign: "right" },
-    footer: { marginTop: 16, fontSize: 12, fontWeight: "bold" },
+    page: { padding: 40, fontFamily: "DejaVu", fontSize: 10, color: "#1a1a1a" },
+    title: { fontSize: 20, fontWeight: "bold", color: DARK, marginBottom: 4 },
+    subtitle: { fontSize: 12, color: "#555555", marginBottom: 4 },
+    headerRow: {
+      flexDirection: "row",
+      backgroundColor: DARK,
+      color: "#ffffff",
+      paddingVertical: 5,
+      paddingHorizontal: 6,
+      fontWeight: "bold",
+    },
+    row: { flexDirection: "row", paddingVertical: 4, paddingHorizontal: 6 },
+    rowAlt: {
+      flexDirection: "row",
+      paddingVertical: 4,
+      paddingHorizontal: 6,
+      backgroundColor: ROW_ALT,
+    },
+    colDate: { flex: 1.6 },
+    colSupplier: { flex: 3.4 },
+    colCategory: { flex: 2.4 },
+    colAmount: { flex: 1.8, textAlign: "right" },
+    section: { marginTop: 12, marginBottom: 2 },
+    sectionLabel: { fontSize: 12, fontWeight: "bold", color: DARK, marginBottom: 3 },
+    sectionSubtotal: { fontSize: 10, color: "#333333", textAlign: "right", marginBottom: 2 },
+    totalBox: {
+      marginTop: 18,
+      backgroundColor: GREEN,
+      color: "#ffffff",
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      fontSize: 12,
+      fontWeight: "bold",
+    },
   });
+
+  const showCategoryCol = opts.dimension === "category";
+  const extraHeader = showCategoryCol
+    ? h(Text, { key: "c", style: styles.colCategory }, "Категория")
+    : null;
+  const headerCells = [
+    h(Text, { key: "d", style: styles.colDate }, "Дата"),
+    h(Text, { key: "s", style: styles.colSupplier }, "Поставщик"),
+    ...(extraHeader ? [extraHeader] : []),
+    h(Text, { key: "a", style: styles.colAmount }, "Сумма"),
+  ];
+
+  const rowView = (r: ExpensePdfRow, i: number) =>
+    h(
+      View,
+      { key: i, style: i % 2 === 0 ? styles.row : styles.rowAlt, wrap: false },
+      h(Text, { style: styles.colDate }, r.date),
+      h(
+        Text,
+        { style: styles.colSupplier },
+        `${r.supplier ?? "?"}${r.needsReview ? " (проверка)" : ""}`,
+      ),
+      ...(showCategoryCol
+        ? [h(Text, { key: "cat", style: styles.colCategory }, r.category ?? "—")]
+        : []),
+      h(
+        Text,
+        { style: styles.colAmount },
+        r.total != null ? `${formatRuMoney(r.total)} ${r.currency ?? opts.currency}` : "—",
+      ),
+    );
+
+  const dimensionLabel =
+    opts.dimension === "supplier"
+      ? "по поставщикам"
+      : opts.dimension === "category"
+        ? "по категориям"
+        : opts.dimension === "tag"
+          ? "по тегам"
+          : opts.dimension && opts.dimension !== "none"
+            ? `по «${opts.dimension}»`
+            : "без разреза";
+
+  const sections = opts.sections ?? [
+    { label: "Все записи", rows: opts.rows, subtotal: opts.totalAmount },
+  ];
 
   const doc = h(
     Document,
@@ -104,36 +195,30 @@ export async function renderExpensePdfRussian(opts: ExpensePdfOptions): Promise<
     h(
       Page,
       { size: "A4", style: styles.page },
-      h(Text, { style: styles.title }, opts.title),
-      h(Text, { style: styles.period }, `Период: ${opts.periodLabel}`),
-      h(
-        View,
-        { style: styles.headerRow },
-        h(Text, { style: styles.colDate }, "Дата"),
-        h(Text, { style: styles.colSupplier }, "Поставщик"),
-        h(Text, { style: styles.colAmount }, "Сумма"),
-      ),
-      ...opts.rows.map((r, i) =>
+      h(Text, { style: styles.title }, `Отчёт по расходам — группа «${opts.chatTitle}»`),
+      h(Text, { style: styles.subtitle }, `Период: ${opts.periodLabel} · Разрез: ${dimensionLabel}`),
+      ...sections.flatMap((section, si) => [
         h(
           View,
-          { key: i, style: styles.row, wrap: false },
-          h(Text, { style: styles.colDate }, r.date),
+          { key: `s${si}`, style: styles.section },
+          h(Text, { style: styles.sectionLabel }, section.label),
           h(
             Text,
-            { style: styles.colSupplier },
-            `${r.supplier ?? "?"}${r.needsReview ? " (проверка)" : ""}`,
-          ),
-          h(
-            Text,
-            { style: styles.colAmount },
-            r.total != null ? `${formatRuMoney(r.total)} ${r.currency ?? opts.currency}` : "—",
+            { style: styles.sectionSubtotal },
+            `Под-итог: ${formatRuMoney(section.subtotal)} ${opts.currency}`,
           ),
         ),
-      ),
+        h(View, { key: `h${si}`, style: styles.headerRow }, headerCells),
+        ...section.rows.map((r, i) => rowView(r, i)),
+      ]),
       h(
-        Text,
-        { style: styles.footer },
-        `Итого: ${opts.rows.length} записей · ${formatRuMoney(opts.totalAmount)} ${opts.currency}`,
+        View,
+        { style: styles.totalBox },
+        h(
+          Text,
+          null,
+          `ИТОГО: ${sections.reduce((a, s) => a + s.rows.length, 0)} записей · ${formatRuMoney(opts.totalAmount)} ${opts.currency}`,
+        ),
       ),
     ),
   );

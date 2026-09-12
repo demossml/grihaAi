@@ -29,7 +29,11 @@ CREATE TABLE IF NOT EXISTS expense_documents (
   needs_review INTEGER NOT NULL DEFAULT 1,
   source TEXT NOT NULL DEFAULT 'telegram',
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  category TEXT,
+  tags TEXT,
+  line_items TEXT,
+  attrs TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_expense_chat_date
@@ -92,6 +96,16 @@ CREATE INDEX IF NOT EXISTS idx_media_chat_unique
   ON telegram_media(chat_id, file_unique_id);
 CREATE INDEX IF NOT EXISTS idx_media_status_updated
   ON telegram_media(processing_status, updated_at);
+
+CREATE TABLE IF NOT EXISTS expense_learning (
+  id INTEGER PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  pattern_type TEXT NOT NULL,
+  pattern TEXT NOT NULL,
+  category TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(chat_id, pattern_type, pattern)
+);
 `;
 
 /** Миграция форумных тем (ADD COLUMN thread_id). */
@@ -123,6 +137,10 @@ interface DocRow {
   source: string;
   created_at: string;
   updated_at: string;
+  category: string | null;
+  tags: string | null;
+  line_items: string | null;
+  attrs: string | null;
 }
 
 interface ArchiveRow {
@@ -286,6 +304,14 @@ function rowToDoc(row: DocRow): ExpenseDocument {
     source: row.source as ExpenseDocument["source"],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    category: row.category ?? undefined,
+    tags: row.tags ? (JSON.parse(row.tags) as string[]) : undefined,
+    lineItems: row.line_items
+      ? (JSON.parse(row.line_items) as ExpenseDocument["lineItems"])
+      : undefined,
+    attrs: row.attrs
+      ? (JSON.parse(row.attrs) as ExpenseDocument["attrs"])
+      : undefined,
   };
 }
 
@@ -333,6 +359,24 @@ export class DocumentsRepository {
     if (!archiveColumns.has("caption")) {
       this.db.exec("ALTER TABLE chat_archive ADD COLUMN caption TEXT;");
     }
+    // F1/F3/F6: гибкие поля расходов (additive, nullable) — старые БД открываются.
+    const expenseColumns = new Set(
+      (this.db.pragma("table_info(expense_documents)") as Array<{ name: string }>).map(
+        (c) => c.name,
+      ),
+    );
+    if (!expenseColumns.has("category")) {
+      this.db.exec("ALTER TABLE expense_documents ADD COLUMN category TEXT;");
+    }
+    if (!expenseColumns.has("tags")) {
+      this.db.exec("ALTER TABLE expense_documents ADD COLUMN tags TEXT;");
+    }
+    if (!expenseColumns.has("line_items")) {
+      this.db.exec("ALTER TABLE expense_documents ADD COLUMN line_items TEXT;");
+    }
+    if (!expenseColumns.has("attrs")) {
+      this.db.exec("ALTER TABLE expense_documents ADD COLUMN attrs TEXT;");
+    }
   }
 
   close(): void {
@@ -362,8 +406,9 @@ export class DocumentsRepository {
           `INSERT INTO expense_documents
            (id, chat_id, thread_id, message_id, from_user_id, file_id, file_unique_id, file_name, mime_type,
             kind, doc_date, supplier, total, currency, raw_text, items_json,
-            confidence, needs_review, source, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            confidence, needs_review, source, created_at, updated_at,
+            category, tags, line_items, attrs)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -387,6 +432,10 @@ export class DocumentsRepository {
           doc.source,
           now,
           now,
+          doc.category ?? null,
+          doc.tags?.length ? JSON.stringify(doc.tags) : null,
+          doc.lineItems?.length ? JSON.stringify(doc.lineItems) : null,
+          doc.attrs ? JSON.stringify(doc.attrs) : null,
         );
       return id;
     });
@@ -668,6 +717,17 @@ export class DocumentsRepository {
     return row ? rowToDoc(row) : null;
   }
 
+  /** Последний расход чата (для expense_update без явного expenseId). */
+  async findLatestByChat(chatId: string): Promise<ExpenseDocument | null> {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM expense_documents WHERE chat_id = ?
+         ORDER BY created_at DESC, CAST(COALESCE(message_id, '0') AS INTEGER) DESC LIMIT 1`,
+      )
+      .get(chatId) as DocRow | undefined;
+    return row ? rowToDoc(row) : null;
+  }
+
   /**
    * Полная история по умолчанию: fromDate/toDate фильтруют только если заданы.
    */
@@ -729,8 +789,145 @@ export class DocumentsRepository {
         currency: d.currency,
         needsReview: d.needsReview,
         fileName: d.fileName,
+        category: d.category,
       })),
       note,
     };
+  }
+
+  // ── F3/F4: исправление категории + chat-scoped обучение ─────────────────────
+
+  /** Обновить категорию/теги расхода (пользовательская правка). */
+  async updateExpenseCategory(
+    id: string,
+    patch: { category?: string | null; addTags?: string[] },
+  ): Promise<ExpenseDocument | null> {
+    const existing = this.db
+      .prepare(`SELECT * FROM expense_documents WHERE id = ?`)
+      .get(id) as DocRow | undefined;
+    if (!existing) return null;
+    const nextCategory =
+      patch.category !== undefined ? patch.category : existing.category;
+    let nextTags: string[] = existing.tags ? (JSON.parse(existing.tags) as string[]) : [];
+    for (const t of patch.addTags ?? []) {
+      if (t && !nextTags.includes(t)) nextTags.push(t);
+    }
+    this.db
+      .prepare(
+        `UPDATE expense_documents SET category = ?, tags = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(
+        nextCategory ?? null,
+        nextTags.length ? JSON.stringify(nextTags) : null,
+        new Date().toISOString(),
+        id,
+      );
+    return await this.getById(id);
+  }
+
+  /** F4: запомнить исправление категории в рамках чата (supplier → category). */
+  upsertExpenseLearning(input: {
+    chatId: string;
+    patternType: "supplier" | "keyword";
+    pattern: string;
+    category: string;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO expense_learning (chat_id, pattern_type, pattern, category, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id, pattern_type, pattern)
+         DO UPDATE SET category = excluded.category, updated_at = excluded.updated_at`,
+      )
+      .run(
+        input.chatId,
+        input.patternType,
+        input.pattern,
+        input.category,
+        new Date().toISOString(),
+      );
+  }
+
+  /** F2.1: подсказки памяти чата для classify. */
+  listExpenseLearning(chatId: string): Array<{
+    patternType: string;
+    pattern: string;
+    category: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT pattern_type, pattern, category FROM expense_learning
+         WHERE chat_id = ? ORDER BY updated_at DESC LIMIT 50`,
+      )
+      .all(chatId) as Array<{ pattern_type: string; pattern: string; category: string }>;
+    return rows.map((r) => ({
+      patternType: r.pattern_type,
+      pattern: r.pattern,
+      category: r.category,
+    }));
+  }
+
+  // ── F6: гибкий поиск по расходам («сколько метров кабеля») ─────────────────
+
+  /** LIKE-поиск по raw_text/supplier/category/line_items; возвращает строки+фрагменты. */
+  searchExpenses(q: {
+    chatId: string;
+    query: string;
+    fromDate?: string;
+    toDate?: string;
+    limit?: number;
+  }): Array<{
+    id: string;
+    docDate: string;
+    supplier?: string;
+    total?: number;
+    currency: string;
+    category?: string | null;
+    rawText?: string;
+    lineItems?: ExpenseDocument["lineItems"];
+  }> {
+    const needle = q.query.trim().toLowerCase();
+    if (!needle) return [];
+    const like = `%${needle}%`;
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM expense_documents
+         WHERE chat_id = ?
+           AND (? IS NULL OR doc_date >= ?)
+           AND (? IS NULL OR doc_date <= ?)
+           AND (
+             LOWER(COALESCE(raw_text, '')) LIKE ?
+             OR LOWER(COALESCE(supplier, '')) LIKE ?
+             OR LOWER(COALESCE(category, '')) LIKE ?
+             OR LOWER(COALESCE(line_items, '')) LIKE ?
+           )
+         ORDER BY doc_date DESC
+         LIMIT ?`,
+      )
+      .all(
+        q.chatId,
+        q.fromDate ?? null,
+        q.fromDate ?? null,
+        q.toDate ?? null,
+        q.toDate ?? null,
+        like,
+        like,
+        like,
+        like,
+        q.limit ?? 20,
+      ) as DocRow[];
+    return rows.map((r) => {
+      const doc = rowToDoc(r);
+      return {
+        id: doc.id,
+        docDate: doc.docDate,
+        supplier: doc.supplier,
+        total: doc.total,
+        currency: doc.currency,
+        category: doc.category,
+        rawText: doc.rawText,
+        lineItems: doc.lineItems,
+      };
+    });
   }
 }

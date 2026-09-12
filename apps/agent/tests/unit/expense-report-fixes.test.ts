@@ -95,7 +95,7 @@ describe("renderExpensePdfRussian (R2)", () => {
     const out = fs.mkdtempSync(path.join(os.tmpdir(), "exp-pdf-"));
     tmpDirs.push(out);
     const filePath = await renderExpensePdfRussian({
-      title: "Расходы · -100",
+      chatTitle: "Ремонт",
       periodLabel: "весь период",
       rows: [
         { date: "2026-09-01", supplier: "Магнит", total: 125.5 },
@@ -114,7 +114,7 @@ describe("renderExpensePdfRussian (R2)", () => {
   it("без шрифта — явная ошибка, не пустой PDF", async () => {
     await assert.rejects(
       renderExpensePdfRussian({
-        title: "t",
+        chatTitle: "t",
         periodLabel: "p",
         rows: [],
         totalAmount: 0,
