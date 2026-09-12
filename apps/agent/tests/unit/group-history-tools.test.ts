@@ -184,6 +184,90 @@ describe("groupHistoryHandler", () => {
   });
 });
 
+// ── R2: owner из DM + chatTitle-резолюция ─────────────────────────────────
+
+describe("groupHistoryHandler R2 (owner DM, chatTitle)", () => {
+  it("owner из DM (sourceChatId ≠ группа) читает configured-группу", async () => {
+    const repo = makeRepo();
+    archiveRow(repo, { id: "a1", chatId: "-100", messageId: "1", rawText: "запись" });
+    const out = await groupHistoryHandler(
+      { chatId: "-100" },
+      { chatId: "777", userId: "1" }, // DM-сессия, user=owner
+      repo,
+      deps({
+        canManage: async () => true,
+        isAllowed: async () => false,
+        sourceChatId: "777",
+      }),
+    );
+    const parsed = JSON.parse(out) as { count: number };
+    assert.equal(parsed.count, 1);
+  });
+
+  it("member без записи в users.json из DM → deny (не owner)", async () => {
+    const repo = makeRepo();
+    const out = await groupHistoryHandler(
+      { chatId: "-100" },
+      { chatId: "777", userId: "42" },
+      repo,
+      deps({ canManage: async () => false, isAllowed: async () => false, sourceChatId: "777" }),
+    );
+    assert.equal(out, ACCESS_DENIED);
+  });
+
+  it("chatTitle для owner → резолвится в configured чат", async () => {
+    const repo = makeRepo();
+    archiveRow(repo, { id: "a1", chatId: "-100", messageId: "1", rawText: "привет" });
+    const out = await groupHistoryHandler(
+      { chatTitle: "Ремонт" },
+      { userId: "1" },
+      repo,
+      deps({
+        canManage: async () => true,
+        isAllowed: async () => false,
+        listConfiguredChats: async () => [
+          { chatId: "-100", chatTitle: "Ремонт дома" },
+          { chatId: "-200", chatTitle: "Дача" },
+        ],
+      }),
+    );
+    const parsed = JSON.parse(out) as { chatId: string; count: number };
+    assert.equal(parsed.chatId, "-100");
+    assert.equal(parsed.count, 1);
+  });
+
+  it("chatTitle не owner → отказ с подсказкой", async () => {
+    const repo = makeRepo();
+    const out = await groupHistoryHandler(
+      { chatTitle: "Ремонт" },
+      { userId: "42" },
+      repo,
+      deps({
+        canManage: async () => false,
+        listConfiguredChats: async () => [{ chatId: "-100", chatTitle: "Ремонт" }],
+      }),
+    );
+    assert.ok(out.includes("только owner/admin"), out);
+  });
+
+  it("chatTitle: несколько совпадений → уточнить chatId", async () => {
+    const repo = makeRepo();
+    const out = await groupHistoryHandler(
+      { chatTitle: "Ремонт" },
+      { userId: "1" },
+      repo,
+      deps({
+        canManage: async () => true,
+        listConfiguredChats: async () => [
+          { chatId: "-100", chatTitle: "Ремонт дома" },
+          { chatId: "-200", chatTitle: "Ремонт дачи" },
+        ],
+      }),
+    );
+    assert.ok(out.includes("Найдено несколько чатов"), out);
+  });
+});
+
 // ── 6: group_recent ────────────────────────────────────────────────────────
 
 describe("groupRecentHandler", () => {

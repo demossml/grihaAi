@@ -27,6 +27,7 @@ import {
 
 const HistorySchema = Type.Object({
   chatId: Type.Optional(Type.String({ description: "Telegram chat id (e.g. -100…). Default: current chat from session context if omitted." })),
+  chatTitle: Type.Optional(Type.String({ description: "Название группы вместо chatId (только owner/admin)." })),
   threadId: Type.Optional(Type.String({ description: "Forum topic id; omit for whole chat or non-forum." })),
   limit: Type.Optional(Type.Number({ description: "Default 30, max 100" })),
   beforeMessageId: Type.Optional(Type.String({ description: "Pagination: only rows with message_id < this (optional)" })),
@@ -64,6 +65,10 @@ function realDeps(sourceChatId?: string): GroupAccessDeps {
       (await setup.list())
         .filter((c) => c.status === "completed" || c.status === "skipped")
         .map((c) => c.chatId),
+    listConfiguredChats: async () =>
+      (await setup.list())
+        .filter((c) => c.status === "completed" || c.status === "skipped")
+        .map((c) => ({ chatId: c.chatId, chatTitle: c.chatTitle })),
     sourceChatId,
   };
 }

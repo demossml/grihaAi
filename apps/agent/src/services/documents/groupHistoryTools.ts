@@ -19,6 +19,9 @@ export interface GroupAccessDeps {
   /** configured chatIds (completed|skipped) для group_recent без chatId. */
   listConfiguredChatIds: () => Promise<string[]>;
   /**
+   * R2: configured чаты с названиями (для chatTitle-резолюции owner'ом). */
+  listConfiguredChats?: () => Promise<Array<{ chatId: string; chatTitle?: string }>>;
+  /**
    * Чат сессии, из которой вызван tool: агент УЖЕ прошёл membership-ACL
    * (A1) для этого чата — чтение истории/расходов того же чата разрешено. */
   sourceChatId?: string;
@@ -96,6 +99,8 @@ export function formatExpenseBrief(info: {
 
 export interface GroupHistoryArgs {
   chatId?: string;
+  /** R2: найти configured чат по названию (только owner/admin, canManage). */
+  chatTitle?: string;
   threadId?: string;
   limit?: number;
   beforeMessageId?: string;
@@ -133,10 +138,29 @@ export async function groupHistoryHandler(
   repo: DocumentsRepository,
   deps: GroupAccessDeps,
 ): Promise<string> {
-  const chatId = args.chatId ?? ctx.chatId;
-  if (!chatId) return "Укажите chatId: текущий чат сессии не определён.";
   const userId = ctx.userId;
   if (!userId) return "Не определён пользователь сессии.";
+
+  // R2: chatTitle → chatId (только owner/admin — canManage). Не для strangers.
+  let chatId = args.chatId ?? ctx.chatId;
+  if (!chatId && args.chatTitle?.trim() && deps.listConfiguredChats) {
+    if (!(await deps.canManage(userId))) {
+      return "Поиск чата по названию доступен только owner/admin (укажите chatId).";
+    }
+    const needle = args.chatTitle.trim().toLowerCase();
+    const matches = (await deps.listConfiguredChats()).filter((c) =>
+      (c.chatTitle ?? "").toLowerCase().includes(needle),
+    );
+    if (matches.length === 0) {
+      return `Чат с названием «${args.chatTitle.trim()}» не найден среди настроенных.`;
+    }
+    if (matches.length > 1) {
+      const ids = matches.map((c) => `${c.chatTitle ?? "?"} (${c.chatId})`).join(", ");
+      return `Найдено несколько чатов: ${ids}. Уточните chatId.`;
+    }
+    chatId = matches[0].chatId;
+  }
+  if (!chatId) return "Укажите chatId: текущий чат сессии не определён.";
 
   if (!(await assertCanReadChat(userId, chatId, deps))) return ACCESS_DENIED;
 
