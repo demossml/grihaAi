@@ -57,6 +57,7 @@ import {
 import { presetRulesWithActor, presetMarkerKey, type PresetId } from "../chat-setup/RulePresets.js";
 import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
+import { runUpdateCommand } from "../system-update/index.js";
 import { transcribeVoice } from "@griha/stt";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
@@ -435,6 +436,8 @@ function getController(): TelegramBotController {
             .join("\n");
           return `Гриша работает.\n\nМетрики:\n${lines || "(нет данных)"}`;
         },
+        // SYSTEM UPDATE: /update — handler сам проверяет private+owner (U1).
+        updateCommandHandler: (userId, chatType) => runUpdateCommand(userId, chatType),
         botUsername: botSelf?.username,
         // G7: заявка на вступление — по умолчанию ТОЛЬКО уведомление владельцу
         // (автоодобрение исключительно при явном правиле join_auto_approve).

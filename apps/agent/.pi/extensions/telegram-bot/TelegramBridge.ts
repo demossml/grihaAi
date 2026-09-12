@@ -454,6 +454,8 @@ export class TelegramBridge {
       ) => Promise<string>;
       /** G11: /status — расширенный вывод для admin (метрики). */
       statusHandler?: (userId: string) => string | Promise<string>;
+      /** SYSTEM UPDATE: /update — handler сам проверяет private+owner. */
+      updateCommandHandler?: (userId: string, chatType: string) => string | Promise<string>;
       /** G4: deep link bot username для onboarding-подсказки. */
       botUsername?: string;
       /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
@@ -671,6 +673,17 @@ export class TelegramBridge {
       const reply = statusHandler
         ? await statusHandler(String(userId))
         : "Гриша работает.";
+      await send(chatId, reply);
+      return { handled: true };
+    }
+    // SYSTEM UPDATE: /update — только личка; owner-проверка внутри handler'а.
+    if (text === "/update" || text.startsWith("/update ")) {
+      const handler = this.options?.updateCommandHandler;
+      if (!handler) {
+        await send(chatId, "Обновление недоступно.");
+        return { handled: true };
+      }
+      const reply = await handler(String(userId), chatType);
       await send(chatId, reply);
       return { handled: true };
     }
