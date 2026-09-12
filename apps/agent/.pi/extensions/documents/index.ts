@@ -132,6 +132,25 @@ export default function documents(pi: ExtensionAPI): void {
     ): Promise<AgentToolResult<{ path?: string; error?: string }>> {
       const tctx = getSessionContext(ctx.sessionManager.getSessionId());
       const setupRec = tctx?.chatId ? await getChatSetupService().get(tctx.chatId) : null;
+      // Единый источник: finance-расходы того же чата (если расширение финанса есть).
+      const financeRows = tctx?.chatId
+        ? await (async () => {
+            try {
+              const { getFinance } = await import("../finance/index.js");
+              return tctx.chatId
+                ? getFinance().listExpensesByChat(tctx.chatId).map((e) => ({
+                    date: e.date,
+                    vendor: e.vendor,
+                    amount: e.amount,
+                    currency: e.currency,
+                    category: e.category,
+                  }))
+                : [];
+            } catch {
+              return [];
+            }
+          })()
+        : [];
       const built = await buildExpenseReportAttachment(
         params,
         {
@@ -141,6 +160,7 @@ export default function documents(pi: ExtensionAPI): void {
           canManage: (userId) => getUsersService().canManage(userId),
         },
         getDocumentsRepository(),
+        financeRows,
       );
       if ("error" in built) {
         return { content: [{ type: "text", text: built.error }], details: { error: built.error } };

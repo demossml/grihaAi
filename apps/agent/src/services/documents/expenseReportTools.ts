@@ -111,10 +111,19 @@ function sum(rows: Array<{ total?: number }>): number {
   return rows.reduce((a, r) => a + (r.total ?? 0), 0);
 }
 
+export interface FinanceExpenseLike {
+  date: string;
+  vendor?: string;
+  amount?: number;
+  currency?: string;
+  category?: string;
+}
+
 export async function buildExpenseReportAttachment(
   args: ExpenseReportPdfArgs,
   ctx: ExpenseReportPdfContext,
   repo: DocumentsRepository,
+  financeRows?: FinanceExpenseLike[],
 ): Promise<{ error: string } | ExpenseReportAttachment> {
   const current = ctx.chatId;
   const requested = args.chatId;
@@ -143,6 +152,31 @@ export async function buildExpenseReportAttachment(
     needsReview: d.needsReview,
     category: d.category,
   }));
+
+  // Единый источник: объединяем finance-расходы того же чата (без дублей по сумме+дате+поставщику).
+  if (financeRows && financeRows.length > 0) {
+    const seen = new Set(
+      rows.map((r) => `${r.date}|${r.supplier ?? ""}|${r.total?.toFixed(2)}`),
+    );
+    for (const f of financeRows) {
+      const dedupeKey = `${f.date}|${f.vendor ?? ""}|${(f.amount ?? 0).toFixed(2)}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      rows.push({
+        date: f.date,
+        supplier: f.vendor,
+        total: f.amount,
+        currency: f.currency || "RUB",
+        needsReview: false,
+        category: f.category,
+      });
+    }
+  }
+
+  if (rows.length === 0) {
+    return { error: "Нет данных для отчёта — ни одного расхода по этому чату." };
+  }
+
   const totalAmount = rows.reduce((acc, r) => acc + (r.total ?? 0), 0);
   const grouped = groupReportRows(rows, args.dimension, args.filterValue);
   if (grouped.error) return { error: grouped.error };
