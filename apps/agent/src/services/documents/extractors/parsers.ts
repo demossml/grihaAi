@@ -30,9 +30,10 @@ function parseNumber(raw: string): number | undefined {
   return n;
 }
 
-/** Noise-строки: НДС/НАС/налог/скидк/процент/% — за суммы не берём (R1.1). */
+/** Noise-строки: НДС/НАС/налог/скидк/процент/% — за суммы не берём (R1.1).
+ *  Границы после кириллицы — lookahead, т.к. JS `\b` видит только ASCII `\w`. */
 function isNoiseLine(line: string): boolean {
-  return /(?:ндс|нас)\b|налог|скидк|процент|\b%\b/i.test(line);
+  return /(?:ндс|нас)(?=[\s\d%]|$)|налог|скидк|процент|%/i.test(line);
 }
 
 /**
@@ -47,10 +48,13 @@ export function parseTotalFromText(text: string): number | undefined {
   if (!text) return undefined;
   const lines = text.split(/\r?\n/);
 
-  // 1) Явная строка итога: «ИТОГО =20515.00», «ИТОГ 1234.56», «К ОПЛАТЕ: 1 234,56».
+  // 1) Явная строка итога: «ИТОГО =20515.00», «ИТОГ 1234.56», «К ОПЛАТЕ: 1 234,56»,
+  //    R1.2: «ИТОГО....................6767.00» — filler из точек/дефисов/пробелов/:=
+  //    между маркером и числом (десятичная часть числа при этом цела).
+  //    Граница после кириллического маркера — lookahead (\b не видит кириллицу).
   for (const line of lines) {
     if (isNoiseLine(line)) continue;
-    const m = /(?:итого|итог|всего\s+к\s+оплате|к\s+оплате|total\s+due|grand\s+total)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
+    const m = /(?:итого|итог|всего\s+к\s+оплате|к\s+оплате|total\s+due|grand\s+total)(?=[\s.:=\-–—\d]|$)[\s.:=\-–—]*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
       line,
     );
     if (m) {

@@ -49,6 +49,14 @@ describe("document parsers", () => {
     assert.equal(parseTotalFromText("сумма: 99.90 руб"), 99.9);
   });
 
+  it("R1.2: ИТОГО с точками-заполнителями", () => {
+    assert.equal(parseTotalFromText("ИТОГО.........................................6767.00"), 6767);
+  });
+
+  it("R1.2: ИТОГ с точками", () => {
+    assert.equal(parseTotalFromText("ИТОГ...........175.00"), 175);
+  });
+
   it("parseDateFromText: dd.mm.yyyy и ISO", () => {
     assert.equal(parseDateFromText("накладная от 05.03.2026"), "2026-03-05");
     assert.equal(parseDateFromText("чек 12/08/26"), "2026-08-12");
