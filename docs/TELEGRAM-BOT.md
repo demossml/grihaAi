@@ -82,6 +82,13 @@ bot.api.sendMessage(chatId, text)  +  filePath ? bot.api.sendDocument(chatId, fi
 
 Чистый класс с тремя зависимостями: `allowedUserIds`, `agent`, `sender` (+ опции).
 
+- **Turn timeout (C3/C4)**: каждый ход агента обёрнут `withTurnTimeout`
+  (`GRIHA_AGENT_TURN_MS`, default 90s; тяжёлые ветки media/album/OCR —
+  `GRIHA_AGENT_TURN_HEAVY_MS`, default 180s). Timeout/ошибка → одно короткое
+  сообщение («Слишком долго…» / «Не удалось…»), typing heartbeat останавливается
+  в finally. Пустой ответ без файла → «Пустой ответ. Переформулируйте вопрос.».
+  Уже сгенерированный PDF-файл timeout'ом не отменяется.
+
 - **Membership ACL (A1–A4)**: если контроллер передал `telegramAccess`
   (`isAllowedPrivate` + `getChatMember`), agent-path авторизуется так:
   - **group/supergroup** — доступ у ЛЮБОГО участника (`creator|administrator|member|restricted`
@@ -184,6 +191,11 @@ await session.bindExtensions({ mode: "json" });
 4. Возвращает `{ text, filePath? }` (её бридж отправляет в чат: текст всегда, документ — при наличии файла).
 
 `disposeAll()` — закрывает все субсессии (на `session_shutdown`).
+
+**Стиль краткости (C1/C6)**: в каждый turn-промпт (group и private) подмешивается
+`[STYLE] length: short / verbosity: low [/STYLE]`, правила ответов зафиксированы в
+`packages/skills/skills/core/SKILL.md` («Response style (Telegram)»). Исходящий
+текст агента обрезается `clipTelegramText` (`GRIHA_TG_MAX_REPLY_CHARS`, default 4000).
 
 ---
 

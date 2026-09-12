@@ -1056,12 +1056,12 @@ describe("telegram session pool", () => {
     const { pool, sessions } = makePool();
     const a = await pool.handleMessage("tg:1:1", 1, "привет", { chatId: "1" });
     const b = await pool.handleMessage("tg:2:2", 2, "hi", { chatId: "2" });
-    assert.equal(a.text, "ответ на: привет");
-    assert.equal(b.text, "ответ на: hi");
+    assert.ok(a.text.includes("привет"));
+    assert.ok(b.text.includes("hi"));
     assert.equal(pool.activeCount(), 2);
     assert.equal(sessions.size, 2);
-    assert.deepEqual(sessions.get("tg:1:1")!.prompts, ["привет"]);
-    assert.deepEqual(sessions.get("tg:2:2")!.prompts, ["hi"]);
+    assert.ok(sessions.get("tg:1:1")!.prompts[0].includes("привет"));
+    assert.ok(sessions.get("tg:2:2")!.prompts[0].includes("hi"));
   });
 
   it("reuses the same session for the same key", async () => {
@@ -1069,7 +1069,10 @@ describe("telegram session pool", () => {
     await pool.handleMessage("tg:1:1", 1, "первое", { chatId: "1" });
     await pool.handleMessage("tg:1:1", 1, "второе", { chatId: "1" });
     assert.equal(sessions.size, 1);
-    assert.deepEqual(sessions.get("tg:1:1")!.prompts, ["первое", "второе"]);
+    const prompts = sessions.get("tg:1:1")!.prompts;
+    assert.equal(prompts.length, 2);
+    assert.ok(prompts[0].includes("первое"));
+    assert.ok(prompts[1].includes("второе"));
     assert.equal(pool.activeCount(), 1);
   });
 
@@ -1078,8 +1081,8 @@ describe("telegram session pool", () => {
     await pool.handleMessage("tg:7:-100", 7, "группа", { chatId: "-100" });
     await pool.handleMessage("tg:7:7", 7, "дм", { chatId: "7" });
     assert.equal(sessions.size, 2);
-    assert.deepEqual(sessions.get("tg:7:-100")!.prompts, ["группа"]);
-    assert.deepEqual(sessions.get("tg:7:7")!.prompts, ["дм"]);
+    assert.ok(sessions.get("tg:7:-100")!.prompts[0].includes("группа"));
+    assert.ok(sessions.get("tg:7:7")!.prompts[0].includes("дм"));
   });
 
   it("R-GR-3: rulesContext передаётся в prompt на каждый ход", async () => {
@@ -1128,7 +1131,7 @@ describe("telegram session pool", () => {
       },
     });
     const reply = await pool.handleMessage("tg:1:1", 1, "отчёт", { chatId: "1" });
-    assert.equal(reply.text, "ответ на: отчёт");
+    assert.ok(reply.text.includes("отчёт"));
     assert.equal(reply.filePath, "/tmp/report.pdf");
   });
 

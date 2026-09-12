@@ -12,6 +12,15 @@ import {
   type AlbumItem,
 } from "./media-group-buffer.js";
 import { resolveTelegramAccess } from "./telegram-acl.js";
+import {
+  EMPTY_REPLY_MESSAGE,
+  TURN_ERROR_MESSAGE,
+  TURN_HEAVY_MS,
+  TURN_MS,
+  TURN_TIMEOUT_MESSAGE,
+  TurnTimeoutError,
+  withTurnTimeout,
+} from "./agent-turn-timeout.js";
 
 export interface TgUser {
   id: number;
@@ -479,6 +488,9 @@ export class TelegramBridge {
       typingIntervalMs?: number;
       /** PROMPT 10: метрики (agent invocations/denied). */
       onMetric?: (name: string, n?: number) => void;
+      /** C3: timeout agent turn (default 90s; heavy media/report — 180s). */
+      agentTurnTimeoutMs?: number;
+      agentTurnHeavyTimeoutMs?: number;
     },
   ) {
     const rawAgent = agent;
@@ -486,6 +498,33 @@ export class TelegramBridge {
       this.options?.onMetric?.("telegram_agent_invocations");
       return rawAgent(input);
     };
+  }
+
+  /**
+   * C3/C4: вызов агента с wall-clock timeout. Timeout/ошибка → короткий
+   * fallback-текст (одно сообщение); typing heartbeat останавливает вызывающий
+   * в finally. Пустой ответ без файла → «Пустой ответ…» (§4).
+   */
+  private async runAgent(
+    input: Parameters<GrishaAgent>[0],
+    heavy: boolean,
+  ): Promise<GrishaAgentReply> {
+    const ms = heavy
+      ? (this.options?.agentTurnHeavyTimeoutMs ?? TURN_HEAVY_MS)
+      : (this.options?.agentTurnTimeoutMs ?? TURN_MS);
+    try {
+      const reply = await withTurnTimeout(ms, () => this.agent(input));
+      if (!reply.text?.trim() && !reply.filePath && !reply.attachmentOnly) {
+        return { ...reply, text: EMPTY_REPLY_MESSAGE };
+      }
+      return reply;
+    } catch (err: unknown) {
+      if (err instanceof TurnTimeoutError) {
+        return { text: TURN_TIMEOUT_MESSAGE };
+      }
+      this.options?.onMetric?.("telegram_agent_error");
+      return { text: TURN_ERROR_MESSAGE };
+    }
   }
 
   /** Send a reply with all attached extras (file, caption, buttons). */
@@ -500,8 +539,6 @@ export class TelegramBridge {
       threadId,
     });
   }
-
-  /** Sender, привязанный к теме входящего сообщения (ответ — в ту же тему). */
   private makeSender(threadId?: string): TelegramReplySender {
     return (chatId, text, filePath, extra) =>
       this.sender(chatId, text, filePath, { ...extra, threadId });
@@ -865,7 +902,7 @@ export class TelegramBridge {
           return { handled: true, reason: "blocked-by-rules" };
         }
 
-        const response = await this.agent({
+        const response = await this.runAgent({
           message: text2,
           userId,
           platform: "telegram",
@@ -877,7 +914,7 @@ export class TelegramBridge {
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate2.rulesContext || undefined,
-        });
+        }, true);
         if (gate2.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
         return { handled: true };
@@ -905,7 +942,7 @@ export class TelegramBridge {
       this.options?.beforeAgent?.(chatId);
       const hb = this.startHeartbeat(chatId, msg);
       try {
-        const response = await this.agent({
+        const response = await this.runAgent({
           message,
           userId,
           platform: "telegram",
@@ -913,7 +950,7 @@ export class TelegramBridge {
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate.rulesContext || undefined,
-        });
+        }, false);
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
         return { handled: true };
@@ -932,7 +969,7 @@ export class TelegramBridge {
       this.options?.beforeAgent?.(chatId);
       const hb = this.startHeartbeat(chatId, msg);
       try {
-        const response = await this.agent({
+        const response = await this.runAgent({
           message,
           userId,
           platform: "telegram",
@@ -940,7 +977,7 @@ export class TelegramBridge {
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate.rulesContext || undefined,
-        });
+        }, false);
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
         return { handled: true };
@@ -970,7 +1007,7 @@ export class TelegramBridge {
     // Heartbeat только когда пользователь получит ответ (не silent-archive).
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {
-      const response = await this.agent({
+      const response = await this.runAgent({
         message: withReplyContext(text, msg),
         userId,
         platform: "telegram",
@@ -978,7 +1015,7 @@ export class TelegramBridge {
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
-      });
+      }, false);
       if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
       await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
@@ -1078,7 +1115,7 @@ export class TelegramBridge {
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {
       const agentMessage = buildAlbumAgentMessage(batch, media);
-      const response = await this.agent({
+      const response = await this.runAgent({
         message: agentMessage,
         userId,
         platform: "telegram",
@@ -1086,7 +1123,7 @@ export class TelegramBridge {
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
-      });
+      }, true);
       if (gate.suppressReply) return;
       await this.sendReply(chatId, response, msg.threadId);
     } finally {
@@ -1185,7 +1222,7 @@ export class TelegramBridge {
       const agentMessage = processMedia
         ? withReplyContext(buildMediaAgentMessage(kind, msg, fileId, media), msg)
         : message;
-      const response = await this.agent({
+      const response = await this.runAgent({
         message: agentMessage,
         userId,
         platform: "telegram",
@@ -1193,7 +1230,7 @@ export class TelegramBridge {
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
-      });
+      }, true);
       if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
       await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };

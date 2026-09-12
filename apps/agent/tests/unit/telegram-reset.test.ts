@@ -54,7 +54,7 @@ describe("telegram /new reset", () => {
     await pool.handleMessage("tg:1:1", 1, "первое", { chatId: "1" });
     assert.equal(created.length, 1);
     const first = created[0];
-    assert.deepEqual(first.prompts, ["первое"]);
+    assert.ok(first.prompts[0].includes("первое"), "промпт содержит сообщение (с STYLE-префиксом)");
 
     await pool.reset("tg:1:1");
     assert.equal(first.disposed, true, "old session should be disposed");
@@ -63,7 +63,7 @@ describe("telegram /new reset", () => {
     assert.equal(created.length, 2, "a new session should be created");
     const second = created[1];
     assert.notEqual(second, first);
-    assert.deepEqual(second.prompts, ["второе"]);
+    assert.ok(second.prompts[0].includes("второе"));
     assert.equal(pool.activeCount(), 1);
   });
 
