@@ -30,40 +30,69 @@ function parseNumber(raw: string): number | undefined {
   return n;
 }
 
+/** Noise-строки: НДС/НАС/налог/скидк/процент/% — за суммы не берём (R1.1). */
+function isNoiseLine(line: string): boolean {
+  return /(?:ндс|нас)\b|налог|скидк|процент|\b%\b/i.test(line);
+}
+
 /**
- * Итог из чека (R1): приоритет строке «ИТОГ/ИТОГО/к оплате», НИКОГДА не
- * «НДС N%» / «СУММА НДС». Проценты за суммы не берём.
+ * Итог из чека (R1.1). Приоритет шагов фиксирован:
+ *   1) строка «ИТОГ/ИТОГО/к оплате/…» с числом (не «Скидка на итог» — noise);
+ *   2) OCR-обрезки «ОГ =2437» / «ТОГО» / «ИТ» на короткой строке с «=»;
+ *   3) осторожный «сумма: N» на не-noise строке (не «СУММА НДС»);
+ *   4) НАЛИЧНЫМИ/БЕЗНАЛИЧНЫМИ/оплачено — только если нет «СДАЧА <число>»;
+ *   5) fallback: последнее число с валютой на не-noise строках.
  */
 export function parseTotalFromText(text: string): number | undefined {
   if (!text) return undefined;
+  const lines = text.split(/\r?\n/);
 
-  // 1) Явная строка итога: «ИТОГО =20515.00», «ИТОГ 1234.56», «к оплате: 1 234,56»
-  const explicit =
-    /(?:итого|итог|всего\s+к\s+оплате|к\s+оплате|total\s+due|grand\s+total)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
-      text,
+  // 1) Явная строка итога: «ИТОГО =20515.00», «ИТОГ 1234.56», «К ОПЛАТЕ: 1 234,56».
+  for (const line of lines) {
+    if (isNoiseLine(line)) continue;
+    const m = /(?:итого|итог|всего\s+к\s+оплате|к\s+оплате|total\s+due|grand\s+total)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
+      line,
     );
-  if (explicit) {
-    const n = parseNumber(explicit[1]);
-    if (n !== undefined) return n;
+    if (m) {
+      const n = parseNumber(m[1]);
+      if (n !== undefined) return n;
+    }
   }
 
-  // 2) Строка фактической оплаты: «НАЛИЧНЫМИ 175.00», «оплачено 1 500,50».
-  const paid =
-    /(?:наличными|безналичными|оплачено)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
-      text,
-    );
-  if (paid) {
-    const n = parseNumber(paid[1]);
-    if (n !== undefined) return n;
+  // 2) OCR bare: «ОГ =2437», «ТОГО =…», «ИТ =…» — обрезки «ИТОГ».
+  for (const line of lines) {
+    if (isNoiseLine(line)) continue;
+    const m = /^(ог|того|ит)\s*[:=]\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)\s*$/i.exec(line.trim());
+    if (m) {
+      const n = parseNumber(m[2]);
+      if (n !== undefined) return n;
+    }
   }
 
-  // Строки без НДС/налогов/процентов — только на них ищем суммы ниже.
-  const cleaned = text
-    .split(/\r?\n/)
-    .filter((l) => !/(?:ндс|нас)\b|%\s*$|налог/i.test(l))
-    .join("\n");
+  // 3) Осторожный «сумма: N» / «сумма=N» — не «СУММА НДС», не «ИТОГО ДО СКИДОК».
+  for (const line of lines) {
+    if (isNoiseLine(line)) continue;
+    const m = /сумма\s*[:=]\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(line);
+    if (m) {
+      const n = parseNumber(m[1]);
+      if (n !== undefined) return n;
+    }
+  }
 
-  // 3) Число с явной валютой — предпочитаем ПОСЛЕДНЕЕ (обычно итог чека).
+  // 4) Фактическая оплата — только если в чеке нет «СДАЧА <число>»
+  //    (внесённая сумма > итога, наличные ≠ total).
+  if (!/сдача\s*[:=]?\s*[\d]/i.test(text)) {
+    const paid = /(?:наличными|безналичными|оплачено)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
+      text,
+    );
+    if (paid) {
+      const n = parseNumber(paid[1]);
+      if (n !== undefined) return n;
+    }
+  }
+
+  // 5) Fallback: последнее число с валютой на не-noise строках (обычно итог).
+  const cleaned = lines.filter((l) => !isNoiseLine(l)).join("\n");
   const allMoney = [
     ...cleaned.matchAll(/(\d[\d\s\u00a0]*(?:[.,]\d{1,2})?)\s*(?:₽|руб\.?|rub|rur|р\.)/gi),
   ];
@@ -71,12 +100,6 @@ export function parseTotalFromText(text: string): number | undefined {
     const n = parseNumber(allMoney[allMoney.length - 1][1]);
     if (n !== undefined) return n;
   }
-
-  // 4) «сумма: N» без валюты — только на чистых строках (СУММА НДС уже отсечена).
-  const sumLabeled = /(?:сумма|итого)\s*[:=]\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
-    cleaned,
-  );
-  if (sumLabeled) return parseNumber(sumLabeled[1]);
 
   return undefined;
 }
