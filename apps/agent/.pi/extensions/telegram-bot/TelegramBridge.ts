@@ -11,6 +11,7 @@ import {
   type AlbumBatch,
   type AlbumItem,
 } from "./media-group-buffer.js";
+import { resolveTelegramAccess } from "./telegram-acl.js";
 
 export interface TgUser {
   id: number;
@@ -378,6 +379,13 @@ export class TelegramBridge {
       react?: (chatId: number, messageId: number, emoji: string) => void;
       /** Early ACL: вызывается ДО prefilter/агента. false → deny (см. §3 политики). */
       aclCheck?: (userId: string, chatId: string) => boolean | Promise<boolean>;
+      /**
+       * A1–A4: membership-ACL (group=участие, private=только явный список).
+       * При наличии — заменяет aclCheck для agent-path; без него — legacy. */
+      telegramAccess?: {
+        isAllowedPrivate: (userId: string) => Promise<boolean>;
+        getChatMember: (chatId: number, userId: number) => Promise<{ status: string }>;
+      };
       /** Прямой handler /users ... (без LLM, как /rules). */
       usersCommandHandler?: (
         args: string,
@@ -982,6 +990,29 @@ export class TelegramBridge {
       this.options?.onMetric?.("telegram_agent_denied");
       return { allowed: false, reason: "channel-no-user", handled: true };
     }
+
+    // A1–A4: membership-ACL (предпочтительный путь).
+    if (this.options?.telegramAccess) {
+      const res = await resolveTelegramAccess(
+        {
+          userId: opts.userId,
+          chatId: opts.chatId,
+          chatType: opts.chatType,
+          hasRealUser: opts.hasRealUser,
+        },
+        this.options.telegramAccess,
+      );
+      if (res.allowed) return { allowed: true, reason: "ok", handled: true };
+      this.options?.onMetric?.("telegram_agent_denied");
+      // A2: private → короткий отказ (если не ACL_DENY_REPLY=0);
+      // группа — молча. LLM не вызывается.
+      if (opts.chatType === "private" && process.env.ACL_DENY_REPLY !== "0") {
+        await opts.send(opts.chatId, "Нет доступа.");
+      }
+      return { allowed: false, reason: res.reason, handled: true };
+    }
+
+    // FR-6: нет telegramAccess — legacy aclCheck.
     if (this.options?.aclCheck) {
       const allowed = await this.options.aclCheck(String(opts.userId), String(opts.chatId));
       if (!allowed) {

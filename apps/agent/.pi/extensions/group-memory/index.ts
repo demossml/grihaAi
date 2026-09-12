@@ -53,7 +53,7 @@ const RecentSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "Default 20, max 50" })),
 });
 
-function realDeps(): GroupAccessDeps {
+function realDeps(sourceChatId?: string): GroupAccessDeps {
   const setup = getChatSetupService();
   const users = getUsersService();
   return {
@@ -64,6 +64,7 @@ function realDeps(): GroupAccessDeps {
       (await setup.list())
         .filter((c) => c.status === "completed" || c.status === "skipped")
         .map((c) => c.chatId),
+    sourceChatId,
   };
 }
 
@@ -91,7 +92,7 @@ export default function groupMemory(pi: ExtensionAPI): void {
         params,
         toolContext(ctx),
         getDocumentsRepository(),
-        realDeps(),
+        realDeps(toolContext(ctx).chatId),
       );
       return { content: [{ type: "text", text }], details: { result: text } };
     },
@@ -114,7 +115,7 @@ export default function groupMemory(pi: ExtensionAPI): void {
         params,
         toolContext(ctx),
         getDocumentsRepository(),
-        realDeps(),
+        realDeps(toolContext(ctx).chatId),
       );
       return { content: [{ type: "text", text }], details: { result: text } };
     },

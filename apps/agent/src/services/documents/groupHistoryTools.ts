@@ -18,9 +18,13 @@ export interface GroupAccessDeps {
   isAllowed: (userId: string, chatId: string) => Promise<boolean>;
   /** configured chatIds (completed|skipped) для group_recent без chatId. */
   listConfiguredChatIds: () => Promise<string[]>;
+  /**
+   * Чат сессии, из которой вызван tool: агент УЖЕ прошёл membership-ACL
+   * (A1) для этого чата — чтение истории/расходов того же чата разрешено. */
+  sourceChatId?: string;
 }
 
-/** H2/H3: (a) configured + (b) allowed или canManage. */
+/** H2/H3 + §4: (a) configured + (b) allowed ИЛИ canManage ИЛИ «это чат сессии». */
 export async function assertCanReadChat(
   userId: string,
   chatId: string,
@@ -28,7 +32,10 @@ export async function assertCanReadChat(
 ): Promise<boolean> {
   if (!deps.isConfiguredSync(chatId)) return false;
   if (await deps.canManage(userId)) return true;
-  return deps.isAllowed(userId, chatId);
+  if (await deps.isAllowed(userId, chatId)) return true;
+  // Membership уже проверен на bridge для текущего чата сессии.
+  if (deps.sourceChatId && String(deps.sourceChatId) === String(chatId)) return true;
+  return false;
 }
 
 export function clampInt(value: number, min: number, max: number): number {

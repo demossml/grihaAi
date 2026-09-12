@@ -288,6 +288,11 @@ function getController(): TelegramBotController {
         resetHandler: (sessionKey) => pool?.reset(sessionKey),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
         aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
+        // A1–A4: agent-ACL по membership (group) / явному списку (private).
+        // getChatMember к текущему bot привязывает сам контроллер.
+        telegramAccess: {
+          isAllowedPrivate: (userId) => users.isAllowedPrivate(userId),
+        },
         usersCommandHandler: (args, ctx) => handleUsersCommand(users, args, ctx),
         // Chat-setup (онбординг групп): my_chat_member → DM, cs:-callbacks,
         // custom-текст в DM, /setup с keyboard'ами (D5).

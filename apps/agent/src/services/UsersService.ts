@@ -132,6 +132,15 @@ export class UsersService {
     return this.mode() === "open";
   }
 
+  /**
+   * DM (A2): только явно заведённые пользователи с role !== blocked.
+   * Глобальный open-режим НИКОГДА не пускает посторонних в личку.
+   */
+  async isAllowedPrivate(userId: string | number): Promise<boolean> {
+    const u = await this.get(userId);
+    return Boolean(u && u.role !== "blocked");
+  }
+
   /** Может ли менять ACL: owner/admin. Главная (не-Telegram) сессия = оператор. */
   async canManage(userId: string | number): Promise<boolean> {
     const id = normalizeUserId(userId);

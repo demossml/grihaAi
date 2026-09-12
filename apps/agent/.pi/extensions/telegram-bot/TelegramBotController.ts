@@ -136,6 +136,12 @@ export interface TelegramBotControllerOptions {
   approvalHandler?: TelegramApprovalHandler;
   /** Early ACL-проверка (UsersService) — ДО prefilter и агента. */
   aclCheck?: (userId: string, chatId: string) => boolean | Promise<boolean>;
+  /**
+   * A1–A4: membership-ACL для agent-path. getChatMember контроллер сам привяжет
+   * к текущему bot instance (реконнекты); здесь — только isAllowedPrivate. */
+  telegramAccess?: {
+    isAllowedPrivate: (userId: string) => Promise<boolean>;
+  };
   /** Прямой handler /users ... (UsersService + canManage guard). */
   usersCommandHandler?: (
     args: string,
@@ -419,6 +425,17 @@ export class TelegramBotController {
               .catch((err: unknown) => console.error("[telegram-bot] setMessageReaction failed:", err));
           },
           aclCheck: this.options?.aclCheck,
+          // A1–A4: membership-ACL; getChatMember — текущий bot (пересоздаётся при
+          // реконнектах вместе с bridge).
+          telegramAccess: this.options?.telegramAccess
+            ? {
+                isAllowedPrivate: this.options.telegramAccess.isAllowedPrivate,
+                getChatMember: async (chatId, userId) => {
+                  const m = await bot.api.getChatMember(chatId, userId);
+                  return { status: m.status };
+                },
+              }
+            : undefined,
           usersCommandHandler: this.options?.usersCommandHandler,
           setupCommandHandler: this.options?.setupCommandHandler
             ? (args, ctx, send) => {

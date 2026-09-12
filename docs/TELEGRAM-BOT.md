@@ -82,9 +82,22 @@ bot.api.sendMessage(chatId, text)  +  filePath ? bot.api.sendDocument(chatId, fi
 
 Чистый класс с тремя зависимостями: `allowedUserIds`, `agent`, `sender` (+ опции).
 
-- **Early ACL**: если контроллер передал `aclCheck` (UsersService), проверка идёт самой первой —
-  ДО prefilter и агента. Deny в private → «Нет доступа.» (если не `ACL_DENY_REPLY=0`), в
-  группах — молча. Без `aclCheck` — legacy-whitelist `allowedUserIds` (пустой ⇒ `false` для всех).
+- **Membership ACL (A1–A4)**: если контроллер передал `telegramAccess`
+  (`isAllowedPrivate` + `getChatMember`), agent-path авторизуется так:
+  - **group/supergroup** — доступ у ЛЮБОГО участника (`creator|administrator|member|restricted`
+    через реальный `getChatMember`), whitelist/users.json **не** смотрится;
+  - **private** — только явный список (`UsersService.isAllowedPrivate`: заведённый
+    пользователь с ролью ≠ blocked). Глобальный `aclMode=open` **не** пускает
+    посторонних в личку (closed DM);
+  - `left`/`kicked`/`unknown`/ошибка `getChatMember` → deny (fail closed);
+  - канал/без реального `from` → deny;
+  - Deny в private → «Нет доступа.» (если не `ACL_DENY_REPLY=0`), в группах — молча.
+- **Legacy fallback**: без `telegramAccess` — `aclCheck` (UsersService), без него —
+  whitelist `allowedUserIds` (FR-6, обратная совместимость).
+- Archive/listen_only-медиа по policy идут мимо этого ACL (A6) — их членство не трогает.
+- Tools `group_history`/`expenses_*`: вызов из сессии той же группы, где агент уже
+  прошёл membership-ACL, разрешает чтение истории/расходов **этого** chatId
+  (`sourceChatId`); чужие chatId — только `canManage`/`isAllowed`.
 - `handleUpdate(update)`:
   1. нет сообщения/чата → `no-message`;
   2. нет `from.id` → `no-user`;
