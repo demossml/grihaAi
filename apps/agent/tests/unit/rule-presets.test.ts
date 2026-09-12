@@ -35,6 +35,37 @@ describe("RulePresets", () => {
     assert.equal(rule?.value, true);
   });
 
+  it("R1: secretary архивирует всё — archive_media/archive_ocr_ingest=true", () => {
+    assert.equal(PRESETS.secretary.rules.find((r) => r.key === "archive_media")?.value, true);
+    assert.equal(
+      PRESETS.secretary.rules.find((r) => r.key === "archive_ocr_ingest")?.value,
+      true,
+    );
+    assert.equal(
+      PRESETS.secretary.rules.find((r) => r.key === "listen_only")?.value,
+      false,
+      "агент по-прежнему отвечает по @",
+    );
+  });
+
+  it("R1: team копит чеки — archive_media/archive_ocr_ingest=true", () => {
+    assert.equal(PRESETS.team.rules.find((r) => r.key === "archive_media")?.value, true);
+    assert.equal(PRESETS.team.rules.find((r) => r.key === "archive_ocr_ingest")?.value, true);
+  });
+
+  it("R1: shop копит чеки — archive_ocr_ingest=true", () => {
+    assert.equal(PRESETS.shop.rules.find((r) => r.key === "archive_ocr_ingest")?.value, true);
+  });
+
+  it("R1: listener без регрессий — полный архив", () => {
+    assert.equal(PRESETS.listener.rules.find((r) => r.key === "archive_media")?.value, true);
+    assert.equal(
+      PRESETS.listener.rules.find((r) => r.key === "archive_ocr_ingest")?.value,
+      true,
+    );
+    assert.equal(PRESETS.listener.rules.find((r) => r.key === "listen_only")?.value, true);
+  });
+
   it("parseCustomRulesText: «только мои сообщения» → only_my_messages + user id", () => {
     const rules = parseCustomRulesText("Отвечай только мои сообщения и кратко", "111");
     const onlyMy = rules.find((r) => r.key === "only_my_messages");

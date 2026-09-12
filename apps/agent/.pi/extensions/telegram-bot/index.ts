@@ -600,6 +600,42 @@ async function bootstrapUsers(): Promise<void> {
       }
     }
   }
+
+  // R1-repair: архивные ключи для archive-пресетов (секретарь/команда/магазин
+  // копят чеки и без @). Дописываем ТОЛЬКО отсутствующие, status не трогаем.
+  const ARCHIVE_KEYS_BY_PRESET: Record<string, string[]> = {
+    listener: ["archive_media", "archive_ocr_ingest"],
+    secretary: ["archive_media", "archive_ocr_ingest"],
+    team: ["archive_media", "archive_ocr_ingest"],
+    shop: ["archive_ocr_ingest"],
+  };
+  for (const rec of await setup.list()) {
+    if (rec.status !== "completed" && rec.status !== "skipped") continue;
+    const keys = rec.presetId ? ARCHIVE_KEYS_BY_PRESET[rec.presetId] : undefined;
+    if (!keys?.length) continue;
+    const existing = new Set(getUserRulesService().getHardRules(rec.chatId).map((r) => r.key));
+    for (const key of keys) {
+      if (existing.has(key)) continue;
+      try {
+        getUserRulesService().addStructuredRule({
+          chatId: rec.chatId,
+          key,
+          value: true,
+          kind: "hard",
+          source: `repair:${rec.presetId}`,
+          actorId: rec.addedByUserId ?? "system-repair",
+        });
+        console.log(
+          `[chat-setup] R1-repair: ${key}=true для chatId=${rec.chatId} preset=${rec.presetId}`,
+        );
+      } catch (err: unknown) {
+        console.error(
+          `[chat-setup] R1 archive repair failed for ${rec.chatId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
 }
 
 async function startBot(): Promise<boolean> {

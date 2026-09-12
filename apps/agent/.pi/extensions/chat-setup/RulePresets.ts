@@ -78,6 +78,9 @@ export const PRESETS: Record<PresetId, { title: string; description: string; rul
       { key: "ignore_if_other_mention", value: true, kind: "hard" },
       { key: "listen_only", value: false, kind: "hard" },
       { key: "only_my_messages", value: false, kind: "hard" },
+      // R1: команда тоже копит чеки (архив/OCR и без @; агент — по @/reply).
+      { key: "archive_media", value: true, kind: "hard" },
+      { key: "archive_ocr_ingest", value: true, kind: "hard" },
       { key: "language_mirror", value: true, kind: "soft" },
       { key: "style", value: "formal", kind: "soft" },
       { key: "length", value: "short", kind: "soft" },
@@ -87,7 +90,7 @@ export const PRESETS: Record<PresetId, { title: string; description: string; rul
   },
   secretary: {
     title: "Секретарь в группе",
-    description: "По @/reply, можно запоминать, краткие ответы",
+    description: "Архивирую всё, отвечаю по @/reply, кратко",
     rules: [
       { key: "require_mention", value: true, kind: "hard" },
       { key: "reply_to_bot", value: true, kind: "hard" },
@@ -95,6 +98,9 @@ export const PRESETS: Record<PresetId, { title: string; description: string; rul
       { key: "ignore_service", value: true, kind: "hard" },
       { key: "listen_only", value: false, kind: "hard" },
       { key: "only_my_messages", value: false, kind: "hard" },
+      // R1: секретарь = архивариус: медиа/OCR/expenses и без @ (агент — только по @).
+      { key: "archive_media", value: true, kind: "hard" },
+      { key: "archive_ocr_ingest", value: true, kind: "hard" },
       { key: "language_mirror", value: true, kind: "soft" },
       { key: "style", value: "concise", kind: "soft" },
       { key: "length", value: "short", kind: "soft" },
@@ -126,6 +132,8 @@ export const PRESETS: Record<PresetId, { title: string; description: string; rul
       { key: "ignore_bots", value: true, kind: "hard" },
       { key: "ignore_service", value: true, kind: "hard" },
       { key: "listen_only", value: false, kind: "hard" },
+      // R1: магазин копит чеки в expenses (OCR и без @; агент — только @).
+      { key: "archive_ocr_ingest", value: true, kind: "hard" },
       { key: "language_mirror", value: true, kind: "soft" },
       { key: "style", value: "formal", kind: "soft" },
       { key: "length", value: "short", kind: "soft" },
