@@ -38,6 +38,10 @@ tags: [documents, finance]
 - «по категориям» → `expenses_report_pdf` с `dimension: "category"`.
 - «по поставщикам» → `dimension: "supplier"`; теги → `"tag"`; без разреза → `"none"`.
 - Отчёт всегда из БД: секции и под-итоги считает tool, не LLM.
+- После успешного `expenses_report_pdf` (или `generate_report` expense) PDF ставится
+  в очередь отправки автоматически. НЕ вызывай `send_file` на тот же путь — будет дубль.
+- Если в группе `report_attachment_only` / требуется «только PDF» — не пиши «Готово»
+  и никакой сопроводительный текст.
 
 ## Flexible questions
 - «сколько метров кабеля / какие болты» → `expenses_search` (ищет по позициям и

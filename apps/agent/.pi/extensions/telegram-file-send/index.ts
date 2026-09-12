@@ -23,6 +23,11 @@ import {
 import { validateSendFile, resolveOutboundFile, defaultFileRoots } from "../telegram-bot/file-send.js";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import { LocalMediaStorage } from "../../../src/services/documents/media-storage.js";
+import {
+  hasPendingSessionFile,
+  markRecentlySentFile,
+  wasRecentlySentFile,
+} from "../../../src/utils/telegram/session-files.js";
 
 const SendFileSchema = Type.Object({
   filePath: Type.Optional(Type.String({ minLength: 1 })),
@@ -51,6 +56,19 @@ function fail(text: string): AgentToolResult<{ error?: string }> {
     content: [{ type: "text", text }],
     details: { error: text },
   };
+}
+
+/** D2: причина подавления send_file, если файл уже в очереди/отправлен. */
+export function checkSendFileDuplicates(sessionId: string, absPath: string): string | undefined {
+  if (hasPendingSessionFile(sessionId, absPath)) {
+    console.log("[send_file] suppress: pending session-file", { sessionId, path: absPath });
+    return "Файл уже поставлен в очередь отправки.";
+  }
+  if (wasRecentlySentFile(sessionId, absPath)) {
+    console.log("[send_file] suppress: recently sent", { sessionId, path: absPath });
+    return "Файл уже отправлен недавно.";
+  }
+  return undefined;
 }
 
 export default function telegramFileSend(pi: ExtensionAPI): void {
@@ -124,6 +142,14 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
         return fail("Telegram-бот не запущен — файл отправить некуда.");
       }
 
+      // D1/D2: если отчёт уже поставил этот файл в очередь автоотправки (или он
+      // только что ушёл) — не слать второй раз. Разные пути НЕ подавляются.
+      const sessionId = ctx.sessionManager.getSessionId();
+      const suppressReason = checkSendFileDuplicates(sessionId, valid.resolvedPath);
+      if (suppressReason) {
+        return { content: [{ type: "text", text: suppressReason }], details: {} };
+      }
+
       // Лог side-effect: кто, что, куда (минимальное требование безопасности).
       console.log(
         `[telegram-file-send] userId=${userId} chatId=${targetChatId} ` +
@@ -143,6 +169,9 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
         console.error(`[telegram-file-send] failed: ${error}`);
         return fail(error);
       }
+
+      // D2: запомнить отправленный path на 10 минут (дедуп повторов).
+      markRecentlySentFile(sessionId, valid.resolvedPath);
 
       console.log(
         `[telegram-file-send] sent file_id=${result.fileId ?? "?"} message_id=${result.messageId ?? "?"}`,

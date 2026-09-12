@@ -90,6 +90,7 @@ export const MANAGED_RULE_KEYS: readonly string[] = [
   "archive_ocr_ingest",
   "notify_poor_ocr",
   "poor_ocr_confidence_below",
+  "report_attachment_only",
 ];
 
 export interface RuleListFilter {
@@ -331,6 +332,58 @@ export class UserRulesService {
         JSON.stringify(rule.value),
         meta.source,
         meta.actorId,
+        now,
+        now,
+      );
+    }
+    this.rebuildCache();
+  }
+
+  /**
+   * D3: идемпотентно добавить structured hard-правило (rule_key/value) в чат.
+   * Если ключ уже есть — обновляем значение (не дублируем).
+   */
+  addStructuredRule(input: {
+    chatId: string;
+    key: string;
+    value: string | boolean | number;
+    kind?: RuleKind;
+    source: string;
+    actorId?: string;
+  }): void {
+    const db = this.requireDb();
+    const now = new Date().toISOString();
+    const kind = input.kind ?? "hard";
+    const existing = db
+      .prepare(
+        `SELECT id FROM user_rules WHERE scope = 'chat' AND chat_id = ? AND rule_key = ?`,
+      )
+      .get(input.chatId, input.key) as { id: string } | undefined;
+    if (existing) {
+      db.prepare(
+        `UPDATE user_rules SET rule_value = ?, text = ?, kind = ?, source = ?, updated_at = ? WHERE id = ?`,
+      ).run(
+        JSON.stringify(input.value),
+        `${input.key} = ${String(input.value)}`,
+        kind,
+        input.source,
+        now,
+        existing.id,
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO user_rules (id, scope, chat_id, text, kind, rule_class, rule_key, rule_value, source, created_by, priority, enabled, created_at, updated_at)
+         VALUES (?, 'chat', ?, ?, ?, ?, ?, ?, ?, ?, 100, 1, ?, ?)`,
+      ).run(
+        randomUUID(),
+        input.chatId,
+        `${input.key} = ${String(input.value)}`,
+        kind,
+        defaultRuleClass(kind),
+        input.key,
+        JSON.stringify(input.value),
+        input.source,
+        input.actorId ?? null,
         now,
         now,
       );

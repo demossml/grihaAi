@@ -566,6 +566,40 @@ async function bootstrapUsers(): Promise<void> {
       );
     }
   }
+
+  // D3-repair: текстовое правило «ТОЛЬКО в PDF» → structured
+  // report_attachment_only=true (один документ без сопроводительного текста).
+  for (const rec of await setup.list()) {
+    if (rec.status !== "completed" && rec.status !== "skipped") continue;
+    const rules = [
+      ...getUserRulesService().getHardRules(rec.chatId),
+      ...getUserRulesService().getSoftRules(rec.chatId),
+    ];
+    const hasKey = rules.some((r) => r.key === "report_attachment_only");
+    const textOnlyPdf = rules.some((r) =>
+      /(?:только|только.{0,8}в)\s*pdf|отчёт.{0,10}только.{0,10}pdf|без\s+текста/i.test(r.text),
+    );
+    if (!hasKey && textOnlyPdf) {
+      try {
+        getUserRulesService().addStructuredRule({
+          chatId: rec.chatId,
+          key: "report_attachment_only",
+          value: true,
+          kind: "hard",
+          source: "repair:report-only",
+          actorId: rec.addedByUserId ?? "system-repair",
+        });
+        console.log(
+          `[chat-setup] report_attachment_only=true для chatId=${rec.chatId} (текстовое правило «только PDF»)`,
+        );
+      } catch (err: unknown) {
+        console.error(
+          `[chat-setup] report-only repair failed for ${rec.chatId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
 }
 
 async function startBot(): Promise<boolean> {
