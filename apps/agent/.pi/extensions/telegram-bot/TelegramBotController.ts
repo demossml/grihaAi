@@ -34,6 +34,7 @@ import {
   type TelegramFileSendResult,
 } from "./file-send-bridge.js";
 import { setTelegramPinApi } from "./pin-bridge.js";
+import { ChatMemberTtlCache } from "./chat-member-cache.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -340,6 +341,12 @@ export class TelegramBotController {
   /** Per-chat очередь исходящих sendMessage/sendDocument (не глобальная). */
   private readonly sendQueue = new ChatSendQueue();
 
+  /**
+   * P04: TTL-кэш getChatMember (переживает реконнекты; обёртка каждый раз
+   * замыкает СВЕЖИЙ bot).
+   */
+  private readonly memberCache = new ChatMemberTtlCache();
+
   constructor(
     private readonly agent: GrishaAgent,
     private readonly allowedUserIds: number[],
@@ -410,7 +417,10 @@ export class TelegramBotController {
         {
           prefilter: this.options?.prefilter,
           rulesHandler: this.options?.rulesHandler,
-          rulesGetChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
+          // P04: TTL-кэш (переживает реконнекты); обёртка замыкает СВЕЖИЙ bot.
+          rulesGetChatMember: this.memberCache.wrap((chatId, userId) =>
+            bot.api.getChatMember(chatId, userId),
+          ),
           resetHandler: this.options?.resetHandler,
           approvalHandler: this.options?.approvalHandler,
           // Индикатор «печатает…» перед тем, как агент начнёт отвечать.
@@ -428,14 +438,14 @@ export class TelegramBotController {
           },
           aclCheck: this.options?.aclCheck,
           // A1–A4: membership-ACL; getChatMember — текущий bot (пересоздаётся при
-          // реконнектах вместе с bridge).
+          // реконнектах вместе с bridge) + P04 TTL-кэш.
           telegramAccess: this.options?.telegramAccess
             ? {
                 isAllowedPrivate: this.options.telegramAccess.isAllowedPrivate,
-                getChatMember: async (chatId, userId) => {
+                getChatMember: this.memberCache.wrap(async (chatId, userId) => {
                   const m = await bot.api.getChatMember(chatId, userId);
                   return { status: m.status };
-                },
+                }),
               }
             : undefined,
           usersCommandHandler: this.options?.usersCommandHandler,
@@ -444,7 +454,10 @@ export class TelegramBotController {
                 const handler = this.options?.setupCommandHandler;
                 if (!handler) return "Настройка временно недоступна.";
                 return handler(args, ctx, send, {
-                  getChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
+                  // P04: тот же TTL-кэш — один источник статусов на процесс.
+                  getChatMember: this.memberCache.wrap((chatId, userId) =>
+                    bot.api.getChatMember(chatId, userId),
+                  ),
                 });
               }
             : undefined,
@@ -482,6 +495,8 @@ export class TelegramBotController {
           `[telegram-bot] my_chat_member: old=${event.oldStatus} new=${event.newStatus} ` +
             `chat=${event.chat.id} actor=${event.from.id}`,
         );
+        // P04: статус бота в чате изменился → кэш членства этого чата невалиден.
+        this.memberCache.invalidateChat(event.chat.id);
         void (async () => {
           try {
             await this.options?.chatMemberHandler?.(event, {
