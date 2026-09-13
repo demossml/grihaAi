@@ -275,6 +275,21 @@ export async function runSetupCommand(
   // server-side getChatMember, fail closed). Не доверяем addedByUserId.
   const isManager = await deps.users.canManage(ctx.userId);
 
+  // P07: диагностика pending (только глобальный owner/admin). Показывает,
+  // кто может завершить настройку, но НЕ открывает agent-path в pending.
+  if (arg === "status") {
+    if (!isManager) {
+      return "Недостаточно прав. Нужна роль owner или admin.";
+    }
+    const pending = (await deps.setup.list()).filter((c) => c.status === "pending");
+    if (pending.length === 0) return "Нет групп, ожидающих настройки.";
+    const lines = pending.map((c) => `- «${c.chatTitle ?? c.chatId}» (${c.chatId}): настройка не завершена.`);
+    lines.push(
+      "Настроить могут: администраторы/создатель группы (отправьте /setup <chatId> в DM) или глобальный owner/admin.",
+    );
+    return lines.join("\n");
+  }
+
   if (!arg) {
     if (!isManager) {
       return "Недостаточно прав. Нужна роль owner или admin.";

@@ -120,6 +120,36 @@ describe("UsersService", () => {
     assert.equal(u?.username, "ivan");
   });
 
+  it("P06: ensureOwner(undefined) → нет мутаций + diagnostic warning один раз", async () => {
+    const svc = makeService("open");
+    const warns: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (msg: unknown) => warns.push(String(msg));
+    try {
+      await svc.ensureOwner(undefined);
+      await svc.ensureOwner(undefined);
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal((await svc.list()).length, 0, "users не мутировались");
+    assert.equal(warns.length, 1, "warn один раз");
+    assert.ok(warns[0].includes("owner is not configured"));
+  });
+
+  it("P06: ensureOwner(validId) → без warning, owner создаётся", async () => {
+    const svc = makeService("open");
+    const warns: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (msg: unknown) => warns.push(String(msg));
+    try {
+      await svc.ensureOwner("777");
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(warns.length, 0);
+    assert.equal((await svc.get("777"))?.role, "owner");
+  });
+
   it("seedLegacyUsers migrates legacy whitelist as role=user (no duplicates)", async () => {
     const svc = makeService("closed");
     await svc.seedLegacyUsers([123, 456]);

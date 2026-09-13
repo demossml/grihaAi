@@ -541,7 +541,16 @@ async function bootstrapUsers(): Promise<void> {
   const cfg = loadConfig();
   const users = getUsersService();
   await users.seedLegacyUsers(cfg?.telegram?.allowedUserIds);
-  await users.ensureOwner(resolveOwnerId(cfg));
+  // P06: диагностика owner-цепочки (не персональные данные, только id).
+  const resolvedOwner = resolveOwnerId(cfg);
+  if (resolvedOwner) {
+    console.log(`[telegram-bot] owner resolved: ${resolvedOwner}`);
+  } else {
+    console.warn(
+      "[telegram-bot] owner is not configured — management commands (/setup, /users, /update) are disabled",
+    );
+  }
+  await users.ensureOwner(resolvedOwner);
   // R1: hydrate chat-setup cache до старта long polling (isConfiguredSync).
   const setup = getChatSetupService();
   setup.loadSync();

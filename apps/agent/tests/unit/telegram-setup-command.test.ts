@@ -264,6 +264,42 @@ describe("runSetupCommand (D5 + группы)", () => {
     assert.equal(sent.length, 0);
   });
 
+  it("P07: /setup status (manager) → список pending + кто может настроить", async () => {
+    const setup = await makeSetup(2);
+    const text = await runSetupCommand(
+      "status",
+      { chatId: "42", userId: "42", isPrivate: true },
+      deps(setup, []),
+    );
+    assert.ok(text.includes("«Группа 1»"));
+    assert.ok(text.includes("настройка не завершена"));
+    assert.ok(text.includes("Настроить могут"));
+  });
+
+  it("P07: /setup status без pending → «Нет групп»", async () => {
+    const setup = await makeSetup(0);
+    const text = await runSetupCommand(
+      "status",
+      { chatId: "42", userId: "42", isPrivate: true },
+      deps(setup, []),
+    );
+    assert.ok(text.includes("Нет групп, ожидающих настройки"));
+  });
+
+  it("P07: /setup status от не-manager → отказ", async () => {
+    const setup = await makeSetup(2);
+    const text = await runSetupCommand(
+      "status",
+      { chatId: "99", userId: "99", isPrivate: true },
+      {
+        setup,
+        users: { canManage: async () => false },
+        sendMessage: async () => undefined,
+      },
+    );
+    assert.ok(text.includes("Недостаточно прав"));
+  });
+
   it("не canManage → отказ", async () => {
     const setup = await makeSetup(1);
     const text = await runSetupCommand(

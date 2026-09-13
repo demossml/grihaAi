@@ -57,6 +57,8 @@ export interface UsersServiceOptions {
 
 export class UsersService {
   private cache: BotUser[] | null = null;
+  /** P06: WARN об отсутствии owner — один раз за жизнь сервиса. */
+  private ownerWarned = false;
 
   constructor(
     private readonly filePath: string,
@@ -217,7 +219,16 @@ export class UsersService {
   /** Bootstrap: owner из config/env. Если id задан — upsert role="owner". */
   async ensureOwner(id?: string | null): Promise<void> {
     const ownerId = normalizeUserId(id ?? "").replace(/^@/, "");
-    if (!ownerId) return;
+    if (!ownerId) {
+      // P06: прод без owner должен быть диагностируем, но не падать при старте.
+      if (!this.ownerWarned) {
+        this.ownerWarned = true;
+        console.warn(
+          "[users-acl] Telegram/Users: owner is not configured; management commands are disabled",
+        );
+      }
+      return;
+    }
     const users = await this.list();
     const idx = users.findIndex((x) => x.id === ownerId);
     const nowIso = this.now().toISOString();
