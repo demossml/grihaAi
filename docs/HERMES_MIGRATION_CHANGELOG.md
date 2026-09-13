@@ -42,6 +42,7 @@
 | 2026-09-13 | 9.1 (Execute_code plan) | **Нет изменений БД** | — | — | — |
 | 2026-09-13 | 9.2 (Code risk gate) | **Нет изменений БД** | — | — | — |
 | 2026-09-13 | 9.3 (Execute_code contract) | **Нет изменений БД** | — | — | — |
+| 2026-09-13 | 10.1 (J5/P02 schema) | `cron_jobs` + `chat_id`, `thread_id`; `cron_runs` + `delivery_status` — nullable, idempotent PRAGMA-ALTER | CronService.ts, types/index.ts | cron-j5-migration.test.ts (clean + existing DB + повторный init) | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

@@ -109,7 +109,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | J2 | One-shot / pause-resume / update / remove | docs cron | только create/list/enable/disable/run_now | **PARTIAL** | Phase 10 | низкий | J1 |
 | J3 | Fresh session на каждый прогон | docs cron | runner через SubAgentRunner (изолированная сессия) | **COMPLETE** | — | — | — |
 | J4 | No-agent (script) jobs | docs cron | нет (все через runner LLM) | **MISSING** | Phase 10 | низкий | J1 |
-| J5 | Delivery target в мессенджер | docs cron (gateway) | нет в текущем `main` (было в откаченном P02 — в `archive/pre-rollback-2026-09-13`) | **PARTIAL** (архив-ветка) | Phase 10: перенести P02 | средний | J1 |
+| J5 | Delivery target в мессенджер | docs cron (gateway) | **Item 10.1**: P02-схема перенесена в main — `CronJob.chatId/threadId`, `CronRunRecord.deliveryStatus`, nullable-колонки + idempotent PRAGMA-миграции (тесты: clean + existing DB); Telegram-wiring НЕ переносится (M-слой не трогаем) | **PARTIAL** (схема в main) | wiring доставки за флагом | средний | J1 |
 
 ## K. Security / Approval
 

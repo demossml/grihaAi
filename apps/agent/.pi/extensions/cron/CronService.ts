@@ -36,6 +36,8 @@ interface CronJobRow {
   notepad: string | null;
   state_snapshot: string | null;
   project_id: string | null;
+  chat_id: string | null;
+  thread_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,6 +50,7 @@ interface CronRunRow {
   status: string;
   result: string | null;
   used_llm: number;
+  delivery_status: string | null;
 }
 
 const SCHEMA_SQL = `
@@ -64,6 +67,8 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
   state_snapshot TEXT,
   notepad TEXT,
   project_id TEXT,
+  chat_id TEXT,
+  thread_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -75,7 +80,8 @@ CREATE TABLE IF NOT EXISTS cron_runs (
   finished_at TEXT,
   status TEXT NOT NULL,
   result TEXT,
-  used_llm INTEGER NOT NULL DEFAULT 0
+  used_llm INTEGER NOT NULL DEFAULT 0,
+  delivery_status TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cron_runs_job ON cron_runs(job_id);
@@ -119,6 +125,17 @@ export class CronService {
     if (!cols.some((c) => c.name === "state_snapshot")) {
       this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN state_snapshot TEXT`);
     }
+    // J5 (P02): Telegram delivery target — nullable, idempotent, backward-compatible.
+    if (!cols.some((c) => c.name === "chat_id")) {
+      this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN chat_id TEXT`);
+    }
+    if (!cols.some((c) => c.name === "thread_id")) {
+      this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN thread_id TEXT`);
+    }
+    const runCols = this.db.prepare(`PRAGMA table_info(cron_runs)`).all() as Array<{ name: string }>;
+    if (!runCols.some((c) => c.name === "delivery_status")) {
+      this.db.exec(`ALTER TABLE cron_runs ADD COLUMN delivery_status TEXT`);
+    }
   }
 
   async close(): Promise<void> {
@@ -145,12 +162,14 @@ export class CronService {
       notepad: null,
       state_snapshot: null,
       project_id: input.projectId ?? null,
+      chat_id: null,
+      thread_id: null,
       created_at: now,
       updated_at: now,
     };
     db.prepare(
-      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, state_snapshot, project_id, created_at, updated_at)
-       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @state_snapshot, @project_id, @created_at, @updated_at)`,
+      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, state_snapshot, project_id, chat_id, thread_id, created_at, updated_at)
+       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @state_snapshot, @project_id, @chat_id, @thread_id, @created_at, @updated_at)`,
     ).run(row);
     return this.rowToJob(row);
   }
@@ -323,6 +342,8 @@ export class CronService {
       notepad: row.notepad ?? undefined,
       stateSnapshot: row.state_snapshot ?? undefined,
       projectId: row.project_id ?? undefined,
+      chatId: row.chat_id ?? undefined,
+      threadId: row.thread_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -337,6 +358,9 @@ export class CronService {
       status: row.status as CronRunRecord["status"],
       result: row.result ?? undefined,
       usedLlm: row.used_llm !== 0,
+      deliveryStatus: row.delivery_status
+        ? (row.delivery_status as CronRunRecord["deliveryStatus"])
+        : undefined,
     };
   }
 }
