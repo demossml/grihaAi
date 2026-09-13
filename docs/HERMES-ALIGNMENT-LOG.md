@@ -167,3 +167,66 @@ vision-модели. До правки — красный, после — зел
 ```
 
 **H3 — за человеком (рестарт процесса + DM «Сколько будет 2+2?»).**
+
+---
+
+## Phase H3 — Live smoke
+
+**Статус: DELEGATED — NOT RUN агентом (нет доступа к прод-процессу бота).**
+
+Инструкция человеку:
+
+1. Задеплоить/рестартнуть процесс Гриши на проде (systemd `griha-ai`):
+   `systemctl --user restart griha-ai` (+ при необходимости `git pull`).
+2. В **личке** боту отправить: `Сколько будет 2+2?`
+3. Зафиксировать в этом логе:
+   - пришёл ли ответ;
+   - есть ли текст «Слишком долго обрабатываю запрос»;
+   - грубо время до ответа.
+
+PASS: ответ есть, timeout-сообщения нет, субъективно быстрее. FAIL: timeout
+остался → не откатывать H2 без решения человека, в лог гипотезы
+(не тот процесс, кэш сборки, другая модель, ошибка в H1).
+
+---
+
+## Phase H4 — Tool-use enforcement (только skill-текст)
+
+**Статус: PASS.**
+
+### Изменение
+
+`packages/skills/skills/core/SKILL.md` — добавлена секция в стиле файла:
+
+```markdown
+## Tool-use enforcement
+- Если нужно реальное действие (данные, файл, отправка, правило) — вызови инструмент. Не ограничивайся описанием намерения.
+- Если действие нельзя выполнить (нет прав, нет tool, ошибка) — скажи прямо и кратко. Не выдумывай успех.
+- Не утверждай «сделано», пока tool не вернул успех.
+```
+
+Никаких loader'ов промптов, `TelegramSessionPool` не тронут.
+
+### Тест
+
+`apps/agent/tests/unit/skill-catalog.test.ts` — новый кейс
+«core skill includes tool-use enforcement (H4)» через `discoverSkills()`
+(SkillMeta.path → чтение SKILL.md → regex). PASS.
+
+### Проверки
+
+- `npx turbo run typecheck test build` → **16/16 tasks successful**.
+- `git diff --stat` H4:
+
+```
+ apps/agent/tests/unit/skill-catalog.test.ts   | 9 +++++++++
+ packages/skills/skills/core/SKILL.md          | 6 ++++++
+```
+
+## Итог серии
+
+- [x] H1: доказана связь reasoning + pi-ai thinking (deepseek-ветка, 0.85.1)
+- [x] H2: reasoning: true + unit green + typecheck/test/build green
+- [ ] H3: простой DM без «Слишком долго» — **DELEGATED** (нужен доступ к проду)
+- [x] H4: tool-use в core skill + тест
+- [x] git: telegram-bot runtime не менялся в H1–H4
