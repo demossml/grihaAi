@@ -80,7 +80,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | G1 | Background review после хода (cheaper model) | docs memory background_review | нет | **MISSING** | Phase 7 | высокий (нагрузка/стоимость) | B5 |
-| G2 | Lesson routing: factual→memory, procedural→skill, preference→user model | spec | нет единого evaluator | **MISSING** | Phase 7 | средний | G1 |
+| G2 | Lesson routing: factual→memory, procedural→skill, preference→user model | spec | **Item 7.1**: `classifyLesson`/`routeLesson` (маркеры, приоритет preference→procedural→factual, unknown→drop) в `src/runtime/learning/routing.ts` | **PARTIAL** (классификатор готов) | wiring в G1-review конвейер | средний | G1 |
 | G3 | Experience store (task/context/tools/errors/result/eval/lesson) | spec | нет | **MISSING** | Phase 7 (SQLite, nullable) | низкий | G1 |
 | G4 | Contradiction check / deprecate | Honcho semantics | нет | **MISSING** | Phase 7 | низкий | E5 |
 
