@@ -527,3 +527,37 @@ download → `VisionExtractor` (тот же `createHttpVisionCaller`, что и
   заменой групповому конвейеру не является.
 - Expense-инжест учитывает «useful fields» (total/supplier/rawText>20), а не
   только kind=receipt/invoice — unknown+сумма тоже попадает в expenses.
+
+## Surgical Hardening 2026-09-13 (P01–P09)
+
+Серия точечных фиксов без изменения контрактов (membership ACL, pending-silent,
+archive ≠ agent ACL, медиа-конвейер, топики, owner):
+
+- **P01 `/setup <chatId>` recovery**: Telegram-администратор группы может
+  восстановить setup СВОЕЙ pending-группы из DM (server-side getChatMember
+  creator/administrator, fail closed). `/setup` без аргумента — только глобальный
+  owner/admin. Onboarding-callback semantics не менялись.
+- **P02 Cron → Telegram**: `telegramTarget {chatId, threadId?}` (nullable
+  миграция `cron_jobs.chat_id/thread_id`, `cron_runs.delivery_status`); доставка
+  через `ChatSendQueue`+`sendWithRetry`+`message_thread_id`; execution ≠ delivery
+  (задача остаётся success, доставка диагностируема и ретраится ограниченно).
+  Создание из группы — cron в субсессиях (refcount ticker), authorization:
+  owner/admin ИЛИ creator/administrator целевой группы; обычный member — DENY.
+- **P03 Anonymous admin**: анонимные админы (GroupAnonymousBot 1087968824 /
+  `sender_chat == chat.id`) получают групповую сессию `tg:anon:{chat}{:t:{thread}}`
+  и архив без фейкового fromUserId. LIVE-UNVERIFIED: реальный payload проверить
+  на проде.
+- **P04 getChatMember TTL-кэш**: 90s, кэш только успешных статусов (ошибки —
+  fail closed, не кэшируются), инвалидация на `my_chat_member` бота (сброс чата).
+- **P05 Альбомы**: `dispose()` флашит pending-альбомы (stop + reconnect) вместо
+  тихой потери; warning-лог при непустом буфере.
+- **P06+P07 Owner diagnostics + `/setup status`**: warn «owner is not
+  configured; management commands are disabled» (один раз) + лог resolved owner;
+  `/setup status` (DM, canManage) показывает pending-группы и кто может завершить
+  настройку. Pending-silent НЕ менялся.
+- **P08 Docs/preset sync + channel copy**: `TELEGRAM-PRESET-MATRIX.md`
+  синхронизирован с `RulePresets.ts` (R1: archive-ключи у secretary/team/shop);
+  отдельный onboarding-текст для каналов (архив постов, подсказка про группу
+  обсуждений, без пресет-клавиатуры).
+
+Регрессия: unit-набор (850 тестов) зелёный, `turbo typecheck build` 12/12.
