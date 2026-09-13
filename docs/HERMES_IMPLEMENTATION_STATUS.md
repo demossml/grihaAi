@@ -15,7 +15,7 @@
 | 6 | Skill Engine | **VERIFIED (items 6.1–6.3)** | disclosure + diff + versioning (урок #55647) — prod не переключён |
 | 7 | Experience Store + Learning | **VERIFIED (items 7.1–7.5)** | routing/experience/user-model/quality/background — prod не переключён |
 | 8 | Delegation | **VERIFIED (items 8.1–8.3)** | limits guard + orchestrator contract + policy — prod не переключён |
-| 9 | Programmatic tool execution | NOT_STARTED | I1, безопасность |
+| 9 | Programmatic tool execution | **VERIFIED (items 9.1–9.3)** | execute_code план/безопасность/контракт; исполнение — существующий sandbox, prod не переключён |
 | 10 | Automation / Cron | NOT_STARTED | J1/J3 COMPLETE; J5 = перенос P02 из archive |
 | 11 | Security + Approval | NOT_STARTED | K1/K5/K6 COMPLETE |
 | 12 | MCP + Toolsets | NOT_STARTED | L1 MISSING |
@@ -27,8 +27,8 @@
 
 ## Сводка по матрице
 
-- COMPLETE: 17 | PARTIAL: 34 | MISSING: 7 | NOT_APPLICABLE: 2 | UNKNOWN: 0
-- High-risk MISSING: execute_code (I1).
+- COMPLETE: 17 | PARTIAL: 35 | MISSING: 6 | NOT_APPLICABLE: 2 | UNKNOWN: 0
+- High-risk MISSING: нет — все high-risk строки закрыты минимум до PARTIAL.
 
 ## Baseline (Phase 0, зафиксирован)
 

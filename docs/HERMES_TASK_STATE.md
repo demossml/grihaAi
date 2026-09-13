@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 8
-Current item: 8.3 (VERIFIED)
-Status: IN_PROGRESS (Phase 9 — только после подтверждения пользователя)
+Current phase: 9
+Current item: 9.3 (VERIFIED)
+Status: IN_PROGRESS (Phase 10 — только после подтверждения пользователя)
 
-Last completed items: 8.1–8.3 — Delegation (limits guard / orchestrator / policy)
-Last commits: b1c00ad (8.1), 0dd42f1 (8.2), 8.3 (этот коммит)
+Last completed items: 9.1–9.3 — Programmatic execution (plan / safety / contract)
+Last commits: 10fc6fa (9.1), ce3186a (9.2), e27d49d (9.3)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,9 @@ Last commits: b1c00ad (8.1), 0dd42f1 (8.2), 8.3 (этот коммит)
 
 ## Current objective
 
-Phase 8 (VERIFIED): Delegation (H3/H4/H5) — лимиты с recursion protection,
-orchestrator-контракт (§18/§19), политика delegation-модели. Production не
-переключён.
+Phase 9 (VERIFIED): Programmatic execution (I1) — решение о скрипте вместо N
+tool calls, классификация риска (sandbox обязателен для опасного кода),
+preflight-контракт. Исполнение — существующий sandbox-слой.
 
 ## Current blockers
 
@@ -35,9 +35,9 @@ orchestrator-контракт (§18/§19), политика delegation-моде�
 
 ## Next item
 
-Phase 9 (Programmatic tool execution, матрица I) — ТОЛЬКО после явного
-подтверждения пользователя (Phase 8 заканчивается STOP). High-risk: I1
-execute_code (безопасность).
+Phase 10 (Automation/Cron, матрица J) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 9 заканчивается STOP). J2 PARTIAL; J5 = перенос P02
+(chat_id/thread_id, delivery_status) из archive/pre-rollback-2026-09-13.
 
 ## Do not skip
 
