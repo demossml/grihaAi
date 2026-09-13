@@ -10,6 +10,12 @@ import type {
 } from "../types/index.js";
 import { buildBriefing, localDayKey } from "../utils/briefing/briefing.js";
 import { summarizeExpenses } from "../utils/finance/finance.js";
+import { isAgentRuntimeEnabled } from "../runtime/index.js";
+import {
+  estimateTokens,
+  shouldCompress,
+  usableBudget,
+} from "../runtime/context/index.js";
 
 /**
  * ContextBuilder — the single place that assembles relevant context for skills.
@@ -36,7 +42,40 @@ export interface ContextResult {
 }
 
 export class ContextBuilder {
-  constructor(private readonly readers: ContextReaders) {}
+  constructor(
+    private readonly readers: ContextReaders,
+    private readonly env: NodeJS.ProcessEnv = process.env,
+    private readonly contextBudgetTokens = 8000,
+  ) {}
+
+  /**
+   * W3: единый финишер ContextResult — при флаге применяет token-бюджет
+   * (estimateTokens + shouldCompress); порядок items = приоритет.
+   * Flag off: результат без изменений.
+   */
+  private finalize(items: string[]): ContextResult {
+    const text = items.join("\n");
+    if (!isAgentRuntimeEnabled(this.env)) return { text, items };
+    const budget = usableBudget({ maxTokens: this.contextBudgetTokens, reservedTokens: 512 });
+    const used = estimateTokens(text);
+    if (used <= budget) return { text, items };
+    const decision = shouldCompress(
+      { usedTokens: used, budgetTokens: budget, turnCount: 10 },
+      Date.now(),
+      undefined,
+    );
+    if (decision.level === "none") return { text, items };
+    const kept: string[] = [];
+    let keptTokens = 0;
+    for (const item of items) {
+      const itemTokens = estimateTokens(item) + 1;
+      if (kept.length > 0 && keptTokens + itemTokens > budget) break;
+      kept.push(item);
+      keptTokens += itemTokens;
+    }
+    kept.push(`…(контекст ужат: ${used} → ~${keptTokens} токенов)`);
+    return { text: kept.join("\n"), items: kept };
+  }
 
   async getContactContext(userId: string, contactName: string): Promise<ContextResult> {
     const notes = await this.readers.getClientNotes(userId, contactName);
@@ -69,7 +108,7 @@ export class ContextBuilder {
       for (const c of commitments) items.push(`  - [${c.status}] ${c.text}`);
     }
     if (items.length === 1) items.push("- Ничего не найдено.");
-    return { text: items.join("\n"), items };
+    return this.finalize(items);
   }
 
   async getMeetingContext(userId: string, eventId: string): Promise<ContextResult> {
@@ -94,7 +133,7 @@ export class ContextBuilder {
       items.push("Заметки по теме:");
       for (const n of notes) items.push(`- ${n.content}`);
     }
-    return { text: items.join("\n"), items };
+    return this.finalize(items);
   }
 
   async getDailyBriefingContext(userId: string, timezone = "UTC"): Promise<ContextResult> {
@@ -109,7 +148,7 @@ export class ContextBuilder {
       now,
       timezone,
     });
-    return { text, items: text.split("\n") };
+    return this.finalize(text.split("\n"));
   }
 
   getFinancialContext(userId: string): ContextResult {
@@ -127,7 +166,7 @@ export class ContextBuilder {
       items.push("Просроченные счета:");
       for (const i of overdue) items.push(`- ${i.number} ${i.amount} ${i.currency}`);
     }
-    return { text: items.join("\n"), items };
+    return this.finalize(items);
   }
 
   getCommitmentContext(userId: string): ContextResult {
@@ -149,7 +188,7 @@ export class ContextBuilder {
       for (const c of open) items.push(`- ${c.text}`);
     }
     if (items.length === 0) items.push("Обязательств нет.");
-    return { text: items.join("\n"), items };
+    return this.finalize(items);
   }
 }
 
