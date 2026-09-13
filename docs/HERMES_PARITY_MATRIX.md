@@ -45,7 +45,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | D1 | Persistent sessions (SQLite, переживают рестарт) | docs sessions | `SessionManager` pi.dev (файловые сессии), Telegram-сессии `tg:{user}:{chat}` | **COMPLETE** | — | — | — |
-| D2 | FTS5 session search + scroll | docs memory: `state.db` FTS5 | `SqliteRagMemoryService.searchSessions()` | **COMPLETE** (частично DIFFERENT) | Phase 4: верифицировать семантику scroll/browse; возможно расширить API | низкий | — |
+| D2 | FTS5 session search + scroll | docs memory: `state.db` FTS5 | `searchSessions()`: FTS5 + LIKE-fallback, только LIMIT; **Item 4.1**: scroll-контракт (`buildScrollCursor`/`parseScrollCursor`/`sliceByCursor`/`sqlOffsetFor`) в `src/runtime/session/scroll.ts`, SQL-wiring за флагом | **COMPLETE** (scroll-контракт готов) | wiring offset в searchSessions | низкий | — |
 | D3 | Session summaries | Honcho/session docs | нет отдельного store summaries | **PARTIAL** (в memory insights?) | Phase 4 | низкий | D1 |
 | D4 | `/new` session boundary | docs | `/new` в Telegram (reset пула) | **COMPLETE** | — | — | — |
 
