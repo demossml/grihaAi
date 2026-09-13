@@ -222,6 +222,19 @@ function lastPhotoFileId(photo: Array<{ file_id?: string }>): string {
   return last?.file_id ?? "unknown";
 }
 
+/**
+ * C3: текстовый запрос, который по своей природе тяжёлый (генерация PDF-отчёта,
+ * сводки/аналитики) — маршрутизируем в тяжёлую ветку с большим таймаутом (180s),
+ * чтобы не падать в 90s при парсинге/рендере.
+ */
+const HEAVY_TEXT_RE =
+  /(\bотч[её]т\b|\bотчёт\b|\bсводк[аи]\b|\bвыписк[аи]\b|\bpdf\b|\bаналитик[аи]\b|сформируй|сгенерируй|построй отч)/i;
+
+export function isHeavyTextRequest(text: string): boolean {
+  if (!text) return false;
+  return HEAVY_TEXT_RE.test(text);
+}
+
 /** Базовый текст промпта по типу медиа. */
 function mediaBaseText(kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio"): string {
   switch (kind) {
@@ -1023,6 +1036,10 @@ export class TelegramBridge {
     const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
     if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
 
+    // C3: отчёт/PDF/text-heavy запрос (текстом) → тяжёлая ветка с большим лимитом,
+    // чтобы не упираться в 90s на генерации PDF (report_attachment_only).
+    const heavy = isHeavyTextRequest(text);
+
     this.options?.beforeAgent?.(chatId);
     // Heartbeat только когда пользователь получит ответ (не silent-archive).
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
@@ -1035,7 +1052,7 @@ export class TelegramBridge {
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
-      }, false);
+      }, heavy);
       if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
       await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
