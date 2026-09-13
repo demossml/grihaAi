@@ -57,7 +57,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | E2 | User profile (USER.md) | docs memory | `UserProfileService`, `formatPersonalContext` | **COMPLETE** | — | — | — |
 | E3 | Memory tool add/replace/remove + duplicate prevention | docs memory | **Верифицировано (item 5.1)**: `findNearDuplicate` — FTS + normalizeText, та же категория/scope, near-dup → refresh `updated_at` вместо insert; покрыто тестами (memory-service.test.ts) | **COMPLETE** | — | низкий | — |
 | E4 | Injection/скрытые символы scan при записи | docs memory security | нет (gateway сканирует запросы, не memory-записи) | **PARTIAL** | Phase 5/11 | средний | E1 |
-| E5 | Candidate → confidence → conflict → persist | правила спеки | нет формального пайплайна (memory tools пишут сразу) | **MISSING** | Phase 5 | средний | E1 |
+| E5 | Candidate → confidence → conflict → persist | правила спеки | **Item 5.2**: контракт §10 (`MemoryType`/`MemoryRecord`/`MemoryEngine`) + пайплайн (`evaluateCandidate`/`detectConflict`/`decidePersist`) + `InMemoryMemoryStore` (reinforce/contradict) в `src/runtime/memory/`, не подключено | **PARTIAL** (логика готова) | wiring к SqliteRagMemoryService за флагом | средний | E1 |
 | E6 | Memory write_approval gate | docs memory | approval-gate есть для действий, не для memory | **MISSING** | Phase 11 | низкий | E1 |
 | E7 | Session memory ≠ persistent ≠ search | docs memory | контекст сессии pi + persistent + searchSessions — различимы | **COMPLETE** | — | — | — |
 | E8 | Honcho-диалектика (выводы о пользователе) | docs honcho | `personal-learning` + `learning-extractor` (частично) | **PARTIAL** | Phase 7: local dialectic (без Honcho) | средний | E2 |
