@@ -128,7 +128,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | L1 | MCP registry/discovery/execution | docs MCP | **Item 12.1**: `McpRegistry` (register/discovery, credentialScope — K7-фундамент, явное resolveTools — не все tools сразу, §22) в `src/runtime/mcp/registry.ts` | **PARTIAL** (registry готов) | MCP-транспорт + execution за флагом | средний | A3 |
-| L2 | Toolsets + запрет самодобавления | docs toolsets | нет; аналог: фиксированные `SUB_SESSION_EXTENSIONS` | **PARTIAL** | Phase 12 | низкий | H4 |
+| L2 | Toolsets + запрет самодобавления | docs toolsets | **Item 12.2**: `Toolset` union (§23) + `ToolsetPolicy`/`canUseToolset`/`canModifyPolicy` (запрет самодобавления) в `src/runtime/toolsets/toolsets.ts` | **PARTIAL** (контракт готов) | wiring в subagent-конфиг | низкий | H4 |
 | L3 | Tool permission layer | docs security | gateway + approval | **PARTIAL** | Phase 11/12 | низкий | K1 |
 
 ## M. Telegram integration
