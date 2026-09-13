@@ -2,8 +2,8 @@
  * Phase 2 (Item 2.2, матрица B2) — детерминированный выбор роли и конфига.
  *
  * Чистые функции. Семантика main/vision повторяет текущий прод-`ModelRouter`
- * (`src/utils/routing/model-router.ts`); вспомогательные роли падают на main,
- * пока схема `models` не расширена (B5, Phase 3/8/11/12).
+ * (`src/utils/routing/model-router.ts`); вспомогательные роли (B5) читают
+ * отдельные слоты `models.<role>` → `models.main` → legacy top-level.
  */
 import type { GrishAiConfig, ModelConfig } from "@griha/shared-types";
 import type { ModelRuntimeRole, TaskProfile } from "./types.js";

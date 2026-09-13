@@ -80,6 +80,7 @@
 | 2026-09-13 | K4 (injection-stage: MCP-результаты) | **Нет изменений БД** | injection-gate.ts, mcp-session.ts, mcp-runtime/index.ts | wiring-injection.test.ts | — |
 | 2026-09-13 | F3 (skill version activate/rollback) | **Нет изменений БД** | skill-improver.ts, personal-learning/index.ts | wiring-skill-versions.test.ts | — |
 | 2026-09-13 | C3 (prune tool results в context-событии) | **Нет изменений БД** | core-agent/tool-result-prune.ts, core-agent/index.ts | wiring-prune.test.ts | — |
+| 2026-09-13 | B5 (aux-слоты моделей + learning-вызов) | **Нет изменений БД** | shared-types (models.*), runtime/model/types.ts, utils/learning/http-learning.ts | wiring-aux-models.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

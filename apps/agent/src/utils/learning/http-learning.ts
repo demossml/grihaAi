@@ -1,18 +1,30 @@
 import type { GrishAiConfig, ModelConfig } from "@griha/shared-types";
 import type { LearningLlm } from "./learning-extractor.js";
 import { resolveModelBaseUrl } from "../bootstrap/provider-bootstrap.js";
+import { isAgentRuntimeEnabled } from "../../runtime/index.js";
+import { resolveModelConfig } from "../../runtime/model/select.js";
 
 export interface HttpLearningOptions {
   /** Injectable fetch for tests; defaults to the global fetch. */
   fetchFn?: typeof fetch;
+  /** Env для feature-флага; defaults to process.env. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
- * Resolve the model to use for learning extraction. Prefers `models.main` and
- * falls back to the legacy top-level provider/model — no model name is
- * hardcoded here; the configured one is used as-is.
+ * Resolve the model to use for learning extraction.
+ * Flag off (дефолт): prefers `models.main`, falls back to the legacy top-level
+ * provider/model — поведение 1:1 с прежним.
+ * Flag on (B5): отдельный aux-слот `models.learning` → `models.main` → legacy
+ * через runtime `resolveModelConfig`.
  */
-export function resolveLearningModel(cfg: GrishAiConfig): ModelConfig {
+export function resolveLearningModel(
+  cfg: GrishAiConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): ModelConfig {
+  if (isAgentRuntimeEnabled(env)) {
+    return resolveModelConfig(cfg, "learning");
+  }
   return (
     cfg.models?.main ?? {
       provider: cfg.provider,
@@ -32,7 +44,7 @@ export function createHttpLearningLlm(
   cfg: GrishAiConfig,
   options: HttpLearningOptions = {},
 ): LearningLlm {
-  const model = resolveLearningModel(cfg);
+  const model = resolveLearningModel(cfg, options.env ?? process.env);
   const base = resolveModelBaseUrl(model);
 
   return async (prompt) => {

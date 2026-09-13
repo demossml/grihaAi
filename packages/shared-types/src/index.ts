@@ -56,10 +56,17 @@ export interface GrishAiConfig {
   aclMode?: "open" | "closed";
   /** Telegram user id (string) владельца бота — bootstrapped в users.json как role="owner". */
   ownerUserId?: string;
-  /** Multi-model routing (main + vision). */
+  /** Multi-model routing (main + vision + B5 auxiliary slots). */
   models?: {
     main?: ModelConfig;
     vision?: ModelConfig;
+    /** B5: отдельные aux-модели (иначе роль падает на main, потом legacy). */
+    title?: ModelConfig;
+    compression?: ModelConfig;
+    summarization?: ModelConfig;
+    approval?: ModelConfig;
+    delegation?: ModelConfig;
+    learning?: ModelConfig;
     /** B3 (post-wiring): пул fallback-кандидатов для FallbackChain. */
     fallbackModels?: ModelConfig[];
   };

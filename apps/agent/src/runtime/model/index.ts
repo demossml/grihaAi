@@ -3,6 +3,7 @@
  * Ничего не подключено к production-путям.
  */
 export {
+  AUX_MODEL_ROLES,
   DEFAULT_MODEL_POLICIES,
   MODEL_RUNTIME_ROLES,
   modelPolicyFor,

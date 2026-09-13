@@ -34,6 +34,16 @@ export const MODEL_RUNTIME_ROLES: readonly ModelRuntimeRole[] = [
   "learning",
 ];
 
+/** B5: вспомогательные роли, конфигурируемые отдельными слотами `models.*`. */
+export const AUX_MODEL_ROLES: readonly ModelRuntimeRole[] = [
+  "title",
+  "compression",
+  "summarization",
+  "approval",
+  "delegation",
+  "learning",
+];
+
 /** Профиль задачи для детерминированного выбора роли (Item 2.2). */
 export interface TaskProfile {
   /** Семантический вид задачи (напр. "chat", "ocr", "digest"). */
