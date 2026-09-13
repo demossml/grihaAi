@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 15
-Current item: 15.2 (VERIFIED)
-Status: IN_PROGRESS (Phase 16 — только после подтверждения пользователя)
+Current phase: 16
+Current item: 16.2 (VERIFIED)
+Status: IN_PROGRESS (Phase 17 — только после подтверждения пользователя)
 
-Last completed items: 15.1–15.2 — Profiles (registry / validation)
-Last commits: 1647b4d (15.1), 15.2 (этот коммит)
+Last completed items: 16.1–16.2 — Observability (usage accounting / telemetry)
+Last commits: def3eaa (16.1), 16.2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,8 @@ Last commits: 1647b4d (15.1), 15.2 (этот коммит)
 
 ## Current objective
 
-Phase 15 (VERIFIED): Profiles (O1) — §29 AgentProfile (persona/modelRole/
-toolsets/policies), дефолтные профили, registry, валидация. Production не
+Phase 16 (VERIFIED): Observability + Cost (P2/P3) — §31 structured telemetry
+с correlation ID, §32 token/cost accounting для Model Router. Production не
 переключён.
 
 ## Current blockers
@@ -35,8 +35,9 @@ toolsets/policies), дефолтные профили, registry, валидац�
 
 ## Next item
 
-Phase 16 (Observability + Cost, матрица P) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 15 заканчивается STOP). P1 COMPLETE.
+Phase 17 (Full parity evaluation, матрица-итог) — ТОЛЬКО после явного
+подтверждения пользователя (Phase 16 заканчивается STOP). Финальная оценка
+паритета Hermes→Griha.
 
 ## Do not skip
 

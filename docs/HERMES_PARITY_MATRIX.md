@@ -158,7 +158,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | P1 | Метрики ходов/медиа | gateway metrics | `metrics.ts` (telegram_updates, media…) | **COMPLETE** | — | — | — |
-| P2 | Cost tracking по моделям | dashboard usage | нет | **MISSING** | Phase 16 | низкий | B1 |
+| P2 | Cost tracking по моделям | dashboard usage | **Item 16.2**: `TelemetryBuffer` (§31-события) + correlation ID (генерация/валидация) в `src/runtime/observability/telemetry.ts` | **PARTIAL** (телеметрия готова) | wiring в runtime + дашборд | низкий | B1 |
 | P3 | Session model usage | `session_model_usage` | **Item 16.1**: `SessionModelUsage` + `ModelUsageAccumulator` (totalsByRole для Model Router) + `estimateCost` (§32) в `src/runtime/observability/usage.ts` | **PARTIAL** (учёт готов) | wiring в runtime-вызовы | низкий | B1 |
 
 ---
