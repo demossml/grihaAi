@@ -185,6 +185,9 @@ export interface CronJob {
   /** J5 (P02): Telegram delivery target — chat + optional forum thread. */
   chatId?: string;
   threadId?: string;
+  /** W7 (J4): no-agent script-job — команда (исполнение за флагом). */
+  script?: string;
+  scriptArgs?: string[];
   createdAt: string;
   updatedAt: string;
 }

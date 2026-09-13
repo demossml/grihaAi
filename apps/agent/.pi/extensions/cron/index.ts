@@ -6,6 +6,8 @@ import { CronService, type CronRunner } from "./CronService.js";
 import { createRealCronChangeDetector, createRealCronRunner } from "./real-cron.js";
 import { createRealSubAgentRunner } from "../multi-agent/RealSubAgentRunner.js";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
+import type { ScriptJobSpec, ScriptRunResult } from "../../../src/runtime/automation/script.js";
+import { spawnToResult } from "../../../src/sandbox/process.js";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
 
@@ -18,12 +20,32 @@ const emulatedRunner: CronRunner = async (job, prompt) => ({
   usedLlm: false,
 });
 
+/**
+ * W7 (J4): исполнение script-job через существующий sandbox-слой процесса
+ * (тот же spawn-путь, что и LocalSandboxProvider). Выполняется только за
+ * флагом HERMES_AGENT_RUNTIME внутри CronService.
+ */
+const scriptExecutor = async (spec: ScriptJobSpec): Promise<ScriptRunResult> => {
+  const startedAt = Date.now();
+  const result = await spawnToResult(spec.command, spec.args ?? [], {
+    timeoutMs: spec.timeoutMs,
+  });
+  return {
+    exitCode: result.exitCode ?? 1,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    durationMs: Date.now() - startedAt,
+  };
+};
+
 async function getService(): Promise<CronService> {
   if (!service) {
     const svc = new CronService(
       DB_PATH,
       createRealCronRunner(createRealSubAgentRunner()),
       createRealCronChangeDetector((jobId) => svc.getStateSnapshot(jobId)),
+      () => new Date(),
+      scriptExecutor,
     );
     await svc.init();
     service = svc;

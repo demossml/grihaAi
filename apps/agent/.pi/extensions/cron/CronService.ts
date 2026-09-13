@@ -2,6 +2,15 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
 import { computeCronStateSnapshot } from "./real-cron.js";
+import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
+import {
+  DEFAULT_MAX_OUTPUT_CHARS,
+  DEFAULT_SCRIPT_TIMEOUT_MS,
+  scriptResultReport,
+  validateScriptJob,
+  type ScriptJobSpec,
+  type ScriptRunResult,
+} from "../../../src/runtime/automation/script.js";
 
 export interface CronJobInput {
   name: string;
@@ -11,11 +20,31 @@ export interface CronJobInput {
   continuity?: boolean;
   monitorMode?: boolean;
   projectId?: string;
+  /** W7 (J4): no-agent job — команда script-джобы (без LLM, за флагом). */
+  script?: string;
+  scriptArgs?: string[];
+}
+
+/** Поля, доступные для updateJob (J2 §21). */
+export interface CronJobPatch {
+  name?: string;
+  schedule?: string;
+  prompt?: string;
+  enabled?: boolean;
+  continuity?: boolean;
+  monitorMode?: boolean;
+  script?: string;
+  scriptArgs?: string[];
 }
 
 /** Executes a cron job. Swap for a real LLM runner later. */
 export interface CronRunner {
   (job: CronJob, effectivePrompt: string): Promise<{ result: string; usedLlm: boolean }>;
+}
+
+/** W7 (J4): исполнение script-job (sandbox-слой). Инъекция для тестов. */
+export interface CronScriptExecutor {
+  (spec: ScriptJobSpec): Promise<ScriptRunResult>;
 }
 
 /** Lightweight change detector for monitor mode (returns true = changed). */
@@ -38,6 +67,8 @@ interface CronJobRow {
   project_id: string | null;
   chat_id: string | null;
   thread_id: string | null;
+  script: string | null;
+  script_args: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -69,6 +100,8 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
   project_id TEXT,
   chat_id TEXT,
   thread_id TEXT,
+  script TEXT,
+  script_args TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -108,6 +141,8 @@ export class CronService {
     private readonly runner?: CronRunner,
     private readonly changeDetector?: CronChangeDetector,
     private readonly clock: () => Date = () => new Date(),
+    private readonly scriptExecutor?: CronScriptExecutor,
+    private readonly env: NodeJS.ProcessEnv = process.env,
   ) {}
 
   private requireDb(): Database.Database {
@@ -131,6 +166,13 @@ export class CronService {
     }
     if (!cols.some((c) => c.name === "thread_id")) {
       this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN thread_id TEXT`);
+    }
+    // W7 (J4): script-job — nullable, idempotent, backward-compatible.
+    if (!cols.some((c) => c.name === "script")) {
+      this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN script TEXT`);
+    }
+    if (!cols.some((c) => c.name === "script_args")) {
+      this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN script_args TEXT`);
     }
     const runCols = this.db.prepare(`PRAGMA table_info(cron_runs)`).all() as Array<{ name: string }>;
     if (!runCols.some((c) => c.name === "delivery_status")) {
@@ -164,12 +206,14 @@ export class CronService {
       project_id: input.projectId ?? null,
       chat_id: null,
       thread_id: null,
+      script: input.script ?? null,
+      script_args: input.scriptArgs && input.scriptArgs.length > 0 ? JSON.stringify(input.scriptArgs) : null,
       created_at: now,
       updated_at: now,
     };
     db.prepare(
-      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, state_snapshot, project_id, chat_id, thread_id, created_at, updated_at)
-       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @state_snapshot, @project_id, @chat_id, @thread_id, @created_at, @updated_at)`,
+      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, state_snapshot, project_id, chat_id, thread_id, script, script_args, created_at, updated_at)
+       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @state_snapshot, @project_id, @chat_id, @thread_id, @script, @script_args, @created_at, @updated_at)`,
     ).run(row);
     return this.rowToJob(row);
   }
@@ -198,6 +242,57 @@ export class CronService {
     const now = new Date().toISOString();
     db.prepare(`UPDATE cron_jobs SET notepad = ?, updated_at = ? WHERE id = ?`).run(text, now, id);
     return this.getJob(id);
+  }
+
+  /** W7 (J2): обновление полей джобы (§21 update). null, если нет джобы. */
+  async updateJob(id: string, patch: CronJobPatch): Promise<CronJob | null> {
+    const db = this.requireDb();
+    const setters: string[] = [];
+    const values: Array<string | number | null> = [];
+    const map: Array<[keyof CronJobPatch, string, (v: unknown) => string | number | null]> = [
+      ["name", "name", (v) => String(v)],
+      ["schedule", "schedule", (v) => String(v)],
+      ["prompt", "prompt", (v) => String(v)],
+      ["enabled", "enabled", (v) => (v ? 1 : 0)],
+      ["continuity", "continuity", (v) => (v ? 1 : 0)],
+      ["monitorMode", "monitor_mode", (v) => (v ? 1 : 0)],
+      ["script", "script", (v) => (v == null || String(v) === "" ? null : String(v))],
+      [
+        "scriptArgs",
+        "script_args",
+        (v) => (Array.isArray(v) && v.length > 0 ? JSON.stringify(v) : null),
+      ],
+    ];
+    for (const [key, column, convert] of map) {
+      if (patch[key] !== undefined) {
+        setters.push(`${column} = ?`);
+        values.push(convert(patch[key]));
+      }
+    }
+    if (setters.length === 0) return this.getJob(id);
+    values.push(new Date().toISOString(), id);
+    setters.push("updated_at = ?");
+    db.prepare(`UPDATE cron_jobs SET ${setters.join(", ")} WHERE id = ?`).run(...values);
+    return this.getJob(id);
+  }
+
+  /** W7 (J2): удаление джобы и её прогонов (§21 remove). */
+  async removeJob(id: string): Promise<boolean> {
+    const db = this.requireDb();
+    const info = db.prepare(`DELETE FROM cron_jobs WHERE id = ?`).run(id);
+    if (info.changes === 0) return false;
+    db.prepare(`DELETE FROM cron_runs WHERE job_id = ?`).run(id);
+    return true;
+  }
+
+  /** W7 (J2): §21 pause — выключает джобу без удаления. */
+  async pauseJob(id: string): Promise<CronJob | null> {
+    return this.setEnabled(id, false);
+  }
+
+  /** W7 (J2): §21 resume — включает джобу обратно. */
+  async resumeJob(id: string): Promise<CronJob | null> {
+    return this.setEnabled(id, true);
   }
 
   async runJobNow(jobId: string): Promise<CronRunRecord> {
@@ -264,6 +359,12 @@ export class CronService {
       effectivePrompt = parts.join("\n\n");
     }
 
+    // W7 (J4): no-agent script-job. Только за флагом — off = старое поведение
+    // (script игнорируется, джоба выполняется как обычная LLM-джоба).
+    if (isAgentRuntimeEnabled(this.env) && job.script) {
+      return this.runScriptJob(job, runId, startedAt);
+    }
+
     try {
       let result: string;
       let usedLlm: boolean;
@@ -311,6 +412,70 @@ export class CronService {
     }
   }
 
+  /** W7 (J4): исполнение script-job без LLM (sandbox-слой). */
+  private async runScriptJob(
+    job: CronJob,
+    runId: string,
+    startedAt: string,
+  ): Promise<CronRunRecord> {
+    const spec: ScriptJobSpec = {
+      command: job.script as string,
+      args: job.scriptArgs ?? [],
+      timeoutMs: DEFAULT_SCRIPT_TIMEOUT_MS,
+      maxOutputChars: DEFAULT_MAX_OUTPUT_CHARS,
+    };
+    const validation = validateScriptJob(spec);
+    if (!validation.valid) {
+      return this.insertRun({
+        id: runId,
+        jobId: job.id,
+        startedAt,
+        finishedAt: this.clock().toISOString(),
+        status: "failed",
+        result: `script validation failed: ${validation.errors.join("; ")}`,
+        usedLlm: false,
+      });
+    }
+    if (!this.scriptExecutor) {
+      return this.insertRun({
+        id: runId,
+        jobId: job.id,
+        startedAt,
+        finishedAt: this.clock().toISOString(),
+        status: "failed",
+        result: "script job: no script executor configured",
+        usedLlm: false,
+      });
+    }
+    try {
+      const run = await this.scriptExecutor(spec);
+      const report = scriptResultReport(run);
+      const finishedAt = this.clock().toISOString();
+      this.requireDb()
+        .prepare(`UPDATE cron_jobs SET last_run_at = ?, last_result = ?, updated_at = ? WHERE id = ?`)
+        .run(finishedAt, report, finishedAt, job.id);
+      return this.insertRun({
+        id: runId,
+        jobId: job.id,
+        startedAt,
+        finishedAt,
+        status: "success",
+        result: report,
+        usedLlm: false,
+      });
+    } catch (error) {
+      return this.insertRun({
+        id: runId,
+        jobId: job.id,
+        startedAt,
+        finishedAt: this.clock().toISOString(),
+        status: "failed",
+        result: error instanceof Error ? error.message : String(error),
+        usedLlm: false,
+      });
+    }
+  }
+
   private insertRun(run: CronRunRecord): CronRunRecord {
     const db = this.requireDb();
     db.prepare(
@@ -344,6 +509,8 @@ export class CronService {
       projectId: row.project_id ?? undefined,
       chatId: row.chat_id ?? undefined,
       threadId: row.thread_id ?? undefined,
+      script: row.script ?? undefined,
+      scriptArgs: row.script_args ? (JSON.parse(row.script_args) as string[]) : undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

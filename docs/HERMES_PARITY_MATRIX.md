@@ -106,9 +106,9 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | J1 | Cron: recurring + continuity + monitorMode | docs cron | `CronService` (runner, changeDetector, continuity, notepad, state_snapshot) | **COMPLETE** | — | — | — |
-| J2 | One-shot / pause-resume / update / remove | docs cron | **Item 10.2**: §21 `AutomationEngine` контракт + `InMemoryAutomationEngine` (create/run/pause/resume/remove, one-shot→done) в `src/runtime/automation/engine.ts` | **PARTIAL** (контракт готов) | wiring в CronService за флагом | низкий | J1 |
+| J2 | One-shot / pause-resume / update / remove | docs cron | **Item 10.2**: §21 `AutomationEngine` контракт + `InMemoryAutomationEngine` (create/run/pause/resume/remove, one-shot→done) в `src/runtime/automation/engine.ts`; **W7**: `updateJob`/`removeJob`/`pauseJob`/`resumeJob` в `CronService` (аддитивные, поверх существующего `setEnabled`) | **COMPLETE** (one-shot — вне текущего schema, документировано) | — | — | — |
 | J3 | Fresh session на каждый прогон | docs cron | runner через SubAgentRunner (изолированная сессия) | **COMPLETE** | — | — | — |
-| J4 | No-agent (script) jobs | docs cron | **Item 10.3**: `ScriptJobSpec` + `validateScriptJob` + `scriptResultReport` в `src/runtime/automation/script.ts`; исполнение — sandbox-слой за флагом | **PARTIAL** (контракт готов) | wiring в runner | низкий | J1 |
+| J4 | No-agent (script) jobs | docs cron | **Item 10.3**: `ScriptJobSpec` + `validateScriptJob` + `scriptResultReport` в `src/runtime/automation/script.ts`; **W7**: `CronJob.script/scriptArgs` (nullable-колонки, идемпотентная миграция), в `run()` за флагом — валидация + исполнение через `CronScriptExecutor` (sandbox-слой `spawnToResult`), `usedLlm=false`, off = script игнорируется | **COMPLETE** (runsc-апгрейд executor — отдельный шаг) | — | — | — |
 | J5 | Delivery target в мессенджер | docs cron (gateway) | **Item 10.1**: P02-схема перенесена в main — `CronJob.chatId/threadId`, `CronRunRecord.deliveryStatus`, nullable-колонки + idempotent PRAGMA-миграции (тесты: clean + existing DB); Telegram-wiring НЕ переносится (M-слой не трогаем) | **PARTIAL** (схема в main) | wiring доставки за флагом | средний | J1 |
 
 ## K. Security / Approval

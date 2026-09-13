@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: W (Wiring)
-Current item: W6 (VERIFIED)
-Status: IN_PROGRESS (W7 — после подтверждения)
+Current item: W7 (VERIFIED)
+Status: IN_PROGRESS (W8 — после подтверждения)
 
-Last completed items: W6 — DelegationGuard в createRealSubAgentRunner за флагом
-Last commits: b3c4772 (W5), W6 (этот коммит)
+Last completed items: W7 — update/remove/pause/resume + script-jobs в CronService за флагом
+Last commits: 86e2e87 (W6), W7 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
