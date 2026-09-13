@@ -13,7 +13,7 @@
 | 4 | Session Engine + Session Search | **VERIFIED (items 4.1–4.3)** | scroll-контракт + summaries store + RRF-фьюжн — prod не переключён |
 | 5 | Memory Engine | **VERIFIED (items 5.1–5.3)** | E3 верифицирован; контракт §10 + пайплайн + in-memory store + scan — prod не переключён; E6 → Phase 11 |
 | 6 | Skill Engine | **VERIFIED (items 6.1–6.3)** | disclosure + diff + versioning (урок #55647) — prod не переключён |
-| 7 | Experience Store + Learning | NOT_STARTED | — |
+| 7 | Experience Store + Learning | **VERIFIED (items 7.1–7.5)** | routing/experience/user-model/quality/background — prod не переключён |
 | 8 | Delegation | NOT_STARTED | H1/H2 COMPLETE |
 | 9 | Programmatic tool execution | NOT_STARTED | I1, безопасность |
 | 10 | Automation / Cron | NOT_STARTED | J1/J3 COMPLETE; J5 = перенос P02 из archive |
@@ -27,8 +27,8 @@
 
 ## Сводка по матрице
 
-- COMPLETE: 17 | PARTIAL: 27 | MISSING: 14 | NOT_APPLICABLE: 2 | UNKNOWN: 0
-- High-risk MISSING: execute_code (I1), background review (G1).
+- COMPLETE: 17 | PARTIAL: 32 | MISSING: 9 | NOT_APPLICABLE: 2 | UNKNOWN: 0
+- High-risk MISSING: execute_code (I1).
 
 ## Baseline (Phase 0, зафиксирован)
 

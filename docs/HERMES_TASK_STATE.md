@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 6
-Current item: 6.3 (VERIFIED)
-Status: IN_PROGRESS (Phase 7 — только после подтверждения пользователя)
+Current phase: 7
+Current item: 7.5 (VERIFIED)
+Status: IN_PROGRESS (Phase 8 — только после подтверждения пользователя)
 
-Last completed items: 6.1–6.3 — Skill (disclosure / diff / versioning)
-Last commits: 2a13950 (6.1), a760713 (6.2), 6.3 (этот коммит)
+Last completed items: 7.1–7.5 — Learning/Experience (routing/experience/user-model/quality/background)
+Last commits: 6720c45 (7.1), cb30554 (7.2), 8b1cd92 (7.3), 32f4a51 (7.4), 7.5 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,9 @@ Last commits: 2a13950 (6.1), a760713 (6.2), 6.3 (этот коммит)
 
 ## Current objective
 
-Phase 6 (VERIFIED): Skill Engine (F1/F2/F3) — progressive disclosure, LCS-diff,
-версионирование с rollback (урок Hermes #55647). Production не переключён.
+Phase 7 (VERIFIED): Experience Store + Learning (G1–G4, E8, F4) — маршрутизация
+уроков, experience store, user model, quality score, background-review триггер.
+Production не переключён.
 
 ## Current blockers
 
@@ -34,9 +35,9 @@ Phase 6 (VERIFIED): Skill Engine (F1/F2/F3) — progressive disclosure, LCS-diff
 
 ## Next item
 
-Phase 7 (Experience Store + Learning Engine, матрица G/H) — ТОЛЬКО после явного
-подтверждения пользователя (Phase 6 заканчивается STOP). E8-диалектика, F4
-quality score, F5 /learn.
+Phase 8 (Delegation Engine, матрица H) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 7 заканчивается STOP). H1/H2 COMPLETE, H3 PARTIAL,
+H4/H5 MISSING.
 
 ## Do not skip
 
