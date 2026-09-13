@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: W (Wiring)
-Current item: ФИНАЛЬНАЯ ОЦЕНКА (VERIFIED)
-Status: WIRING COMPLETE (13/13) + FINAL EVALUATION DONE
+Current phase: R (Post-wiring / production enablement)
+Current item: B3 (VERIFIED)
+Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: W13 + финальная оценка (матрица 70 строк, off/on 1033/1033)
-Last commits: dc4f121 (W13), финальная оценка (этот коммит)
+Last completed items: B3 — FallbackChain в ModelRouter.call за флагом
+Last commits: 64d3337 (финальная оценка), B3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

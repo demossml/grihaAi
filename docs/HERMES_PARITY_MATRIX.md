@@ -26,7 +26,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 |---|---|---|---|---|---|---|---|
 | B1 | Роли моделей (main + aux slots) | docs configuring-models: main + 11 aux tasks | prod: `ModelRole = "main" \| "vision"`; **Item 2.1**: `ModelRuntimeRole` (9 ролей) + `ModelPolicy` + `TaskProfile` в `src/runtime/model/types.ts`, не подключено | **PARTIAL** (типы готовы) | Phase 3/8/11/12: подключение aux-слотов | средний | A3 |
 | B2 | Машинный выбор модели (TaskProfile → router) | router семантика | **W1**: `ModelRouter` подключён к runtime (`getConfig`→`resolveModelConfig`, `selectForTask`→`selectModelRole`) за флагом `HERMES_AGENT_RUNTIME`; flag off = старое поведение 1:1 | **PARTIAL** (wiring за флагом готов) | включение флага в prod | высокий (production defaults!) | B1 |
-| B3 | Fallback chain (credential pool → primary → auxiliary) | docs providers: `fallback_providers`, credential pools | **Item 2.3**: `classifyError` + `FallbackChain` (`src/runtime/model/fallback-chain.ts`): 429/5xx/сеть/timeout→next, 401/403/context-overflow/unknown→стоп, без циклов; не подключено | **PARTIAL** (логика готова) | wiring за флагом + credential pools | высокий | B1 |
+| B3 | Fallback chain (credential pool → primary → auxiliary) | docs providers: `fallback_providers`, credential pools | **Item 2.3**: `classifyError` + `FallbackChain` (`src/runtime/model/fallback-chain.ts`): 429/5xx/сеть/timeout→next, 401/403/context-overflow/unknown→стоп, без циклов; **B3-wiring**: `ModelRouter.call` за флагом — цепочка [primary + `models.fallbackModels`] по политике роли (vision без fallback), событие `fallback` в телеметрии; off = один вызов | **COMPLETE** (credential pools — отдельный шаг) | — | — | — |
 | B4 | Контекст-детект окна модели | docs: multi-source resolution | **Item 2.4**: `resolveContextWindow` (config.contextWindow→каталог→провайдер→128000) в `src/runtime/model/context-window.ts`; bootstrap пока хардкодит | **PARTIAL** (цепочка готова) | wiring в bootstrap | низкий | B1 |
 | B5 | Aux: title/compression/approval/MCP-route | docs auxiliary slots | нет (vision/learning/embedding есть) | **PARTIAL** (aux-роли через `resolveModelConfig` падают на main за флагом, W1; отдельные aux-модели — позже) | отдельные aux-модели | низкий | B1 |
 
@@ -167,14 +167,14 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | Статус | Кол-во |
 |---|---|
-| COMPLETE | 34 |
-| PARTIAL | 33 |
+| COMPLETE | 35 |
+| PARTIAL | 32 |
 | MISSING | 1 (F7 slash-команды по скиллам — низкий приоритет) |
 | DIFFERENT | 0 (DIFFERENT-статусы задокументированы внутри COMPLETE-строк) |
 | NOT_APPLICABLE | 2 (C5 prompt-cache, F6 offline-hub) |
 | UNKNOWN | 0 (непроверяемое вынесено в PARTIAL/риски) |
 
-MISSING: только F7 (slash-команды по скиллам, низкий приоритет). Оставшийся риск — в PARTIAL: B3 fallback (production), B5 отдельные aux-модели, C2 compaction
+MISSING: только F7 (slash-команды по скиллам, низкий приоритет). Оставшийся риск — в PARTIAL: B5 отдельные aux-модели, C2 compaction
 (production), F3 skill rollback (данные), I1 execute_code (безопасность),
 отдельные шаги (дашборд observability, runsc-апгрейд MCP, thread_id-доставка,
 групповой profile-override). Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены

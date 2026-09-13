@@ -60,6 +60,8 @@ export interface GrishAiConfig {
   models?: {
     main?: ModelConfig;
     vision?: ModelConfig;
+    /** B3 (post-wiring): пул fallback-кандидатов для FallbackChain. */
+    fallbackModels?: ModelConfig[];
   };
   /** Embeddings for vector memory. Falls back to hashing embeddings when absent. */
   embedding?: EmbeddingConfig;

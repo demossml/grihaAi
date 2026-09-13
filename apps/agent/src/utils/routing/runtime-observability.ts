@@ -80,6 +80,24 @@ export class RuntimeObservability {
     });
   }
 
+  /** B3: переход fallback-цепочки (событие fallback). */
+  fallback(
+    correlationId: string,
+    fromModel: string,
+    toModel: string,
+    error: unknown,
+  ): void {
+    this.buffer.record(correlationId, {
+      kind: "fallback",
+      atMs: Date.now(),
+      data: {
+        fromModel,
+        toModel,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+
   /** Оценка токенов входа по тексту сообщений (§8-оценка). */
   estimateInputTokens(messages: Array<{ role: string; content: string }>): number {
     let total = 0;

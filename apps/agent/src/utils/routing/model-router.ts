@@ -15,6 +15,11 @@ import {
   type TaskProfile,
 } from "../../runtime/model/index.js";
 import { runtimeObservability } from "./runtime-observability.js";
+import {
+  classifyError,
+  FallbackChain,
+} from "../../runtime/model/fallback-chain.js";
+import { modelPolicyFor } from "../../runtime/model/types.js";
 
 export type ModelRole = "main" | "vision"; // | "voice" later
 
@@ -68,17 +73,55 @@ export class ModelRouter {
     if (!this.caller) throw new Error("No model caller configured");
     const config = this.getConfig(role);
 
-    // W13 (P2/P3, §31/§32): telemetry + cost-учёт только за флагом.
-    // Off = прямой вызов без записи телеметрии (1:1 старое поведение).
+    // B3 (post-wiring, §7): FallbackChain по политике роли.
+    // Off = прямой вызов (1:1 старое поведение, без fallback).
     if (isAgentRuntimeEnabled(this.env)) {
-      const { correlationId } = runtimeObservability.begin(
-        role,
-        `${config.provider}/${config.model}`,
-      );
+      return this.callWithFallback(role, config, messages);
+    }
+    return this.callOnce(role, config, messages);
+  }
+
+  /** Одиночный вызов без fallback (off-путь и последний кандидат). */
+  private async callOnce(
+    role: ModelRole,
+    config: ModelConfig,
+    messages: Array<{ role: string; content: string }>,
+  ): Promise<string> {
+    if (!this.caller) throw new Error("No model caller configured");
+    return this.caller(config, messages);
+  }
+
+  /** B3: вызов с цепочкой fallback (за флагом). */
+  private async callWithFallback(
+    role: ModelRole,
+    config: ModelConfig,
+    messages: Array<{ role: string; content: string }>,
+  ): Promise<string> {
+    if (!this.caller) throw new Error("No model caller configured");
+    const pool = [
+      config,
+      ...(this.config.models?.fallbackModels ?? []),
+    ];
+    const chain = new FallbackChain(pool);
+    const policy = modelPolicyFor(
+      role === "vision" ? "vision" : "main",
+    );
+    const maxAttempts = policy.allowFallback
+      ? Math.min(policy.maxAttempts, chain.size)
+      : 1;
+
+    const { correlationId } = runtimeObservability.begin(
+      role,
+      `${config.provider}/${config.model}`,
+    );
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const candidate = chain.pick(attempt);
+      if (!candidate) break;
       const startedAt = Date.now();
       try {
-        const result = await this.caller(config, messages);
-        runtimeObservability.end(correlationId, role, config.model, {
+        const result = await this.caller(candidate, messages);
+        runtimeObservability.end(correlationId, role, candidate.model, {
           inputTokens: runtimeObservability.estimateInputTokens(messages),
           outputTokens: result.length,
           toolCalls: 0,
@@ -86,10 +129,25 @@ export class ModelRouter {
         });
         return result;
       } catch (error) {
-        runtimeObservability.fail(correlationId, error);
-        throw error;
+        lastError = error;
+        const category = classifyError(error);
+        const next = chain.nextAfter(attempt, category);
+        if (next === null) {
+          runtimeObservability.fail(correlationId, error);
+          throw error;
+        }
+        const nextModel = chain.pick(next);
+        if (nextModel) {
+          runtimeObservability.fallback(
+            correlationId,
+            `${candidate.provider}/${candidate.model}`,
+            `${nextModel.provider}/${nextModel.model}`,
+            error,
+          );
+        }
       }
     }
-    return this.caller(config, messages);
+    runtimeObservability.fail(correlationId, lastError);
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 }
