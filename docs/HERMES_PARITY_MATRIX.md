@@ -127,7 +127,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| L1 | MCP registry/discovery/execution | docs MCP | **Item 12.1**: `McpRegistry` (register/discovery, credentialScope — K7-фундамент, явное resolveTools — не все tools сразу, §22) в `src/runtime/mcp/registry.ts` | **PARTIAL** (registry готов) | MCP-транспорт + execution за флагом | средний | A3 |
+| L1 | MCP registry/discovery/execution | docs MCP | **Item 12.1**: `McpRegistry` (register/discovery, credentialScope — K7-фундамент, явное resolveTools — не все tools сразу, §22) в `src/runtime/mcp/registry.ts`; **W9**: транспорт stdio/http JSON-RPC (`transport.ts`, таймауты, errors-as-result, K7 env-isolation), сессионный `McpSessionRuntime` + расширение `mcp-runtime` (`mcp_list_tools`/`mcp_call_tool`) за флагом; off = инструменты отвечают disabled, соединений нет | **COMPLETE** | — | — | — |
 | L2 | Toolsets + запрет самодобавления | docs toolsets | **Item 12.2**: `Toolset` union (§23) + `ToolsetPolicy`/`canUseToolset`/`canModifyPolicy` (запрет самодобавления) в `src/runtime/toolsets/toolsets.ts` | **PARTIAL** (контракт готов) | wiring в subagent-конфиг | низкий | H4 |
 | L3 | Tool permission layer | docs security | gateway + approval | **PARTIAL** | Phase 11/12 | низкий | K1 |
 

@@ -71,6 +71,33 @@ export interface GrishAiConfig {
     /** Путь documents.sqlite (default: ~/.grish-ai/documents.sqlite). */
     dbPath?: string;
   };
+  /** W9 (L1): MCP-серверы. Активируются только за флагом HERMES_AGENT_RUNTIME. */
+  mcp?: {
+    servers?: McpServerConfig[];
+  };
+}
+
+// --- MCP (W9, L1/§22) ---
+
+export interface McpServerConfig {
+  /** Уникальное имя сервера (используется как id в registry). */
+  name: string;
+  transport: "stdio" | "http";
+  /** stdio: команда запуска процесса. */
+  command?: string;
+  /** stdio: аргументы команды. */
+  args?: string[];
+  /** http: URL JSON-RPC endpoint. */
+  url?: string;
+  /**
+   * K7 credential isolation: переменные окружения ТОЛЬКО этого сервера.
+   * Никогда не смешиваются с env других серверов или родителя.
+   */
+  env?: Record<string, string>;
+  /** Скоуп креда (default: name). Разные скоупы не пересекаются. */
+  credentialScope?: string;
+  /** Явный allowlist инструментов (пусто = все обнаруженные). */
+  allowedTools?: string[];
 }
 
 // --- User Rules ---

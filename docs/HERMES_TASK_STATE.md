@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: W (Wiring)
-Current item: W8 (VERIFIED)
-Status: IN_PROGRESS (W9 — после подтверждения)
+Current item: W9 (VERIFIED)
+Status: IN_PROGRESS (W10 — после подтверждения)
 
-Last completed items: W8 — runtime risk-классификация в approval-gate за флагом
-Last commits: 4201c3d (W7), W8 (этот коммит)
+Last completed items: W9 — MCP транспорт stdio/http + сессионный runtime за флагом
+Last commits: 570d3ba (W8), W9 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
