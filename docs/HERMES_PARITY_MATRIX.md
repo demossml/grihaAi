@@ -17,7 +17,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 |---|---|---|---|---|---|---|---|
 | A1 | Agent loop (tool calling, multi-turn) | `agent/` tool loop | pi.dev `AgentSession` (`core-agent`), tool-цикл SDK | **COMPLETE** (др. движок) | — | — | — |
 | A2 | Sub-session isolation | delegation docs | `TelegramSessionPool` (изолированные `AgentSession`, `SUB_SESSION_EXTENSIONS`) | **COMPLETE** | — | — | — |
-| A3 | Единый Agent Runtime поверх движка | `agent/` модули | нет: логика в extensions, `src/context/ContextBuilder` — только домен-контекст | **MISSING** | Phase 1: интерфейсы runtime (kernel + engines) | средний | — |
+| A3 | Единый Agent Runtime поверх движка | `agent/` модули | **Item 1.1**: `src/runtime/` — интерфейсы, `AgentKernelImpl` (registry+lifecycle), feature flag `HERMES_AGENT_RUNTIME` (off). Не подключено к prod-путям | **PARTIAL** (интерфейсы готовы) | Phase 2+: подключение движков по фазам | средний | — |
 | A4 | Extensions = domain capabilities | plugins | extensions содержат фундаментальную логику (routing, memory, cron) | **PARTIAL** | поэтапный перенос фундамента в runtime | средний | A3 |
 
 ## B. Model Runtime / Router / Fallback

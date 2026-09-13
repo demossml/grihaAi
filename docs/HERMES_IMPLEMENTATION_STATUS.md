@@ -7,7 +7,7 @@
 | Phase | Название | Статус | Комментарий |
 |---|---|---|---|
 | 0 | Repository audit + parity matrix | **IN_PROGRESS** (документы созданы) | завершается отчётом |
-| 1 | Agent Runtime interfaces | NOT_STARTED | — |
+| 1 | Agent Runtime interfaces | **VERIFIED (item 1.1)** | `src/runtime/` interfaces + kernel + flag; prod не переключён |
 | 2 | Model Runtime + Router + fallback | NOT_STARTED | блокер: B3 high-risk |
 | 3 | Context Engine | NOT_STARTED | — |
 | 4 | Session Engine + Session Search | NOT_STARTED | D2 в основном COMPLETE |

@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 0
-Current item: 0 (Phase 0 report)
-Status: IN_PROGRESS
+Current phase: 1
+Current item: 1.1 (VERIFIED)
+Status: IN_PROGRESS (следующий item — после подтверждения Phase 2)
 
-Last completed item: none
-Last commit: cf5b6c0 (ROLLBACK к 44834f1)
+Last completed item: 1.1 — Agent Runtime interfaces (kernel + flag)
+Last commit: (см. ниже — коммит item 1.1)
 
 ## Baseline (зафиксирован 2026-09-13)
 
