@@ -1,4 +1,6 @@
 import type { ClientNote } from "../../types/index.js";
+import { isAgentRuntimeEnabled } from "../../runtime/index.js";
+import { routeLesson, type LessonRoute } from "../../runtime/learning/index.js";
 
 export interface LearningExtraction {
   facts: string[];
@@ -69,7 +71,8 @@ export async function applyLearning(
   userId: string,
   profiles: ProfileStore,
   notes: NotesStore,
-): Promise<{ preferencesSaved: number; notesSaved: number }> {
+  options: { env?: NodeJS.ProcessEnv } = {},
+): Promise<{ preferencesSaved: number; notesSaved: number; routes?: LessonRoute[] }> {
   let preferencesSaved = 0;
   for (const [key, value] of Object.entries(extraction.preferences)) {
     await profiles.setPreference(userId, key, value);
@@ -84,6 +87,19 @@ export async function applyLearning(
   for (const note of extraction.notes) {
     await notes.addNote({ userId, content: note, category: "procedure", source: "auto" });
     notesSaved++;
+  }
+
+  // W5 (G2): при флаге маршрутизируем уроки (factual→memory,
+  // procedural→skill, preference→user-model); persist не меняется.
+  if (isAgentRuntimeEnabled(options.env ?? process.env)) {
+    const routes: LessonRoute[] = [
+      ...extraction.facts.map((f) => routeLesson({ content: f, source: "learning" })),
+      ...extraction.notes.map((n) => routeLesson({ content: n, source: "learning" })),
+      ...Object.entries(extraction.preferences).map(([k, v]) =>
+        routeLesson({ content: `${k}: ${v}`, source: "learning" }),
+      ),
+    ];
+    return { preferencesSaved, notesSaved, routes };
   }
 
   return { preferencesSaved, notesSaved };

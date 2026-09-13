@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: W (Wiring)
-Current item: W4 (VERIFIED)
-Status: IN_PROGRESS (W5 — после подтверждения)
+Current item: W5 (VERIFIED)
+Status: IN_PROGRESS (W6 — после подтверждения)
 
-Last completed items: W4 — skill versioning на core-edit за флагом
-Last commits: 8ddeddb (W3), W4 (этот коммит)
+Last completed items: W5 — lesson routing в applyLearning за флагом
+Last commits: 44181d7 (W4), W5 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -34,8 +34,8 @@ Phase 17 (VERIFIED): Final parity evaluation — матрица COMPLETE 17 / PA
 
 ## Next item
 
-W5 (Learning: background review trigger + experience store за флагом) — по
-плану docs/HERMES_FINAL_EVALUATION.md, ТОЛЬКО после явного подтверждения.
+W6 (Delegation: guard/orchestrator в SubAgentRunner за флагом) — по плану
+docs/HERMES_FINAL_EVALUATION.md, ТОЛЬКО после явного подтверждения.
 
 ## Do not skip
 
