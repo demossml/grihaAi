@@ -12,7 +12,7 @@
 | 3 | Context Engine | **VERIFIED (items 3.1–3.4)** | usage/compaction/prune/summary — чистые функции, prod не переключён |
 | 4 | Session Engine + Session Search | **VERIFIED (items 4.1–4.3)** | scroll-контракт + summaries store + RRF-фьюжн — prod не переключён |
 | 5 | Memory Engine | **VERIFIED (items 5.1–5.3)** | E3 верифицирован; контракт §10 + пайплайн + in-memory store + scan — prod не переключён; E6 → Phase 11 |
-| 6 | Skill Engine | NOT_STARTED | F3 версионирование — обязательно |
+| 6 | Skill Engine | **VERIFIED (items 6.1–6.3)** | disclosure + diff + versioning (урок #55647) — prod не переключён |
 | 7 | Experience Store + Learning | NOT_STARTED | — |
 | 8 | Delegation | NOT_STARTED | H1/H2 COMPLETE |
 | 9 | Programmatic tool execution | NOT_STARTED | I1, безопасность |
@@ -27,9 +27,8 @@
 
 ## Сводка по матрице
 
-- COMPLETE: 17 | PARTIAL: 26 | MISSING: 15 | NOT_APPLICABLE: 2 | UNKNOWN: 0
-- High-risk MISSING: skill rollback (F3), execute_code (I1),
-  background review (G1).
+- COMPLETE: 17 | PARTIAL: 27 | MISSING: 14 | NOT_APPLICABLE: 2 | UNKNOWN: 0
+- High-risk MISSING: execute_code (I1), background review (G1).
 
 ## Baseline (Phase 0, зафиксирован)
 

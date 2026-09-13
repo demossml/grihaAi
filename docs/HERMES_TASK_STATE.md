@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 5
-Current item: 5.3 (VERIFIED)
-Status: IN_PROGRESS (Phase 6 — только после подтверждения пользователя)
+Current phase: 6
+Current item: 6.3 (VERIFIED)
+Status: IN_PROGRESS (Phase 7 — только после подтверждения пользователя)
 
-Last completed items: 5.1–5.3 — Memory (E3 verify / engine+pipeline / scan)
-Last commits: a094640 (5.1), dbff5a7 (5.2), 5.3 (этот коммит)
+Last completed items: 6.1–6.3 — Skill (disclosure / diff / versioning)
+Last commits: 2a13950 (6.1), a760713 (6.2), 6.3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,8 @@ Last commits: a094640 (5.1), dbff5a7 (5.2), 5.3 (этот коммит)
 
 ## Current objective
 
-Phase 5 (VERIFIED): Memory Engine (E3/E4/E5) — верификация dedup, контракт §10
-+ candidate-пайплайн + in-memory store, scan при записи. Production не
-переключён.
+Phase 6 (VERIFIED): Skill Engine (F1/F2/F3) — progressive disclosure, LCS-diff,
+версионирование с rollback (урок Hermes #55647). Production не переключён.
 
 ## Current blockers
 
@@ -35,8 +34,9 @@ Phase 5 (VERIFIED): Memory Engine (E3/E4/E5) — верификация dedup, �
 
 ## Next item
 
-Phase 6 (Skill Engine, матрица F) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 5 заканчивается STOP). F3 версионирование — обязательно.
+Phase 7 (Experience Store + Learning Engine, матрица G/H) — ТОЛЬКО после явного
+подтверждения пользователя (Phase 6 заканчивается STOP). E8-диалектика, F4
+quality score, F5 /learn.
 
 ## Do not skip
 
