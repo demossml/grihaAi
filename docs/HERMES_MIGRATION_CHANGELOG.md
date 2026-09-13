@@ -71,6 +71,7 @@
 | 2026-09-13 | W8 (Runtime risk в approval-gate) | **Нет изменений БД** | approval-gate/index.ts, runtime-risk.ts | wiring-security.test.ts | — |
 | 2026-09-13 | W9 (MCP транспорт stdio/http + runtime) | **Нет изменений БД** | runtime/mcp/transport.ts, mcp-runtime/*, shared-types (`mcp.servers`) | wiring-mcp.test.ts | — |
 | 2026-09-13 | W10 (Cron→TG доставка, P02) | **Нет изменений БД** (J5-колонки уже в main) | cron/delivery-wiring.ts, CronService.ts, cron/index.ts, telegram-bot/index.ts (notifier) | wiring-telegram-delivery.test.ts | — |
+| 2026-09-13 | W11 (Proactive event-gate + nudge) | **Нет изменений БД** | proactive-gate.ts, proactive-assistant/index.ts | wiring-proactive.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

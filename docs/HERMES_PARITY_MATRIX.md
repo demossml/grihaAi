@@ -145,7 +145,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | N1 | Briefing/anomaly/calendar proactive | proactive docs | `proactive-assistant` (briefing, anomaly, calendar) | **COMPLETE** | — | — | — |
-| N2 | Background nudge/self-improvement | memory docs | **Items 14.1–14.2**: `decideProactive` (§28 pipeline, security выше proactive) + `scheduleNudge` (тишина+cooldown+часы, на базе G1) в `src/runtime/proactive/` | **PARTIAL** (логика готова) | wiring в event-system | средний | G1 |
+| N2 | Background nudge/self-improvement | memory docs | **Items 14.1–14.2**: `decideProactive` (§28 pipeline, security выше proactive) + `scheduleNudge` (тишина+cooldown+часы, на базе G1) в `src/runtime/proactive/`; **W11**: `ProactiveGate` (evaluate + nudge + pendingNudge) в proactive-assistant — briefing_generate гейтится §28-пайплайном за флагом (порог 0.35, контекст — фактическое содержимое), фоновый nudge-тикер (15 мин) накапливает подсказку для брифинга; off = pass 1:1 | **COMPLETE** | — | — | — |
 
 ## O. Profiles / Bot Mode
 

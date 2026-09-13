@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: W (Wiring)
-Current item: W10 (VERIFIED)
-Status: IN_PROGRESS (W11 — после подтверждения)
+Current item: W11 (VERIFIED)
+Status: IN_PROGRESS (W12 — после подтверждения)
 
-Last completed items: W10 — Cron→TG доставка (P02) за флагом
-Last commits: 44580ba (W9), W10 (этот коммит)
+Last completed items: W11 — Proactive event-gate + nudge за флагом
+Last commits: c893325 (W10), W11 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

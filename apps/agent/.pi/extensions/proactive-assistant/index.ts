@@ -22,6 +22,8 @@ import {
 } from "../../../src/types/index.js";
 import { buildBriefing, localDayKey } from "../../../src/utils/briefing/briefing.js";
 import { detectCommitmentOverdue } from "../../../src/utils/finance/anomaly-detect.js";
+import { ProactiveGate } from "./proactive-gate.js";
+import { DEFAULT_PROACTIVE_POLICY } from "../../../src/runtime/proactive/decision.js";
 import { CalendarService } from "./CalendarService.js";
 import { AnomalyService } from "./AnomalyService.js";
 import { BriefingService } from "./BriefingService.js";
@@ -98,6 +100,38 @@ function resolveUserId(ctx: ExtensionContext): string {
 }
 
 /** Single ContextBuilder wired to the domain services (skills do not scan memory themselves). */
+let proactiveGate: ProactiveGate | null = null;
+let nudgeTicker: ReturnType<typeof setInterval> | null = null;
+
+/** W11 (N2): gate создаётся лениво; порог брифингов 0.35 (см. W11). */
+function getProactiveGate(): ProactiveGate {
+  if (!proactiveGate) {
+    proactiveGate = new ProactiveGate(process.env, {
+      ...DEFAULT_PROACTIVE_POLICY,
+      relevanceThreshold: 0.35,
+    });
+  }
+  return proactiveGate;
+}
+
+function startNudgeTicker(): void {
+  if (nudgeTicker) return;
+  nudgeTicker = setInterval(() => {
+    const gate = getProactiveGate();
+    if (!gate.active) return;
+    const now = Date.now();
+    // Тишина меряется от последнего proactive-действия (или старта).
+    gate.evaluateNudge(now, gate.lastActivityAtMs() ?? now);
+  }, 15 * 60 * 1000);
+}
+
+function stopNudgeTicker(): void {
+  if (nudgeTicker) {
+    clearInterval(nudgeTicker);
+    nudgeTicker = null;
+  }
+}
+
 function getContextBuilder(): ContextBuilder {
   return new ContextBuilder({
     getEvents: (userId) => getCalendar().list(userId),
@@ -133,9 +167,12 @@ export default function proactiveAssistant(pi: ExtensionAPI): void {
     getCommitments();
     getApprovals();
     void getClientNotes();
+    // W11 (N2): фоновый nudge-тикер (только за флагом — gate.active).
+    startNudgeTicker();
   });
 
   pi.on("session_shutdown", () => {
+    stopNudgeTicker();
     closeAll();
   });
 
@@ -230,19 +267,53 @@ export default function proactiveAssistant(pi: ExtensionAPI): void {
       const allCommitments = cs.list(userId, { limit: 100 });
       // Surface overdue commitments as anomalies (idempotent — duplicates skipped).
       getAnomalies().record(detectCommitmentOverdue(allCommitments));
+      const newAnomalies = getAnomalies().list(userId, { status: "new" });
+
+      // W11 (N2/§28): event-gate. Только за флагом (off = pass 1:1).
+      // Контекст — фактическое содержимое брифинга; пустой брифинг не проходит
+      // порог релевантности и не отправляется автономно.
+      const gate = getProactiveGate();
+      const gateContext = [
+        `daily briefing ${dayKey}`,
+        ...allCommitments.map((c) => c.text),
+        ...newAnomalies.map((a) => `аномалия: ${a.explanation}`),
+      ].join(" ");
+      const verdict = gate.evaluate({
+        kind: "briefing",
+        action: "send_message",
+        context: gateContext,
+        atMs: now.getTime(),
+      });
+      if (!verdict.pass) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Proactive gate: briefing skipped — ${verdict.reason}`,
+            },
+          ],
+          details: { text: "", alreadySent: false },
+        };
+      }
 
       const { text } = buildBriefing({
         events: getCalendar().list(userId),
         commitments: allCommitments,
-        anomalies: getAnomalies().list(userId, { status: "new" }),
+        anomalies: newAnomalies,
         approvals: getApprovals().listPending(userId),
         clientNotes: await (await getClientNotes()).listNotes(userId),
         now,
         timezone,
       });
 
-      getBriefings().recordRun(userId, dayKey, text, Boolean(params.force));
-      return { content: [{ type: "text", text }], details: { text, alreadySent: false } };
+      // W11: накопленный background-nudge вставляется подсказкой и очищается.
+      const nudgeReason = gate.takePendingNudge();
+      const finalText = nudgeReason
+        ? `${text}\n\n💡 (nudge: ${nudgeReason})`
+        : text;
+
+      getBriefings().recordRun(userId, dayKey, finalText, Boolean(params.force));
+      return { content: [{ type: "text", text: finalText }], details: { text: finalText, alreadySent: false } };
     },
   });
 
