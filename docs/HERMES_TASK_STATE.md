@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 3
-Current item: 3.4 (VERIFIED)
-Status: IN_PROGRESS (Phase 4 — только после подтверждения пользователя)
+Current phase: 4
+Current item: 4.3 (VERIFIED)
+Status: IN_PROGRESS (Phase 5 — только после подтверждения пользователя)
 
-Last completed items: 3.1–3.4 — Context Engine (usage/compaction/prune/summary)
-Last commits: 9def4b7 (3.1), e1fd5df (3.2), 4706767 (3.3), 3.4 (этот коммит)
+Last completed items: 4.1–4.3 — Session (scroll contract / summaries store / RRF)
+Last commits: 2df750d (4.1), f861567 (4.2), 4.3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,8 @@ Last commits: 9def4b7 (3.1), e1fd5df (3.2), 4706767 (3.3), 3.4 (этот ком�
 
 ## Current objective
 
-Phase 3 (VERIFIED): Context Engine (C1–C4) — token accounting, compaction
-decision, tool-result pruning, structured summary. Чистые функции, production
-не переключён.
+Phase 4 (VERIFIED): Session Engine + Session Search (D2/D3) — scroll-контракт,
+session summaries store, RRF-фьюжн. Чистые функции, production не переключён.
 
 ## Current blockers
 
@@ -35,9 +34,8 @@ decision, tool-result pruning, structured summary. Чистые функции, 
 
 ## Next item
 
-Phase 4 (Session Engine + Session Search, матрица D) — ТОЛЬКО после явного
-подтверждения пользователя (Phase 3 заканчивается STOP). D2 в основном
-COMPLETE.
+Phase 5 (Memory Engine, матрица E) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 4 заканчивается STOP). E1/E2/E3 COMPLETE, E5/E6 MISSING.
 
 ## Do not skip
 

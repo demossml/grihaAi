@@ -10,7 +10,7 @@
 | 1 | Agent Runtime interfaces | **VERIFIED (item 1.1)** | `src/runtime/` interfaces + kernel + flag; prod не переключён |
 | 2 | Model Runtime + Router + fallback | **VERIFIED (items 2.1–2.4)** | типы/select/fallback-chain/context-window — чистые функции, prod не переключён |
 | 3 | Context Engine | **VERIFIED (items 3.1–3.4)** | usage/compaction/prune/summary — чистые функции, prod не переключён |
-| 4 | Session Engine + Session Search | NOT_STARTED | D2 в основном COMPLETE |
+| 4 | Session Engine + Session Search | **VERIFIED (items 4.1–4.3)** | scroll-контракт + summaries store + RRF-фьюжн — prod не переключён |
 | 5 | Memory Engine | NOT_STARTED | E1/E2/E3 COMPLETE, E5/E6 MISSING |
 | 6 | Skill Engine | NOT_STARTED | F3 версионирование — обязательно |
 | 7 | Experience Store + Learning | NOT_STARTED | — |
