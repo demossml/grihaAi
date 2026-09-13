@@ -125,3 +125,45 @@ pi-ai js: node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js
 ### Итог H1
 Код приложения не изменён (только скрипт + этот лог). Baseline тестов перед
 серией: 850/850 unit green, turbo typecheck/build 12/12 (из P09).
+
+---
+
+## Phase H2 — Фикс скорости: reasoning: true (одна правка)
+
+**Статус: PASS**.
+
+### Изменение кода (ровно одна логическая строка)
+
+`apps/agent/src/utils/bootstrap/provider-bootstrap.ts` — `makeModel`:
+
+```diff
+-    reasoning: false,
++    // H2: true → pi-ai emits thinking:{type:"disabled"} for DeepSeek V4.
++    // false → parameter omitted → API may run unbounded reasoning (slow).
++    reasoning: true,
+```
+
+Других файлов логики не трогали.
+
+### Тест
+
+Новый `apps/agent/tests/unit/provider-bootstrap-reasoning.test.ts`
+(node:test, как соседние): 2 кейса — `reasoning === true` для основной и
+vision-модели. До правки — красный, после — зелёный (2/2 PASS).
+
+Существующих тестов с ожиданием `reasoning: false` в `apps/agent/tests` НЕТ
+(grep пуст) — ничего не переписывалось.
+
+### Проверки
+
+- `npx tsx --test tests/unit/provider-bootstrap-reasoning.test.ts` → 2 pass / 0 fail.
+- `npx turbo run typecheck test build` → **все tasks successful**
+  (typecheck/build 12/12, test 8/8).
+- `git diff --stat` H2:
+
+```
+ apps/agent/src/utils/bootstrap/provider-bootstrap.ts | 4 ++--
+ apps/agent/tests/unit/provider-bootstrap-reasoning.test.ts | 19 +++++++++++++++++++
+```
+
+**H3 — за человеком (рестарт процесса + DM «Сколько будет 2+2?»).**

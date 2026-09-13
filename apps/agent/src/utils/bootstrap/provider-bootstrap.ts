@@ -25,7 +25,9 @@ export function makeModel(
   return {
     id,
     name: name ?? id,
-    reasoning: false,
+    // H2: true → pi-ai emits thinking:{type:"disabled"} for DeepSeek V4.
+    // false → parameter omitted → API may run unbounded reasoning (slow).
+    reasoning: true,
     input: opts?.vision ? ["text", "image"] : ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128000,
