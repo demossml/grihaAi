@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 11
-Current item: 11.4 (VERIFIED)
-Status: IN_PROGRESS (Phase 12 — только после подтверждения пользователя)
+Current phase: 12
+Current item: 12.3 (VERIFIED)
+Status: IN_PROGRESS (Phase 13 — только после подтверждения пользователя)
 
-Last completed items: 11.1–11.4 — Security (risk / injection / files / approval)
-Last commits: 0d9766f (11.1), 5724631 (11.2), 4ecffb2 (11.3), 11.4 (этот коммит)
+Last completed items: 12.1–12.3 — MCP/Toolsets (registry / policy / activation)
+Last commits: 16e9142 (12.1), 27c0178 (12.2), 12.3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,9 @@ Last commits: 0d9766f (11.1), 5724631 (11.2), 4ecffb2 (11.3), 11.4 (этот к�
 
 ## Current objective
 
-Phase 11 (VERIFIED): Security + Approval (K2/K3/K4, E6) — уровни риска §24/§25,
-injection-stage §26, file path safety, memory write approval gate. Production
-не переключён.
+Phase 12 (VERIFIED): MCP + Toolsets (L1/L2, F8) — MCP registry (credentialScope,
+явные tools), toolset-политика §23 с запретом самодобавления, conditional
+activation. Production не переключён.
 
 ## Current blockers
 
@@ -35,9 +35,9 @@ injection-stage §26, file path safety, memory write approval gate. Production
 
 ## Next item
 
-Phase 12 (MCP + Toolsets, матрица L) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 11 заканчивается STOP). L1 MISSING; F8 conditional
-activation; K7 credential isolation (после появления MCP).
+Phase 13 (Telegram integration, матрица M) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 12 заканчивается STOP). M1–M3 COMPLETE — сверка без
+изменения кода Telegram-слоя.
 
 ## Do not skip
 

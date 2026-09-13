@@ -18,7 +18,7 @@
 | 9 | Programmatic tool execution | **VERIFIED (items 9.1–9.3)** | execute_code план/безопасность/контракт; исполнение — существующий sandbox, prod не переключён |
 | 10 | Automation / Cron | **VERIFIED (items 10.1–10.3)** | J5 P02-схема в main (без TG-wiring), AutomationEngine + script-jobs — prod-поведение не меняется |
 | 11 | Security + Approval | **VERIFIED (items 11.1–11.4)** | RiskLevel/approval policy, injection-stage, file safety, memory write gate — prod не переключён |
-| 12 | MCP + Toolsets | NOT_STARTED | L1 MISSING |
+| 12 | MCP + Toolsets | **VERIFIED (items 12.1–12.3)** | MCP registry, toolset policy (§23), conditional activation — prod не переключён |
 | 13 | Telegram integration | NOT_STARTED | M1–M3 COMPLETE, не трогать |
 | 14 | Proactive Agent | NOT_STARTED | N1 COMPLETE |
 | 15 | Agent Profiles / Bot Mode | NOT_STARTED | O1 MISSING |
@@ -27,7 +27,7 @@
 
 ## Сводка по матрице
 
-- COMPLETE: 17 | PARTIAL: 37 | MISSING: 4 | NOT_APPLICABLE: 2 | UNKNOWN: 0
+- COMPLETE: 17 | PARTIAL: 39 | MISSING: 2 | NOT_APPLICABLE: 2 | UNKNOWN: 0
 - High-risk MISSING: нет — все high-risk строки закрыты минимум до PARTIAL.
 
 ## Baseline (Phase 0, зафиксирован)

@@ -73,7 +73,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | F5 | `/learn` из источников | docs skills | `learning-extractor` (частично) | **PARTIAL** | Phase 7 | средний | F2 |
 | F6 | Hub/регистры/сканы при установке | docs skills hub | нет | **NOT_APPLICABLE** (offline-ассистент) | — | — | — |
 | F7 | Slash-команды по скиллам | docs skills | нет (скиллы — в промпт агента) | **MISSING** (низкий приоритет) | позже | низкий | — |
-| F8 | Conditional activation (requires/fallback toolsets) | docs skills | нет | **MISSING** | Phase 12 | низкий | F1 |
+| F8 | Conditional activation (requires/fallback toolsets) | docs skills | **Item 12.3**: `isSkillActivatable` (requires → fallback → нет) в `src/runtime/toolsets/activation.ts` | **PARTIAL** (гейт готов) | wiring в skill discovery | низкий | F1 |
 
 ## G. Learning / Experience / User model
 
