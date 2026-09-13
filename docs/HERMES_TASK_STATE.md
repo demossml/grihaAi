@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 10
-Current item: 10.2 (VERIFIED)
-Status: IN_PROGRESS (Phase 11 — только после подтверждения пользователя)
+Current phase: 11
+Current item: 11.4 (VERIFIED)
+Status: IN_PROGRESS (Phase 12 — только после подтверждения пользователя)
 
-Last completed items: 10.1–10.3 — Automation (J5-схема / engine / script jobs)
-Last commits: b370917 (10.1), 603cf00 (10.3), 10.2 (этот коммит)
+Last completed items: 11.1–11.4 — Security (risk / injection / files / approval)
+Last commits: 0d9766f (11.1), 5724631 (11.2), 4ecffb2 (11.3), 11.4 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,9 @@ Last commits: b370917 (10.1), 603cf00 (10.3), 10.2 (этот коммит)
 
 ## Current objective
 
-Phase 10 (VERIFIED): Automation/Cron (J2/J4/J5) — P02-схема доставки (без
-Telegram-wiring), AutomationEngine-контракт §21, script-jobs без LLM.
+Phase 11 (VERIFIED): Security + Approval (K2/K3/K4, E6) — уровни риска §24/§25,
+injection-stage §26, file path safety, memory write approval gate. Production
+не переключён.
 
 ## Current blockers
 
@@ -34,9 +35,9 @@ Telegram-wiring), AutomationEngine-контракт §21, script-jobs без LLM
 
 ## Next item
 
-Phase 11 (Security + Approval, матрица K) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 10 заканчивается STOP). K1/K5/K6 COMPLETE; E6 memory
-write_approval gate.
+Phase 12 (MCP + Toolsets, матрица L) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 11 заканчивается STOP). L1 MISSING; F8 conditional
+activation; K7 credential isolation (после появления MCP).
 
 ## Do not skip
 
