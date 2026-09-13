@@ -52,7 +52,8 @@ export function preserveSystemContext(messages: ChatMessage[]): ChatMessage[] {
 
 /** Tail: последние n turns (turn = user+assistant), точнее последние 2n сообщений. */
 export function preserveRecentTurns(messages: ChatMessage[], turns: number): ChatMessage[] {
-  return messages.slice(-Math.max(0, turns) * 2);
+  if (turns <= 0) return [];
+  return messages.slice(-turns * 2);
 }
 
 const DECISION_PATTERN = /^(decision|решение)\s*[:：]/i;

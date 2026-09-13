@@ -82,6 +82,7 @@
 | 2026-09-13 | C3 (prune tool results в context-событии) | **Нет изменений БД** | core-agent/tool-result-prune.ts, core-agent/index.ts | wiring-prune.test.ts | — |
 | 2026-09-13 | B5 (aux-слоты моделей + learning-вызов) | **Нет изменений БД** | shared-types (models.*), runtime/model/types.ts, utils/learning/http-learning.ts | wiring-aux-models.test.ts | — |
 | 2026-09-13 | G1 (background review после хода) | **Нет изменений БД** | core-agent/background-review.ts, core-agent/index.ts, runtime-observability.ts | wiring-background-review.test.ts | — |
+| 2026-09-13 | C2 (4-фазный конвейер компакции) | **Нет изменений БД** | runtime/context/pipeline.ts, runtime/context/summary.ts (preserveRecentTurns turns=0), ContextBuilder.ts | compaction-pipeline.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

@@ -26,6 +26,14 @@ export {
   type ToolResultPolicy,
 } from "./prune.js";
 export {
+  compactContext,
+  compactContextAsync,
+  type CompactContextAsyncOptions,
+  type CompactContextOptions,
+  type CompactContextResult,
+  type CompactionPhaseRecord,
+} from "./pipeline.js";
+export {
   CONTEXT_PRIORITY,
   SUMMARY_VERSION,
   emptySummary,

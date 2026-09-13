@@ -12,8 +12,8 @@ import { buildBriefing, localDayKey } from "../utils/briefing/briefing.js";
 import { summarizeExpenses } from "../utils/finance/finance.js";
 import { isAgentRuntimeEnabled } from "../runtime/index.js";
 import {
+  compactContext,
   estimateTokens,
-  extractSummarySections,
   renderSummary,
   shouldCompress,
   usableBudget,
@@ -111,18 +111,19 @@ export class ContextBuilder {
       role: index % 2 === 0 ? "user" : "assistant",
       content: stripListPrefix(content),
     }));
-    const summary = extractSummarySections(middleMessages);
-    // Локальная нормализация (дедуп): детерминированный вывод для одинакового
-    // ввода при итеративной ре-компрессии.
-    const normalized = {
-      goal: summary.goal,
-      progress: summary.progress,
-      decisions: [...new Set(summary.decisions)],
-      openQuestions: [...new Set(summary.openQuestions)],
-    };
+    // C2: 4-фазный конвейер (prune → structural → summarize → merge).
+    // recentTurns: 0 — tail уже отделён в ContextBuilder; middle идёт в резюме.
+    const pipeline = compactContext(
+      [{ role: "system", content: items[0] ?? "" }, ...middleMessages],
+      {
+        recentTurns: 0,
+        previousSummary: this.summaries.get(this.sessionKey ?? "context")?.sections,
+      },
+    );
+    // upsert делает повторное слияние с сохранённым summary (идемпотентно).
     const entry = this.summaries.upsert(
       this.sessionKey ?? "context",
-      normalized,
+      pipeline.summary,
     );
     const rendered = renderSummary(entry.sections);
     const finalItems = [

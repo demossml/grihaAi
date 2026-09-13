@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: G1 (VERIFIED)
+Current item: C2 (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: G1 — background review (models.learning) за флагом
-Last commits: e213d48 (B5), G1 (этот коммит)
+Last completed items: C2 — 4-фазный конвейер компакции за флагом
+Last commits: 6480555 (G1), C2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -54,4 +54,4 @@ docs/HERMES_FINAL_EVALUATION.md, ТОЛЬКО после явного подтв
   исследование — в соответствующей фазе.
 - Matrix: 62 строки, COMPLETE 17 / PARTIAL 20 / MISSING 21 / N/A 2.
 - High-risk: B3 fallback, C2 compaction, F3 skill rollback, I1 execute_code,
-  G1 background review.
+  G1 background review. (B3/C2/G1/I1 — VERIFIED, F3 — в работе)
