@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 13
-Current item: 13.2 (VERIFIED)
-Status: IN_PROGRESS (Phase 14 — только после подтверждения пользователя)
+Current phase: 14
+Current item: 14.2 (VERIFIED)
+Status: IN_PROGRESS (Phase 15 — только после подтверждения пользователя)
 
-Last completed items: 13.1–13.2 — Telegram (M4 контракт / M1–M3 сверка)
-Last commits: 0ff7470 (13.1), 13.2 (этот коммит)
+Last completed items: 14.1–14.2 — Proactive (decision pipeline / nudge)
+Last commits: 82d2ef2 (14.1), 14.2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,9 @@ Last commits: 0ff7470 (13.1), 13.2 (этот коммит)
 
 ## Current objective
 
-Phase 13 (VERIFIED): Telegram (M1–M4) — M1–M3 сверены без изменений кода;
-M4 delivery-контракт (P02-семантика) без изменения telegram-bot.
+Phase 14 (VERIFIED): Proactive (N2) — §28 decision pipeline (security выше
+proactive) + nudge-планировщик self-improvement (на базе G1). Production не
+переключён.
 
 ## Current blockers
 
@@ -34,8 +35,8 @@ M4 delivery-контракт (P02-семантика) без изменения 
 
 ## Next item
 
-Phase 14 (Proactive Agent, матрица N) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 13 заканчивается STOP). N1 COMPLETE.
+Phase 15 (Agent Profiles / Bot Mode, матрица O) — ТОЛЬКО после явного
+подтверждения пользователя (Phase 14 заканчивается STOP). O1 MISSING.
 
 ## Do not skip
 
