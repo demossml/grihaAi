@@ -30,81 +30,18 @@ function parseNumber(raw: string): number | undefined {
   return n;
 }
 
-/** Noise-строки: НДС/НАС/налог/скидк/процент/% — за суммы не берём (R1.1).
- *  Границы после кириллицы — lookahead, т.к. JS `\b` видит только ASCII `\w`. */
-function isNoiseLine(line: string): boolean {
-  return /(?:ндс|нас)(?=[\s\d%]|$)|налог|скидк|процент|%/i.test(line);
-}
-
-/**
- * Итог из чека (R1.1). Приоритет шагов фиксирован:
- *   1) строка «ИТОГ/ИТОГО/к оплате/…» с числом (не «Скидка на итог» — noise);
- *   2) OCR-обрезки «ОГ =2437» / «ТОГО» / «ИТ» на короткой строке с «=»;
- *   3) осторожный «сумма: N» на не-noise строке (не «СУММА НДС»);
- *   4) НАЛИЧНЫМИ/БЕЗНАЛИЧНЫМИ/оплачено — только если нет «СДАЧА <число>»;
- *   5) fallback: последнее число с валютой на не-noise строках.
- */
+/** Сумма из текста: «15400 ₽», «итого 1 500,50 руб», «сумма: 15400». */
 export function parseTotalFromText(text: string): number | undefined {
   if (!text) return undefined;
-  const lines = text.split(/\r?\n/);
-
-  // 1) Явная строка итога: «ИТОГО =20515.00», «ИТОГ 1234.56», «К ОПЛАТЕ: 1 234,56»,
-  //    R1.2: «ИТОГО....................6767.00» — filler из точек/дефисов/пробелов/:=
-  //    между маркером и числом (десятичная часть числа при этом цела).
-  //    Граница после кириллического маркера — lookahead (\b не видит кириллицу).
-  for (const line of lines) {
-    if (isNoiseLine(line)) continue;
-    const m = /(?:итого|итог|всего\s+к\s+оплате|к\s+оплате|total\s+due|grand\s+total)(?=[\s.:=\-–—\d]|$)[\s.:=\-–—]*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
-      line,
-    );
-    if (m) {
-      const n = parseNumber(m[1]);
-      if (n !== undefined) return n;
-    }
-  }
-
-  // 2) OCR bare: «ОГ =2437», «ТОГО =…», «ИТ =…» — обрезки «ИТОГ».
-  for (const line of lines) {
-    if (isNoiseLine(line)) continue;
-    const m = /^(ог|того|ит)\s*[:=]\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)\s*$/i.exec(line.trim());
-    if (m) {
-      const n = parseNumber(m[2]);
-      if (n !== undefined) return n;
-    }
-  }
-
-  // 3) Осторожный «сумма: N» / «сумма=N» — не «СУММА НДС», не «ИТОГО ДО СКИДОК».
-  for (const line of lines) {
-    if (isNoiseLine(line)) continue;
-    const m = /сумма\s*[:=]\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(line);
-    if (m) {
-      const n = parseNumber(m[1]);
-      if (n !== undefined) return n;
-    }
-  }
-
-  // 4) Фактическая оплата — только если в чеке нет «СДАЧА <число>»
-  //    (внесённая сумма > итога, наличные ≠ total).
-  if (!/сдача\s*[:=]?\s*[\d]/i.test(text)) {
-    const paid = /(?:наличными|безналичными|оплачено)\s*[:=]?\s*([\d][\d\s\u00a0]*(?:[.,]\d{1,2})?)/i.exec(
+  // «итого/сумма/оплачено ... 12345.67 руб»
+  const labeled =
+    /(?:итого|сумма|оплачено|total|sum)\D{0,12}(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:₽|руб|rub|р\.)?/i.exec(
       text,
     );
-    if (paid) {
-      const n = parseNumber(paid[1]);
-      if (n !== undefined) return n;
-    }
-  }
-
-  // 5) Fallback: последнее число с валютой на не-noise строках (обычно итог).
-  const cleaned = lines.filter((l) => !isNoiseLine(l)).join("\n");
-  const allMoney = [
-    ...cleaned.matchAll(/(\d[\d\s\u00a0]*(?:[.,]\d{1,2})?)\s*(?:₽|руб\.?|rub|rur|р\.)/gi),
-  ];
-  if (allMoney.length > 0) {
-    const n = parseNumber(allMoney[allMoney.length - 1][1]);
-    if (n !== undefined) return n;
-  }
-
+  if (labeled) return parseNumber(labeled[1]);
+  // просто число + валюта
+  const money = /(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:₽|руб|rub|rur|р\.)/i.exec(text);
+  if (money) return parseNumber(money[1]);
   return undefined;
 }
 

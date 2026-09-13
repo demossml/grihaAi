@@ -11,28 +11,11 @@ import {
   type AlbumBatch,
   type AlbumItem,
 } from "./media-group-buffer.js";
-import { resolveTelegramAccess } from "./telegram-acl.js";
-import {
-  EMPTY_REPLY_MESSAGE,
-  TURN_ERROR_MESSAGE,
-  TURN_HEAVY_MS,
-  TURN_MS,
-  TURN_TIMEOUT_MESSAGE,
-  TurnTimeoutError,
-  withTurnTimeout,
-} from "./agent-turn-timeout.js";
 
 export interface TgUser {
   id: number;
   firstName?: string;
 }
-
-/**
- * P03: служебный отправитель анонимных администраторов групп
- * (GroupAnonymousBot) — один и тот же id для ВСЕХ групп и админов.
- * LIVE-UNVERIFIED: реальный payload сверяется на проде.
- */
-export const TELEGRAM_ANONYMOUS_ADMIN_ID = 1087968824;
 
 /** sender_chat (channel_post/собственное имя отправителя). */
 export interface TgSenderChat {
@@ -103,10 +86,6 @@ export interface GrishaAgentReply {
   documentCaption?: string;
   /** Optional inline keyboard rows (e.g. approval buttons). */
   inlineButtons?: InlineButton[][];
-  /** R3: отправить ТОЛЬКО файл — без текста, подписи и кнопок. */
-  attachmentOnly?: boolean;
-  /** R3: ключ идемпотентности (пул уже погасил дубли по нему). */
-  dedupeKey?: string;
 }
 
 /**
@@ -220,19 +199,6 @@ export function formatTelegramHtml(input: string): string {
 function lastPhotoFileId(photo: Array<{ file_id?: string }>): string {
   const last = photo[photo.length - 1];
   return last?.file_id ?? "unknown";
-}
-
-/**
- * C3: текстовый запрос, который по своей природе тяжёлый (генерация PDF-отчёта,
- * сводки/аналитики) — маршрутизируем в тяжёлую ветку с большим таймаутом (180s),
- * чтобы не падать в 90s при парсинге/рендере.
- */
-const HEAVY_TEXT_RE =
-  /(\bотч[её]т\b|\bотчёт\b|\bсводк[аи]\b|\bвыписк[аи]\b|\bpdf\b|\bаналитик[аи]\b|сформируй|сгенерируй|построй отч)/i;
-
-export function isHeavyTextRequest(text: string): boolean {
-  if (!text) return false;
-  return HEAVY_TEXT_RE.test(text);
 }
 
 /** Базовый текст промпта по типу медиа. */
@@ -377,11 +343,6 @@ export function withReplyContext(message: string, msg: TgMessage): string {
 export class TelegramBridge {
   private readonly agent: GrishaAgent;
 
-  /** P05: graceful shutdown — флаш pending-альбомов вместо тихой потери. */
-  async dispose(): Promise<void> {
-    await this.albumBuffer?.dispose();
-  }
-
   /** G1: буфер альбомов + контекст gate на группу. */
   private albumBuffer: MediaGroupBuffer | null = null;
   private readonly albumGates = new Map<
@@ -413,13 +374,6 @@ export class TelegramBridge {
       react?: (chatId: number, messageId: number, emoji: string) => void;
       /** Early ACL: вызывается ДО prefilter/агента. false → deny (см. §3 политики). */
       aclCheck?: (userId: string, chatId: string) => boolean | Promise<boolean>;
-      /**
-       * A1–A4: membership-ACL (group=участие, private=только явный список).
-       * При наличии — заменяет aclCheck для agent-path; без него — legacy. */
-      telegramAccess?: {
-        isAllowedPrivate: (userId: string) => Promise<boolean>;
-        getChatMember: (chatId: number, userId: number) => Promise<{ status: string }>;
-      };
       /** Прямой handler /users ... (без LLM, как /rules). */
       usersCommandHandler?: (
         args: string,
@@ -488,8 +442,6 @@ export class TelegramBridge {
       ) => Promise<string>;
       /** G11: /status — расширенный вывод для admin (метрики). */
       statusHandler?: (userId: string) => string | Promise<string>;
-      /** SYSTEM UPDATE: /update — handler сам проверяет private+owner. */
-      updateCommandHandler?: (userId: string, chatType: string) => string | Promise<string>;
       /** G4: deep link bot username для onboarding-подсказки. */
       botUsername?: string;
       /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
@@ -513,9 +465,6 @@ export class TelegramBridge {
       typingIntervalMs?: number;
       /** PROMPT 10: метрики (agent invocations/denied). */
       onMetric?: (name: string, n?: number) => void;
-      /** C3: timeout agent turn (default 90s; heavy media/report — 180s). */
-      agentTurnTimeoutMs?: number;
-      agentTurnHeavyTimeoutMs?: number;
     },
   ) {
     const rawAgent = agent;
@@ -525,45 +474,16 @@ export class TelegramBridge {
     };
   }
 
-  /**
-   * C3/C4: вызов агента с wall-clock timeout. Timeout/ошибка → короткий
-   * fallback-текст (одно сообщение); typing heartbeat останавливает вызывающий
-   * в finally. Пустой ответ без файла → «Пустой ответ…» (§4).
-   */
-  private async runAgent(
-    input: Parameters<GrishaAgent>[0],
-    heavy: boolean,
-  ): Promise<GrishaAgentReply> {
-    const ms = heavy
-      ? (this.options?.agentTurnHeavyTimeoutMs ?? TURN_HEAVY_MS)
-      : (this.options?.agentTurnTimeoutMs ?? TURN_MS);
-    try {
-      const reply = await withTurnTimeout(ms, () => this.agent(input));
-      if (!reply.text?.trim() && !reply.filePath && !reply.attachmentOnly) {
-        return { ...reply, text: EMPTY_REPLY_MESSAGE };
-      }
-      return reply;
-    } catch (err: unknown) {
-      if (err instanceof TurnTimeoutError) {
-        return { text: TURN_TIMEOUT_MESSAGE };
-      }
-      this.options?.onMetric?.("telegram_agent_error");
-      return { text: TURN_ERROR_MESSAGE };
-    }
-  }
-
   /** Send a reply with all attached extras (file, caption, buttons). */
   private sendReply(chatId: number, reply: GrishaAgentReply, threadId?: string): Promise<void> {
-    // R3: «только файл» — ровно один outbound: документ без текста/подписи/кнопок.
-    if (reply.attachmentOnly && reply.filePath) {
-      return this.sender(chatId, "", reply.filePath, { threadId });
-    }
     return this.sender(chatId, reply.text, reply.filePath, {
       inlineButtons: reply.inlineButtons,
       documentCaption: reply.documentCaption,
       threadId,
     });
   }
+
+  /** Sender, привязанный к теме входящего сообщения (ответ — в ту же тему). */
   private makeSender(threadId?: string): TelegramReplySender {
     return (chatId, text, filePath, extra) =>
       this.sender(chatId, text, filePath, { ...extra, threadId });
@@ -676,14 +596,6 @@ export class TelegramBridge {
     const chatId = msg.chat.id;
     const chatType = msg.chat.type ?? "private";
     const isChannel = chatType === "channel";
-    // P03: анонимный админ группы — Telegram шлёт служебный from
-    // (GroupAnonymousBot, 1087968824) и sender_chat = сама группа. Такой
-    // «пользователь» не должен объединять сессии разных людей и фальшиво
-    // атрибутироваться в архиве: сессия — групповая (tg:anon:{chat}), а
-    // msg.from стрипаем → архив пишет from_user_id = NULL (не фейковый id).
-    const isAnonymousAdmin = this.isAnonymousMessage(msg, chatId);
-    const sessionUserId = isAnonymousAdmin ? "anon" : userId;
-    if (isAnonymousAdmin) msg.from = undefined;
     const text = msg.text ?? "";
     // Все ответы этого апдейта уходят в тему входящего сообщения.
     const send = this.makeSender(msg.threadId);
@@ -729,7 +641,7 @@ export class TelegramBridge {
     if (text === "/new") {
       // D2: /new сбрасывает ТОЛЬКО сессию текущего чата(+темы), не все чаты.
       const sessionKey = buildTelegramSessionKey({
-        userId: sessionUserId,
+        userId,
         chatId,
         threadId: msg.threadId,
       });
@@ -743,17 +655,6 @@ export class TelegramBridge {
       const reply = statusHandler
         ? await statusHandler(String(userId))
         : "Гриша работает.";
-      await send(chatId, reply);
-      return { handled: true };
-    }
-    // SYSTEM UPDATE: /update — только личка; owner-проверка внутри handler'а.
-    if (text === "/update" || text.startsWith("/update ")) {
-      const handler = this.options?.updateCommandHandler;
-      if (!handler) {
-        await send(chatId, "Обновление недоступно.");
-        return { handled: true };
-      }
-      const reply = await handler(String(userId), chatType);
       await send(chatId, reply);
       return { handled: true };
     }
@@ -935,19 +836,19 @@ export class TelegramBridge {
           return { handled: true, reason: "blocked-by-rules" };
         }
 
-        const response = await this.runAgent({
+        const response = await this.agent({
           message: text2,
           userId,
           platform: "telegram",
           sessionKey: buildTelegramSessionKey({
-            userId: sessionUserId,
+            userId,
             chatId,
             threadId: msg.threadId,
           }),
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate2.rulesContext || undefined,
-        }, true);
+        });
         if (gate2.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
         return { handled: true };
@@ -975,15 +876,15 @@ export class TelegramBridge {
       this.options?.beforeAgent?.(chatId);
       const hb = this.startHeartbeat(chatId, msg);
       try {
-        const response = await this.runAgent({
+        const response = await this.agent({
           message,
           userId,
           platform: "telegram",
-          sessionKey: buildTelegramSessionKey({ userId: sessionUserId, chatId, threadId: msg.threadId }),
+          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate.rulesContext || undefined,
-        }, false);
+        });
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
         return { handled: true };
@@ -1002,15 +903,15 @@ export class TelegramBridge {
       this.options?.beforeAgent?.(chatId);
       const hb = this.startHeartbeat(chatId, msg);
       try {
-        const response = await this.runAgent({
+        const response = await this.agent({
           message,
           userId,
           platform: "telegram",
-          sessionKey: buildTelegramSessionKey({ userId: sessionUserId, chatId, threadId: msg.threadId }),
+          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate.rulesContext || undefined,
-        }, false);
+        });
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
         return { handled: true };
@@ -1036,44 +937,25 @@ export class TelegramBridge {
     const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
     if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
 
-    // C3: отчёт/PDF/text-heavy запрос (текстом) → тяжёлая ветка с большим лимитом,
-    // чтобы не упираться в 90s на генерации PDF (report_attachment_only).
-    const heavy = isHeavyTextRequest(text);
-
     this.options?.beforeAgent?.(chatId);
     // Heartbeat только когда пользователь получит ответ (не silent-archive).
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {
-      const response = await this.runAgent({
+      const response = await this.agent({
         message: withReplyContext(text, msg),
         userId,
         platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId: sessionUserId, chatId, threadId: msg.threadId }),
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
-      }, heavy);
+      });
       if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
       await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };
     } finally {
       await hb?.stop();
     }
-  }
-
-  /**
-   * P03: анонимный админ группы — Telegram шлёт служебный from
-   * (GroupAnonymousBot, 1087968824) и sender_chat = сама группа. LIVE-UNVERIFIED.
-   */
-  private isAnonymousMessage(msg: TgMessage, chatId: number): boolean {
-    const senderUserId = msg.from?.id;
-    return (
-      (msg.chat?.type ?? "private") === "supergroup" &&
-      (senderUserId === TELEGRAM_ANONYMOUS_ADMIN_ID ||
-        (senderUserId !== undefined &&
-          msg.senderChat?.id !== undefined &&
-          msg.senderChat.id === chatId))
-    );
   }
 
   /**
@@ -1092,29 +974,6 @@ export class TelegramBridge {
       this.options?.onMetric?.("telegram_agent_denied");
       return { allowed: false, reason: "channel-no-user", handled: true };
     }
-
-    // A1–A4: membership-ACL (предпочтительный путь).
-    if (this.options?.telegramAccess) {
-      const res = await resolveTelegramAccess(
-        {
-          userId: opts.userId,
-          chatId: opts.chatId,
-          chatType: opts.chatType,
-          hasRealUser: opts.hasRealUser,
-        },
-        this.options.telegramAccess,
-      );
-      if (res.allowed) return { allowed: true, reason: "ok", handled: true };
-      this.options?.onMetric?.("telegram_agent_denied");
-      // A2: private → короткий отказ (если не ACL_DENY_REPLY=0);
-      // группа — молча. LLM не вызывается.
-      if (opts.chatType === "private" && process.env.ACL_DENY_REPLY !== "0") {
-        await opts.send(opts.chatId, "Нет доступа.");
-      }
-      return { allowed: false, reason: res.reason, handled: true };
-    }
-
-    // FR-6: нет telegramAccess — legacy aclCheck.
     if (this.options?.aclCheck) {
       const allowed = await this.options.aclCheck(String(opts.userId), String(opts.chatId));
       if (!allowed) {
@@ -1167,19 +1026,15 @@ export class TelegramBridge {
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {
       const agentMessage = buildAlbumAgentMessage(batch, media);
-      const response = await this.runAgent({
+      const response = await this.agent({
         message: agentMessage,
         userId,
         platform: "telegram",
-        sessionKey: buildTelegramSessionKey({
-          userId: this.isAnonymousMessage(msg, chatId) ? "anon" : userId,
-          chatId,
-          threadId: msg.threadId,
-        }),
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
-      }, true);
+      });
       if (gate.suppressReply) return;
       await this.sendReply(chatId, response, msg.threadId);
     } finally {
@@ -1278,19 +1133,15 @@ export class TelegramBridge {
       const agentMessage = processMedia
         ? withReplyContext(buildMediaAgentMessage(kind, msg, fileId, media), msg)
         : message;
-      const response = await this.runAgent({
+      const response = await this.agent({
         message: agentMessage,
         userId,
         platform: "telegram",
-        sessionKey: buildTelegramSessionKey({
-          userId: this.isAnonymousMessage(msg, chatId) ? "anon" : userId,
-          chatId,
-          threadId: msg.threadId,
-        }),
+        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
-      }, true);
+      });
       if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
       await this.sendReply(chatId, response, msg.threadId);
       return { handled: true };

@@ -15,7 +15,6 @@ import {
   buildOnboardingText,
   dedupeByKey,
   describeRules,
-  escapeHtml,
   parseCustomRulesText,
   PRESETS,
   type PresetId,
@@ -117,22 +116,12 @@ export async function onChatMemberAdded(
 
   const title = event.chat.title ?? chatId;
 
-  // P07: канал ≠ группа — диалога с подписчиками в канале нет. Отдельный текст
-  // без пресет-клавиатуры: архив постов + подсказка про группу обсуждений.
-  const isChannel = event.chat.type === "channel";
-  const dmText = isChannel
-    ? `Меня добавили в канал «${escapeHtml(title)}».\n\n` +
-      `Я буду молча архивировать посты канала. Отвечать пользователям в самом канале я не могу — ` +
-      `Telegram не позволяет подписчикам писать в канал. Если у канала есть группа обсуждений — ` +
-      `добавьте меня туда отдельно и настройте её как обычную группу (/setup в личном чате).`
-    : buildOnboardingText(title);
-
   // R-GR-2: онбординг-UI (кнопки пресетов) — ТОЛЬКО в DM. Один короткий fallback
   // в группу — только если DM не доставлен в момент добавления (без кнопок).
   try {
-    await deps.sendMessage(Number(actorId), dmText, {
+    await deps.sendMessage(Number(actorId), buildOnboardingText(title), {
       parseMode: "HTML",
-      inlineButtons: isChannel ? undefined : buildOnboardingKeyboard(chatId),
+      inlineButtons: buildOnboardingKeyboard(chatId),
     });
   } catch {
     // DM недоступен (нет /start) — короткая строка в группу, без кнопок пресетов.
@@ -279,64 +268,43 @@ export async function runSetupCommand(
     // R-GR-2: онбординг-UI — только в DM. В группе /setup не отправляет keyboard.
     return "Настройка групп — только в личных сообщениях с ботом. Откройте DM и отправьте /setup.";
   }
+  if (!(await deps.users.canManage(ctx.userId))) {
+    return "Недостаточно прав. Нужна роль owner или admin.";
+  }
 
   const arg = args.trim();
-  // P01: глобальный gate — ТОЛЬКО для /setup без аргумента. Для /setup <chatId>
-  // достаточно creator/administrator ИМЕННО этой группы (checkGroupAuthority,
-  // server-side getChatMember, fail closed). Не доверяем addedByUserId.
-  const isManager = await deps.users.canManage(ctx.userId);
+  const pending = (await deps.setup.list()).filter((c) => c.status === "pending");
 
-  // P07: диагностика pending (только глобальный owner/admin). Показывает,
-  // кто может завершить настройку, но НЕ открывает agent-path в pending.
-  if (arg === "status") {
-    if (!isManager) {
-      return "Недостаточно прав. Нужна роль owner или admin.";
+  if (arg) {
+    const chatId = arg.split(/\s+/)[0];
+    const rec = await deps.setup.get(chatId);
+    if (!rec || rec.status !== "pending") {
+      return `Чат ${chatId} не в статусе pending.`;
     }
-    const pending = (await deps.setup.list()).filter((c) => c.status === "pending");
-    if (pending.length === 0) return "Нет групп, ожидающих настройки.";
-    const lines = pending.map((c) => `- «${c.chatTitle ?? c.chatId}» (${c.chatId}): настройка не завершена.`);
-    lines.push(
-      "Настроить могут: администраторы/создатель группы (отправьте /setup <chatId> в DM) или глобальный owner/admin.",
-    );
-    return lines.join("\n");
-  }
-
-  if (!arg) {
-    if (!isManager) {
-      return "Недостаточно прав. Нужна роль owner или admin.";
-    }
-    const pending = (await deps.setup.list()).filter((c) => c.status === "pending");
-    if (pending.length === 0) return "Нет групп, ожидающих настройки.";
-
-    // Отправляем keyboard'ы (лимит 5 — не спамить).
-    const batch = pending.slice(0, 5);
-    for (const c of batch) {
-      await deps.sendMessage(Number(ctx.userId), buildOnboardingText(c.chatTitle ?? c.chatId), {
-        parseMode: "HTML",
-        inlineButtons: buildOnboardingKeyboard(c.chatId),
-      });
-    }
-    return (
-      `Групп в ожидании: ${pending.length}. Меню отправил в этот чат` +
-      (pending.length > 5 ? ` (первые 5). Остальные: /setup <chatId>` : ".")
-    );
-  }
-
-  const chatId = arg.split(/\s+/)[0];
-  const rec = await deps.setup.get(chatId);
-  if (!rec || rec.status !== "pending") {
-    return `Чат ${chatId} не в статусе pending.`;
-  }
-  if (!isManager) {
-    // P01: Telegram-admin конкретной группы может восстановить setup своей
-    // группы (не чужой): getChatMember-проверка creator/administrator.
+    // Пакет B: отправка keyboard для конкретной группы — только если actor
+    // сейчас creator/administrator этой группы (getChatMember).
     const check = await checkGroupAuthority(chatId, ctx.userId, rec, deps);
     if (!check.ok) return check.reason;
+    const title = rec.chatTitle ?? chatId;
+    await deps.sendMessage(Number(ctx.userId), buildOnboardingText(title), {
+      parseMode: "HTML",
+      inlineButtons: buildOnboardingKeyboard(chatId),
+    });
+    return `Отправил меню настройки для «${title}».`;
   }
-  const title = rec.chatTitle ?? chatId;
-  await deps.sendMessage(Number(ctx.userId), buildOnboardingText(title), {
-    parseMode: "HTML",
-    inlineButtons: buildOnboardingKeyboard(chatId),
-  });
-  return `Отправил меню настройки для «${title}».`;
+
+  if (pending.length === 0) return "Нет групп, ожидающих настройки.";
+
+  // Отправляем keyboard'ы (лимит 5 — не спамить).
+  const batch = pending.slice(0, 5);
+  for (const c of batch) {
+    await deps.sendMessage(Number(ctx.userId), buildOnboardingText(c.chatTitle ?? c.chatId), {
+      parseMode: "HTML",
+      inlineButtons: buildOnboardingKeyboard(c.chatId),
+    });
+  }
+  return (
+    `Групп в ожидании: ${pending.length}. Меню отправил в этот чат` +
+    (pending.length > 5 ? ` (первые 5). Остальные: /setup <chatId>` : ".")
+  );
 }

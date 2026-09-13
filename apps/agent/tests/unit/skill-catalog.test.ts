@@ -1,6 +1,5 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import { discoverSkills } from "@griha/skills";
 
 const CANONICAL_SKILLS = [
@@ -68,13 +67,5 @@ describe("skill catalog", () => {
     for (const s of skills) {
       assert.ok(s.description.trim().length > 0, `skill without description: ${s.name}`);
     }
-  });
-
-  it("core skill includes tool-use enforcement (H4)", async () => {
-    const skills = await discoverSkills();
-    const core = skills.find((s) => s.name === "core");
-    assert.ok(core, "core skill must exist");
-    const content = fs.readFileSync(core.path, "utf8");
-    assert.match(content, /Tool-use enforcement|вызови инструмент|call the tool/i);
   });
 });

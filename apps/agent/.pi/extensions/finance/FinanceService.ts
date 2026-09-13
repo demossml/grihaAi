@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS expenses (
   document_id    TEXT,
   confidence     REAL NOT NULL DEFAULT 1,
   source         TEXT NOT NULL DEFAULT 'manual',
-  chat_id        TEXT,
   created_at     TEXT NOT NULL
 );
 
@@ -50,7 +49,6 @@ interface ExpenseRow {
   document_id: string | null;
   confidence: number;
   source: string;
-  chat_id: string | null;
   created_at: string;
 }
 
@@ -79,7 +77,6 @@ export interface ExpenseAddInput {
   documentId?: string;
   confidence?: number;
   source?: Expense["source"];
-  chatId?: string;
 }
 
 export interface InvoiceAddInput {
@@ -153,13 +150,6 @@ export class FinanceService {
     this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
-    // Миграция: chat_id — additive, nullable; не ломает старые БД.
-    const cols = new Set(
-      (this.db.pragma("table_info(expenses)") as Array<{ name: string }>).map((c) => c.name),
-    );
-    if (!cols.has("chat_id")) {
-      this.db.exec("ALTER TABLE expenses ADD COLUMN chat_id TEXT;");
-    }
   }
 
   close(): void {
@@ -174,8 +164,8 @@ export class FinanceService {
     const id = randomUUID();
     db.prepare(
       `INSERT INTO expenses
-       (id, user_id, date, vendor, amount, currency, category, payment_method, document_id, confidence, source, chat_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, date, vendor, amount, currency, category, payment_method, document_id, confidence, source, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.userId,
@@ -188,7 +178,6 @@ export class FinanceService {
       input.documentId ?? null,
       input.confidence ?? 1,
       input.source ?? "manual",
-      input.chatId ?? null,
       new Date().toISOString(),
     );
     return this.getExpense(id)!;
@@ -216,23 +205,6 @@ export class FinanceService {
     if (options?.category) {
       sql += ` AND category = ?`;
       params.push(options.category);
-    }
-    sql += ` ORDER BY date ASC`;
-    return (db.prepare(sql).all(...params) as ExpenseRow[]).map(rowToExpense);
-  }
-
-  /** Расходы по чату (для отчётов групп): где chat_id = ? ИЛИ (legacy только по user). */
-  listExpensesByChat(chatId: string, options?: { from?: string; to?: string }): Expense[] {
-    const db = this.requireDb();
-    let sql = `SELECT * FROM expenses WHERE chat_id = ?`;
-    const params: unknown[] = [chatId];
-    if (options?.from) {
-      sql += ` AND date >= ?`;
-      params.push(options.from);
-    }
-    if (options?.to) {
-      sql += ` AND date <= ?`;
-      params.push(options.to);
     }
     sql += ` ORDER BY date ASC`;
     return (db.prepare(sql).all(...params) as ExpenseRow[]).map(rowToExpense);

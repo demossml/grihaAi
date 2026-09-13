@@ -34,7 +34,6 @@ import {
   type TelegramFileSendResult,
 } from "./file-send-bridge.js";
 import { setTelegramPinApi } from "./pin-bridge.js";
-import { ChatMemberTtlCache } from "./chat-member-cache.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -137,12 +136,6 @@ export interface TelegramBotControllerOptions {
   approvalHandler?: TelegramApprovalHandler;
   /** Early ACL-проверка (UsersService) — ДО prefilter и агента. */
   aclCheck?: (userId: string, chatId: string) => boolean | Promise<boolean>;
-  /**
-   * A1–A4: membership-ACL для agent-path. getChatMember контроллер сам привяжет
-   * к текущему bot instance (реконнекты); здесь — только isAllowedPrivate. */
-  telegramAccess?: {
-    isAllowedPrivate: (userId: string) => Promise<boolean>;
-  };
   /** Прямой handler /users ... (UsersService + canManage guard). */
   usersCommandHandler?: (
     args: string,
@@ -229,8 +222,6 @@ export interface TelegramBotControllerOptions {
   ) => Promise<void>;
   /** G11: /status для admin (метрики). */
   statusHandler?: (userId: string) => string | Promise<string>;
-  /** SYSTEM UPDATE: /update (private + owner проверяет handler). */
-  updateCommandHandler?: (userId: string, chatType: string) => string | Promise<string>;
   /** G4: bot username для deep links. */
   botUsername?: string;
   /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
@@ -341,15 +332,6 @@ export class TelegramBotController {
   /** Per-chat очередь исходящих sendMessage/sendDocument (не глобальная). */
   private readonly sendQueue = new ChatSendQueue();
 
-  /**
-   * P04: TTL-кэш getChatMember (переживает реконнекты; обёртка каждый раз
-   * замыкает СВЕЖИЙ bot).
-   */
-  private readonly memberCache = new ChatMemberTtlCache();
-
-  /** P05: текущий bridge (для graceful dispose при stop/reconnect). */
-  private currentBridge: TelegramBridge | null = null;
-
   constructor(
     private readonly agent: GrishaAgent,
     private readonly allowedUserIds: number[],
@@ -420,10 +402,7 @@ export class TelegramBotController {
         {
           prefilter: this.options?.prefilter,
           rulesHandler: this.options?.rulesHandler,
-          // P04: TTL-кэш (переживает реконнекты); обёртка замыкает СВЕЖИЙ bot.
-          rulesGetChatMember: this.memberCache.wrap((chatId, userId) =>
-            bot.api.getChatMember(chatId, userId),
-          ),
+          rulesGetChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
           resetHandler: this.options?.resetHandler,
           approvalHandler: this.options?.approvalHandler,
           // Индикатор «печатает…» перед тем, как агент начнёт отвечать.
@@ -440,27 +419,13 @@ export class TelegramBotController {
               .catch((err: unknown) => console.error("[telegram-bot] setMessageReaction failed:", err));
           },
           aclCheck: this.options?.aclCheck,
-          // A1–A4: membership-ACL; getChatMember — текущий bot (пересоздаётся при
-          // реконнектах вместе с bridge) + P04 TTL-кэш.
-          telegramAccess: this.options?.telegramAccess
-            ? {
-                isAllowedPrivate: this.options.telegramAccess.isAllowedPrivate,
-                getChatMember: this.memberCache.wrap(async (chatId, userId) => {
-                  const m = await bot.api.getChatMember(chatId, userId);
-                  return { status: m.status };
-                }),
-              }
-            : undefined,
           usersCommandHandler: this.options?.usersCommandHandler,
           setupCommandHandler: this.options?.setupCommandHandler
             ? (args, ctx, send) => {
                 const handler = this.options?.setupCommandHandler;
                 if (!handler) return "Настройка временно недоступна.";
                 return handler(args, ctx, send, {
-                  // P04: тот же TTL-кэш — один источник статусов на процесс.
-                  getChatMember: this.memberCache.wrap((chatId, userId) =>
-                    bot.api.getChatMember(chatId, userId),
-                  ),
+                  getChatMember: (chatId, userId) => bot.api.getChatMember(chatId, userId),
                 });
               }
             : undefined,
@@ -472,7 +437,6 @@ export class TelegramBotController {
           processMediaAlbum: this.options?.processMediaAlbum,
           pinHandler: this.options?.pinHandler,
           statusHandler: this.options?.statusHandler,
-          updateCommandHandler: this.options?.updateCommandHandler,
           botUsername: this.options?.botUsername,
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,
@@ -480,20 +444,6 @@ export class TelegramBotController {
           sendChatAction: (chatId, action, extra) => bot.api.sendChatAction(chatId, action, extra),
         },
       );
-
-      // P05: при реконнекте старый bridge флашит pending-альбомы (без await —
-      // не блокируем polling; отправка может падать на мёртвом боте, архив
-      // и инжест выполнятся).
-      const prevBridge = this.currentBridge;
-      this.currentBridge = bridge;
-      if (prevBridge) {
-        void prevBridge.dispose().catch((err: unknown) => {
-          console.error(
-            "[telegram-bot] bridge dispose failed:",
-            err instanceof Error ? err.message : err,
-          );
-        });
-      }
 
       for (const filter of ["message", "channel_post", "edited_message", "edited_channel_post"] as const) {
         bot.on(filter, (ctx: unknown) => {
@@ -512,8 +462,6 @@ export class TelegramBotController {
           `[telegram-bot] my_chat_member: old=${event.oldStatus} new=${event.newStatus} ` +
             `chat=${event.chat.id} actor=${event.from.id}`,
         );
-        // P04: статус бота в чате изменился → кэш членства этого чата невалиден.
-        this.memberCache.invalidateChat(event.chat.id);
         void (async () => {
           try {
             await this.options?.chatMemberHandler?.(event, {
@@ -670,65 +618,6 @@ export class TelegramBotController {
         );
       }
     }
-    // P05: graceful shutdown — флаш pending-альбомов (до pool.disposeAll в index.ts).
-    const bridge = this.currentBridge;
-    this.currentBridge = null;
-    if (bridge) {
-      try {
-        await bridge.dispose();
-      } catch (err: unknown) {
-        console.error(
-          "[telegram-bot] bridge dispose failed on stop:",
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }
-  }
-
-  /**
-   * P02 (cron): server-side статус actor в чате через ТЕКУЩИЙ bot.
-   * Используется cron-авторизацией group-target (fail closed при отсутствии бота).
-   */
-  async chatMemberStatus(chatId: number, userId: number): Promise<{ status: string }> {
-    const bot = this.bot;
-    if (!bot) throw new Error("bot not running");
-    const m = await bot.api.getChatMember(chatId, userId);
-    return { status: m.status };
-  }
-
-  /**
-   * P02 (cron): внешняя доставка текста в чат/тему — существующая per-chat
-   * очередь + sendWithRetry текущего бота (не вторая send/retry-система).
-   * permanent — для ошибок, которые не уйдут при повторе (403/400).
-   */
-  async deliverExternalText(
-    chatId: number,
-    threadId: number | undefined,
-    text: string,
-  ): Promise<{ ok: boolean; permanent?: boolean; error?: string }> {
-    const bot = this.bot;
-    if (!bot) return { ok: false, error: "bot not running" };
-    let lastKind: ParsedTelegramError["kind"] | undefined;
-    let sent = false;
-    await this.sendQueue.enqueue(chatId, async () => {
-      sent = await this.sendWithRetry(
-        () =>
-          bot.api
-            .sendMessage(
-              chatId,
-              text,
-              threadId !== undefined ? { messageThreadId: threadId } : {},
-            )
-            .catch((err: unknown) => {
-              lastKind = parseTelegramError(err).kind;
-              throw err;
-            }),
-        "cron-delivery",
-      );
-    });
-    if (sent) return { ok: true };
-    const permanent = lastKind === "forbidden" || lastKind === "bad_request";
-    return { ok: false, permanent, error: `send failed (kind=${lastKind ?? "unknown"})` };
   }
 
   /**
@@ -786,8 +675,7 @@ export class TelegramBotController {
     filePath?: string,
     extra?: TelegramSendExtra,
   ): Promise<void> {
-    // R3: attachmentOnly приходит с text="" — пустое сообщение не шлём.
-    const rawChunks = text && text.trim() !== "" ? splitTelegramText(text) : [];
+    const rawChunks = splitTelegramText(text);
     let textOk = true;
     for (let i = 0; i < rawChunks.length; i++) {
       const chunkHtml = formatTelegramHtml(rawChunks[i]);

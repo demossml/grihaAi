@@ -57,8 +57,6 @@ import {
 import { presetRulesWithActor, presetMarkerKey, type PresetId } from "../chat-setup/RulePresets.js";
 import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
-import { setCronAuthCheck, setCronDelivery } from "../cron/cron-bridge.js";
-import { runUpdateCommand } from "../system-update/index.js";
 import { transcribeVoice } from "@griha/stt";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
@@ -266,17 +264,6 @@ function getController(): TelegramBotController {
     const setup = getChatSetupService();
     // ACL для инструмента send_file — тот же источник (UsersService).
     setTelegramFileAclCheck((userId, chatId) => users.isAllowed(userId, chatId));
-    // P02: cron → Telegram. Registry читается в момент доставки; bot текущий.
-    setCronDelivery(async (chatId, threadId, text) => {
-      const c = controller;
-      if (!c) return { ok: false, error: "controller unavailable" };
-      return c.deliverExternalText(Number(chatId), threadId ? Number(threadId) : undefined, text);
-    });
-    setCronAuthCheck(async (chatId, userId) => {
-      const c = controller;
-      if (!c) throw new Error("controller unavailable");
-      return mapChatMemberStatus((await c.chatMemberStatus(Number(chatId), Number(userId))).status);
-    });
     controller = new TelegramBotController(
       grishaAgent(),
       cfg?.telegram?.allowedUserIds ?? [],
@@ -301,11 +288,6 @@ function getController(): TelegramBotController {
         resetHandler: (sessionKey) => pool?.reset(sessionKey),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
         aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
-        // A1–A4: agent-ACL по membership (group) / явному списку (private).
-        // getChatMember к текущему bot привязывает сам контроллер.
-        telegramAccess: {
-          isAllowedPrivate: (userId) => users.isAllowedPrivate(userId),
-        },
         usersCommandHandler: (args, ctx) => handleUsersCommand(users, args, ctx),
         // Chat-setup (онбординг групп): my_chat_member → DM, cs:-callbacks,
         // custom-текст в DM, /setup с keyboard'ами (D5).
@@ -448,8 +430,6 @@ function getController(): TelegramBotController {
             .join("\n");
           return `Гриша работает.\n\nМетрики:\n${lines || "(нет данных)"}`;
         },
-        // SYSTEM UPDATE: /update — handler сам проверяет private+owner (U1).
-        updateCommandHandler: (userId, chatType) => runUpdateCommand(userId, chatType),
         botUsername: botSelf?.username,
         // G7: заявка на вступление — по умолчанию ТОЛЬКО уведомление владельцу
         // (автоодобрение исключительно при явном правиле join_auto_approve).
@@ -541,16 +521,7 @@ async function bootstrapUsers(): Promise<void> {
   const cfg = loadConfig();
   const users = getUsersService();
   await users.seedLegacyUsers(cfg?.telegram?.allowedUserIds);
-  // P06: диагностика owner-цепочки (не персональные данные, только id).
-  const resolvedOwner = resolveOwnerId(cfg);
-  if (resolvedOwner) {
-    console.log(`[telegram-bot] owner resolved: ${resolvedOwner}`);
-  } else {
-    console.warn(
-      "[telegram-bot] owner is not configured — management commands (/setup, /users, /update) are disabled",
-    );
-  }
-  await users.ensureOwner(resolvedOwner);
+  await users.ensureOwner(resolveOwnerId(cfg));
   // R1: hydrate chat-setup cache до старта long polling (isConfiguredSync).
   const setup = getChatSetupService();
   setup.loadSync();
@@ -588,76 +559,6 @@ async function bootstrapUsers(): Promise<void> {
         `[chat-setup] repair failed for chat ${rec.chatId}:`,
         err instanceof Error ? err.message : err,
       );
-    }
-  }
-
-  // D3-repair: текстовое правило «ТОЛЬКО в PDF» → structured
-  // report_attachment_only=true (один документ без сопроводительного текста).
-  for (const rec of await setup.list()) {
-    if (rec.status !== "completed" && rec.status !== "skipped") continue;
-    const rules = [
-      ...getUserRulesService().getHardRules(rec.chatId),
-      ...getUserRulesService().getSoftRules(rec.chatId),
-    ];
-    const hasKey = rules.some((r) => r.key === "report_attachment_only");
-    const textOnlyPdf = rules.some((r) =>
-      /(?:только|только.{0,8}в)\s*pdf|отчёт.{0,10}только.{0,10}pdf|без\s+текста/i.test(r.text),
-    );
-    if (!hasKey && textOnlyPdf) {
-      try {
-        getUserRulesService().addStructuredRule({
-          chatId: rec.chatId,
-          key: "report_attachment_only",
-          value: true,
-          kind: "hard",
-          source: "repair:report-only",
-          actorId: rec.addedByUserId ?? "system-repair",
-        });
-        console.log(
-          `[chat-setup] report_attachment_only=true для chatId=${rec.chatId} (текстовое правило «только PDF»)`,
-        );
-      } catch (err: unknown) {
-        console.error(
-          `[chat-setup] report-only repair failed for ${rec.chatId}:`,
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }
-  }
-
-  // R1-repair: архивные ключи для archive-пресетов (секретарь/команда/магазин
-  // копят чеки и без @). Дописываем ТОЛЬКО отсутствующие, status не трогаем.
-  const ARCHIVE_KEYS_BY_PRESET: Record<string, string[]> = {
-    listener: ["archive_media", "archive_ocr_ingest"],
-    secretary: ["archive_media", "archive_ocr_ingest"],
-    team: ["archive_media", "archive_ocr_ingest"],
-    shop: ["archive_ocr_ingest"],
-  };
-  for (const rec of await setup.list()) {
-    if (rec.status !== "completed" && rec.status !== "skipped") continue;
-    const keys = rec.presetId ? ARCHIVE_KEYS_BY_PRESET[rec.presetId] : undefined;
-    if (!keys?.length) continue;
-    const existing = new Set(getUserRulesService().getHardRules(rec.chatId).map((r) => r.key));
-    for (const key of keys) {
-      if (existing.has(key)) continue;
-      try {
-        getUserRulesService().addStructuredRule({
-          chatId: rec.chatId,
-          key,
-          value: true,
-          kind: "hard",
-          source: `repair:${rec.presetId}`,
-          actorId: rec.addedByUserId ?? "system-repair",
-        });
-        console.log(
-          `[chat-setup] R1-repair: ${key}=true для chatId=${rec.chatId} preset=${rec.presetId}`,
-        );
-      } catch (err: unknown) {
-        console.error(
-          `[chat-setup] R1 archive repair failed for ${rec.chatId}:`,
-          err instanceof Error ? err.message : err,
-        );
-      }
     }
   }
 }

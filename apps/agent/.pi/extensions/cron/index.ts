@@ -1,26 +1,16 @@
 import path from "node:path";
 import { homedir } from "node:os";
 import { Type } from "typebox";
-import type {
-  AgentToolResult,
-  ExtensionAPI,
-  ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { CronService, type CronRunner } from "./CronService.js";
 import { createRealCronChangeDetector, createRealCronRunner } from "./real-cron.js";
 import { createRealSubAgentRunner } from "../multi-agent/RealSubAgentRunner.js";
-import { getCronAuthCheck, getCronDelivery } from "./cron-bridge.js";
-import { assertTargetAllowed } from "./cron-auth.js";
-import { getSessionContext } from "../user-rules/context.js";
-import { getUsersService } from "../../../src/services/UsersService.js";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
 
 let service: CronService | null = null;
 let ticker: ReturnType<typeof setInterval> | null = null;
-/** P02: cron-расширение живёт и в главной, и в субсессиях — ticker один на процесс. */
-let activeSessions = 0;
 
 /** Emulated runner kept for offline/time-free unit tests. */
 const emulatedRunner: CronRunner = async (job, prompt) => ({
@@ -34,9 +24,6 @@ async function getService(): Promise<CronService> {
       DB_PATH,
       createRealCronRunner(createRealSubAgentRunner()),
       createRealCronChangeDetector((jobId) => svc.getStateSnapshot(jobId)),
-      undefined,
-      // P02: доставка читается в момент вызова — bot может пересоздаваться.
-      () => getCronDelivery(),
     );
     await svc.init();
     service = svc;
@@ -44,24 +31,18 @@ async function getService(): Promise<CronService> {
   return service;
 }
 
-function ensureTicker(): void {
-  if (!ticker) {
-    ticker = setInterval(() => {
-      void getService().then((s) => s.tick());
-    }, 60_000);
-  }
-}
-
 export default function cron(pi: ExtensionAPI): void {
   pi.on("session_start", async () => {
-    activeSessions++;
     await getService();
-    ensureTicker();
+    if (!ticker) {
+      ticker = setInterval(() => {
+        void getService().then((s) => s.tick());
+      }, 60_000);
+    }
   });
 
   pi.on("session_shutdown", () => {
-    activeSessions = Math.max(0, activeSessions - 1);
-    if (activeSessions === 0 && ticker) {
+    if (ticker) {
       clearInterval(ticker);
       ticker = null;
     }
@@ -70,7 +51,7 @@ export default function cron(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "cron_create",
     label: "Create cron job",
-    description: "Создать запланированную задачу. Из Telegram-сессии target чата подставляется автоматически.",
+    description: "Создать запланированную задачу.",
     parameters: Type.Object({
       name: Type.String(),
       schedule: Type.String(),
@@ -78,8 +59,6 @@ export default function cron(pi: ExtensionAPI): void {
       continuity: Type.Optional(Type.Boolean()),
       monitorMode: Type.Optional(Type.Boolean()),
       enabled: Type.Optional(Type.Boolean()),
-      targetChatId: Type.Optional(Type.String()),
-      threadId: Type.Optional(Type.Number()),
     }),
     async execute(
       _toolCallId: string,
@@ -90,59 +69,11 @@ export default function cron(pi: ExtensionAPI): void {
         continuity?: boolean;
         monitorMode?: boolean;
         enabled?: boolean;
-        targetChatId?: string;
-        threadId?: number;
       },
-      _signal: unknown,
-      _onUpdate: unknown,
-      ctx: ExtensionContext,
-    ): Promise<AgentToolResult<{ job: CronJob | null }>> {
-      // P02: контекст определяет target, но НЕ авторизацию (server-side check).
-      const tctx = getSessionContext(ctx.sessionManager.getSessionId());
-      const targetChatId = params.targetChatId ?? tctx?.chatId;
-      let telegramTarget: { chatId: string; threadId?: string } | undefined;
-      if (targetChatId) {
-        const actor = tctx?.userId ?? "owner"; // главная сессия = оператор
-        const auth = await assertTargetAllowed({
-          actor,
-          sessionChatId: tctx?.chatId,
-          targetChatId,
-          canManage: (uid) => getUsersService().canManage(uid),
-          getChatMember: getCronAuthCheck() ?? undefined,
-        });
-        if (!auth.ok) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Не удалось создать задачу: ${auth.reason} (чат ${targetChatId})`,
-              },
-            ],
-            details: { job: null },
-          };
-        }
-        telegramTarget = {
-          chatId: targetChatId,
-          threadId:
-            params.threadId !== undefined ? String(params.threadId) : tctx?.threadId,
-        };
-      }
-      const job = await (await getService()).createJob({
-        name: params.name,
-        schedule: params.schedule,
-        prompt: params.prompt,
-        continuity: params.continuity,
-        monitorMode: params.monitorMode,
-        enabled: params.enabled,
-        telegramTarget,
-      });
+    ): Promise<AgentToolResult<{ job: CronJob }>> {
+      const job = await (await getService()).createJob(params);
       return {
-        content: [
-          {
-            type: "text",
-            text: `Created cron job "${job.name}" (${job.id})${job.chatId ? ` → telegram ${job.chatId}` : ""}`,
-          },
-        ],
+        content: [{ type: "text", text: `Created cron job "${job.name}" (${job.id})` }],
         details: { job },
       };
     },

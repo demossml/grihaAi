@@ -32,7 +32,7 @@ const ANOMALIES_DB = path.join(getConfigDir(), "anomalies.sqlite");
 let finance: FinanceService | null = null;
 let anomalies: AnomalyService | null = null;
 
-export function getFinance(): FinanceService {
+function getFinance(): FinanceService {
   if (!finance) {
     finance = new FinanceService(FINANCE_DB);
     finance.init();
@@ -82,11 +82,7 @@ export default function financeExtension(pi: ExtensionAPI): void {
       _onUpdate: unknown,
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ id: string }>> {
-      const expense = getFinance().addExpense({
-        userId: resolveUserId(ctx),
-        ...params,
-        chatId: getSessionContext(ctx.sessionManager.getSessionId())?.chatId,
-      });
+      const expense = getFinance().addExpense({ userId: resolveUserId(ctx), ...params });
       return {
         content: [{ type: "text", text: `Expense ${expense.id} recorded.` }],
         details: { id: expense.id },

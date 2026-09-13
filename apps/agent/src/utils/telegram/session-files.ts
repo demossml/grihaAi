@@ -9,8 +9,6 @@
  * `user-rules/context.ts` — registries keyed by session id, never a second
  * messaging channel.
  */
-import fs from "node:fs";
-import path from "node:path";
 
 /** Telegram inline keyboard button. */
 export interface InlineButton {
@@ -22,77 +20,13 @@ export interface InlineButton {
 export interface SessionFileRecord {
   filePath: string;
   caption?: string;
-  /** R3: Telegram шлёт ТОЛЬКО файл — без текста, подписи и кнопок. */
-  attachmentOnly?: boolean;
-  /** R3: идемпотентность — повторная отправка с тем же ключом игнорируется. */
-  dedupeKey?: string;
-}
-
-export interface SetSessionFileOptions {
-  attachmentOnly?: boolean;
-  dedupeKey?: string;
 }
 
 const fileRegistry = new Map<string, SessionFileRecord>();
 const buttonsRegistry = new Map<string, InlineButton[][]>();
 
-export function setSessionFile(
-  sessionId: string,
-  filePath: string,
-  caption?: string,
-  options?: SetSessionFileOptions,
-): void {
-  fileRegistry.set(sessionId, {
-    filePath,
-    caption,
-    attachmentOnly: options?.attachmentOnly,
-    dedupeKey: options?.dedupeKey,
-  });
-}
-
-/** D1/D2: канонический путь (realpath с fallback) для сравнения. */
-export function canonicalFilePath(p: string): string {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
-}
-
-/** Заглянуть в pending-файл сессии, не забирая его (для дедупа send_file). */
-export function peekSessionFileRecord(sessionId: string): SessionFileRecord | undefined {
-  return fileRegistry.get(sessionId);
-}
-
-/** D2: файл с тем же (каноническим) путём уже ждёт автоотправки в этой сессии. */
-export function hasPendingSessionFile(sessionId: string, filePath: string): boolean {
-  const rec = fileRegistry.get(sessionId);
-  if (!rec?.filePath) return false;
-  return canonicalFilePath(rec.filePath) === canonicalFilePath(filePath);
-}
-
-// ── D2: «уже отправлен» — per-session Map с TTL 10 минут ────────────────────
-
-const recentSent = new Map<string, number>();
-const RECENT_SENT_TTL_MS = 10 * 60 * 1000;
-
-function recentKey(sessionId: string, filePath: string): string {
-  return `${sessionId}|${canonicalFilePath(filePath)}`;
-}
-
-export function wasRecentlySentFile(sessionId: string, filePath: string): boolean {
-  const ts = recentSent.get(recentKey(sessionId, filePath));
-  return ts !== undefined && Date.now() - ts < RECENT_SENT_TTL_MS;
-}
-
-export function markRecentlySentFile(sessionId: string, filePath: string): void {
-  if (recentSent.size > 500) {
-    const cutoff = Date.now() - RECENT_SENT_TTL_MS;
-    for (const [k, ts] of recentSent) {
-      if (ts < cutoff) recentSent.delete(k);
-    }
-  }
-  recentSent.set(recentKey(sessionId, filePath), Date.now());
+export function setSessionFile(sessionId: string, filePath: string, caption?: string): void {
+  fileRegistry.set(sessionId, { filePath, caption });
 }
 
 /** Return and clear the pending file for a session, if any (compat wrapper). */

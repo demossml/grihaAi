@@ -6,16 +6,6 @@
 
 export type DocumentKind = "receipt" | "invoice" | "waybill" | "unknown";
 
-/** F-модель: структурированная позиция чека (свободные строки, не enum). */
-export interface ExpenseLineItem {
-  name: string;
-  qty?: number;
-  /** м, шт, кг, упак… — свободная строка. */
-  unit?: string;
-  amount?: number;
-  category?: string | null;
-}
-
 export interface ExpenseDocument {
   id: string;
   chatId: string;
@@ -40,14 +30,6 @@ export interface ExpenseDocument {
   source: "telegram";
   createdAt: string;
   updatedAt: string;
-  /** F3: свободная строка (или null), ставится при ingest, правится юзером. */
-  category?: string | null;
-  /** F1: свободные теги. */
-  tags?: string[];
-  /** F6: позиции чека из OCR/LLM (null = не разобрано). */
-  lineItems?: ExpenseLineItem[] | null;
-  /** F1: escape hatch — произвольные атрибуты без enum-схемы. */
-  attrs?: Record<string, string | number> | null;
 }
 
 export interface ExpensesQuery {
@@ -61,7 +43,7 @@ export interface ExpensesQuery {
   fromDate?: string;
   /** OPTIONAL YYYY-MM-DD inclusive */
   toDate?: string;
-  /** default 50 for list; «весь период» (без дат) может доходить до 10 000 */
+  /** default 50 for list, max 200 */
   limit?: number;
 }
 
@@ -80,14 +62,6 @@ export interface ExpensesQueryResult {
     currency: string;
     needsReview: boolean;
     fileName?: string;
-    category?: string | null;
   }>;
-  note?: string;
-}
-
-/** F4: исправление категории/тегов пользователем + обучение (chat-scoped). */
-export interface ExpenseUpdatePatch {
-  category?: string | null;
-  addTags?: string[];
   note?: string;
 }

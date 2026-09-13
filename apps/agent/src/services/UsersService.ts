@@ -57,8 +57,6 @@ export interface UsersServiceOptions {
 
 export class UsersService {
   private cache: BotUser[] | null = null;
-  /** P06: WARN об отсутствии owner — один раз за жизнь сервиса. */
-  private ownerWarned = false;
 
   constructor(
     private readonly filePath: string,
@@ -132,15 +130,6 @@ export class UsersService {
     }
 
     return this.mode() === "open";
-  }
-
-  /**
-   * DM (A2): только явно заведённые пользователи с role !== blocked.
-   * Глобальный open-режим НИКОГДА не пускает посторонних в личку.
-   */
-  async isAllowedPrivate(userId: string | number): Promise<boolean> {
-    const u = await this.get(userId);
-    return Boolean(u && u.role !== "blocked");
   }
 
   /** Может ли менять ACL: owner/admin. Главная (не-Telegram) сессия = оператор. */
@@ -219,16 +208,7 @@ export class UsersService {
   /** Bootstrap: owner из config/env. Если id задан — upsert role="owner". */
   async ensureOwner(id?: string | null): Promise<void> {
     const ownerId = normalizeUserId(id ?? "").replace(/^@/, "");
-    if (!ownerId) {
-      // P06: прод без owner должен быть диагностируем, но не падать при старте.
-      if (!this.ownerWarned) {
-        this.ownerWarned = true;
-        console.warn(
-          "[users-acl] Telegram/Users: owner is not configured; management commands are disabled",
-        );
-      }
-      return;
-    }
+    if (!ownerId) return;
     const users = await this.list();
     const idx = users.findIndex((x) => x.id === ownerId);
     const nowIso = this.now().toISOString();
