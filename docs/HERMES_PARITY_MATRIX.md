@@ -68,7 +68,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 |---|---|---|---|---|---|---|---|
 | F1 | Discovery + progressive disclosure (levels 0/1/2) | docs skills | **Item 6.1**: `discloseSkill` (уровни 0/1/2) в `src/runtime/skill/disclosure.ts`; существующий discovery не менялся | **PARTIAL** (дисклозер готов) | wiring в формат промпта за флагом | низкий | — |
 | F2 | `skill_manage` create/patch/edit/delete/write_file/remove_file | docs skills | **Item 6.2**: построчный LCS-`diffLines` + `diffChangeCount`/`applyDiff` в `src/runtime/skill/diff.ts` (основа patch/validation) | **PARTIAL** (diff готов) | tool-операции поверх diff | средний | — |
-| F3 | Версионирование: read-before-write, diff, validation, rollback | Hermes issue #55647 урок | **Item 6.3**: `SkillVersionStore` (propose/evaluate/approveAndActivate/rollback; поля §14: version/parentVersion/diff/author/evaluation/rollbackVersion/active) в `src/runtime/skill/versioning.ts` | **PARTIAL** (логика готова) | персистентность + wiring в skill_manage | высокий | F2 |
+| F3 | Версионирование: read-before-write, diff, validation, rollback | Hermes issue #55647 урок | **Item 6.3**: `SkillVersionStore` (propose/evaluate/approveAndActivate/rollback; поля §14: version/parentVersion/diff/author/evaluation/rollbackVersion/active) в `src/runtime/skill/versioning.ts`; **W4**: propose на core-edit; **F3-wiring**: `activateSkillProposal` (quality-gate + переключение SKILL.md + active.txt) в `/skills-approve`, команда `/skills-rollback` (v1-база — точка отката), всё за флагом | **COMPLETE** | — | — | — |
 | F4 | Skill quality score (successRate/usage/regression) | spec | **Item 7.4**: `SkillQualityTracker` (decay-взвешенный score, regression-окно) в `src/runtime/learning/quality.ts` | **PARTIAL** (трекер готов) | wiring: исходы из вызовов скиллов | низкий | F3 |
 | F5 | `/learn` из источников | docs skills | `learning-extractor` (частично) | **PARTIAL** | Phase 7 | средний | F2 |
 | F6 | Hub/регистры/сканы при установке | docs skills hub | нет | **NOT_APPLICABLE** (offline-ассистент) | — | — | — |
@@ -167,8 +167,8 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | Статус | Кол-во |
 |---|---|
-| COMPLETE | 38 |
-| PARTIAL | 29 |
+| COMPLETE | 39 |
+| PARTIAL | 28 |
 | MISSING | 1 (F7 slash-команды по скиллам — низкий приоритет) |
 | DIFFERENT | 0 (DIFFERENT-статусы задокументированы внутри COMPLETE-строк) |
 | NOT_APPLICABLE | 2 (C5 prompt-cache, F6 offline-hub) |

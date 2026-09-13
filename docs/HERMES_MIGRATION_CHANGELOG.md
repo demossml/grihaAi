@@ -78,6 +78,7 @@
 | 2026-09-13 | I1 (execute_code tool) | **Нет изменений БД** | core-agent/execute-code.ts, core-agent/index.ts | wiring-execute-code.test.ts | — |
 | 2026-09-13 | C2 (структурная компакция в ContextBuilder) | **Нет изменений БД** | ContextBuilder.ts | wiring-compaction.test.ts | — |
 | 2026-09-13 | K4 (injection-stage: MCP-результаты) | **Нет изменений БД** | injection-gate.ts, mcp-session.ts, mcp-runtime/index.ts | wiring-injection.test.ts | — |
+| 2026-09-13 | F3 (skill version activate/rollback) | **Нет изменений БД** | skill-improver.ts, personal-learning/index.ts | wiring-skill-versions.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

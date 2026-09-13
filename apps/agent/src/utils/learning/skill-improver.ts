@@ -267,3 +267,102 @@ export async function applySkillProposal(
   );
   return target;
 }
+
+/** F3: файл-маркер активной версии (core/.versions/active.txt). */
+async function readActiveVersion(skillsRoot: string): Promise<number | null> {
+  const marker = path.join(skillsRoot, "core", ".versions", "active.txt");
+  const raw = await fs.readFile(marker, "utf8").catch(() => "");
+  const parsed = Number(raw.trim());
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function writeActiveVersion(skillsRoot: string, version: number): Promise<void> {
+  const versionsDir = path.join(skillsRoot, "core", ".versions");
+  await fs.mkdir(versionsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(versionsDir, "active.txt"),
+    String(version),
+    "utf8",
+  );
+}
+
+/**
+ * F3 (§14): активация предложенной версии скилла.
+ * Flag on → quality-gate (evaluate) + approveAndActivate, SKILL.md переключается
+ * на новый контент; маркер active.txt обновляется. Off → прямое применение
+ * (старое поведение). «Хуже-версия не активируется» — через score-порог store.
+ */
+export async function activateSkillProposal(
+  proposal: SkillProposal,
+  skillsRoot: string,
+  options: { env?: NodeJS.ProcessEnv; qualityScore?: number } = {},
+): Promise<string> {
+  if (!isAgentRuntimeEnabled(options.env ?? process.env)) {
+    return applySkillProposal(proposal, skillsRoot, options);
+  }
+  if (proposal.kind !== "core-edit") {
+    return applySkillProposal(proposal, skillsRoot, options);
+  }
+  const target = path.join(skillsRoot, "core", "SKILL.md");
+  const versionsDir = path.join(skillsRoot, "core", ".versions");
+  const entries = await fs.readdir(versionsDir).catch(() => []);
+  const candidates = entries
+    .filter((f) => /^v\d+\.md$/.test(f))
+    .map((f) => Number(f.slice(1, -3)))
+    .sort((a, b) => b - a);
+  if (candidates.length === 0) {
+    throw new Error("no skill versions proposed — nothing to activate");
+  }
+  const latest = candidates[0];
+  const candidateContent = await fs.readFile(
+    path.join(versionsDir, `v${latest}.md`),
+    "utf8",
+  );
+  const existing = await fs.readFile(target, "utf8").catch(() => "");
+  // Базовая версия (v1) сохраняется при первой активации — точка отката.
+  const v1File = path.join(versionsDir, "v1.md");
+  const v1Exists = await fs
+    .access(v1File)
+    .then(() => true)
+    .catch(() => false);
+  if (!v1Exists) {
+    await fs.writeFile(v1File, existing || "# Core\n", "utf8");
+  }
+  const store = getVersionStore(target, existing || "# Core\n");
+  const proposed = store.propose(candidateContent, "skills-approve");
+  const score = options.qualityScore ?? 0.5;
+  store.evaluate(proposed.version, score, 0.5);
+  const result = store.approveAndActivate(proposed.version);
+  if (!result.activated) {
+    throw new Error(`skill activation failed: ${result.reason}`);
+  }
+  const activeContent = store.content();
+  await fs.writeFile(target, activeContent, "utf8");
+  await writeActiveVersion(skillsRoot, proposed.version);
+  return target;
+}
+
+/** F3 (§14): откат к предыдущей активной версии скилла. */
+export async function rollbackSkillVersion(
+  skillsRoot: string,
+  options: { env?: NodeJS.ProcessEnv } = {},
+): Promise<{ ok: boolean; message: string }> {
+  if (!isAgentRuntimeEnabled(options.env ?? process.env)) {
+    return { ok: false, message: "skill versioning disabled (flag off)" };
+  }
+  const target = path.join(skillsRoot, "core", "SKILL.md");
+  const versionsDir = path.join(skillsRoot, "core", ".versions");
+  const active = await readActiveVersion(skillsRoot);
+  if (active === null || active <= 1) {
+    return { ok: false, message: "no previous version to roll back to" };
+  }
+  const previous = active - 1;
+  const previousFile = path.join(versionsDir, `v${previous}.md`);
+  const previousContent = await fs.readFile(previousFile, "utf8").catch(() => "");
+  if (!previousContent.trim()) {
+    return { ok: false, message: `previous version v${previous} not found` };
+  }
+  await fs.writeFile(target, previousContent, "utf8");
+  await writeActiveVersion(skillsRoot, previous);
+  return { ok: true, message: `rolled back to v${previous}` };
+}

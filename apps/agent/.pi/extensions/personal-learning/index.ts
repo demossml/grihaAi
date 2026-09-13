@@ -16,8 +16,10 @@ import {
 import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
 import {
   SkillProposalStore,
+  activateSkillProposal,
   applySkillProposal,
   proposeSkillImprovement,
+  rollbackSkillVersion,
   type SkillProposal,
 } from "../../../src/utils/learning/skill-improver.js";
 import { formatPersonalContext } from "../../../src/utils/learning/personal-context.js";
@@ -415,9 +417,27 @@ export default function personalLearning(pi: ExtensionAPI): void {
         pi.sendMessage({ customType: "skills-approve-error", content: [{ type: "text", text: `Proposal ${id} is already ${proposal.status}.` }], display: true });
         return;
       }
-      const target = await applySkillProposal(proposal, getSkillsRoot());
+      const target = await activateSkillProposal(proposal, getSkillsRoot(), {
+        env: process.env,
+      });
       await store.updateStatus(id, "applied");
       pi.sendMessage({ customType: "skills-approve", content: [{ type: "text", text: `Applied "${proposal.title}" → ${target}` }], display: true });
+    },
+  });
+
+  // F3 (§14): откат активной версии скилла к предыдущей (за флагом).
+  pi.registerCommand("skills-rollback", {
+    description: "Roll back the active core skill version",
+    async handler() {
+      const result = await rollbackSkillVersion(getSkillsRoot(), {
+        env: process.env,
+      });
+      pi.sendMessage({
+        customType: "skills-rollback",
+        content: [{ type: "text", text: result.ok ? `✅ ${result.message}` : `⚠️ ${result.message}` }],
+        display: true,
+        details: result,
+      });
     },
   });
 

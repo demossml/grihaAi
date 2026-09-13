@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: K4 (VERIFIED)
+Current item: F3 (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: K4 — injection-stage (scanContent + MCP-результаты) за флагом
-Last commits: 0115a8c (C2), K4 (этот коммит)
+Last completed items: F3 — skill version activate/rollback за флагом
+Last commits: 3e7ec55 (K4), F3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
