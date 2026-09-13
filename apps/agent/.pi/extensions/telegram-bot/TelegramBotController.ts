@@ -641,6 +641,52 @@ export class TelegramBotController {
   }
 
   /**
+   * P02 (cron): server-side статус actor в чате через ТЕКУЩИЙ bot.
+   * Используется cron-авторизацией group-target (fail closed при отсутствии бота).
+   */
+  async chatMemberStatus(chatId: number, userId: number): Promise<{ status: string }> {
+    const bot = this.bot;
+    if (!bot) throw new Error("bot not running");
+    const m = await bot.api.getChatMember(chatId, userId);
+    return { status: m.status };
+  }
+
+  /**
+   * P02 (cron): внешняя доставка текста в чат/тему — существующая per-chat
+   * очередь + sendWithRetry текущего бота (не вторая send/retry-система).
+   * permanent — для ошибок, которые не уйдут при повторе (403/400).
+   */
+  async deliverExternalText(
+    chatId: number,
+    threadId: number | undefined,
+    text: string,
+  ): Promise<{ ok: boolean; permanent?: boolean; error?: string }> {
+    const bot = this.bot;
+    if (!bot) return { ok: false, error: "bot not running" };
+    let lastKind: ParsedTelegramError["kind"] | undefined;
+    let sent = false;
+    await this.sendQueue.enqueue(chatId, async () => {
+      sent = await this.sendWithRetry(
+        () =>
+          bot.api
+            .sendMessage(
+              chatId,
+              text,
+              threadId !== undefined ? { messageThreadId: threadId } : {},
+            )
+            .catch((err: unknown) => {
+              lastKind = parseTelegramError(err).kind;
+              throw err;
+            }),
+        "cron-delivery",
+      );
+    });
+    if (sent) return { ok: true };
+    const permanent = lastKind === "forbidden" || lastKind === "bad_request";
+    return { ok: false, permanent, error: `send failed (kind=${lastKind ?? "unknown"})` };
+  }
+
+  /**
    * Отправка с ретраями: до maxAttempts попыток с нарастающей паузой
    * (по умолчанию 3с × attempt). Возвращает true при успехе, false — после
    * исчерпания попыток (не бросает: сбой отправки не должен ронять polling).

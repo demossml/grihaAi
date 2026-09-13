@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
 import { computeCronStateSnapshot } from "./real-cron.js";
+import type { CronDelivery } from "./cron-bridge.js";
 
 export interface CronJobInput {
   name: string;
@@ -11,6 +12,8 @@ export interface CronJobInput {
   continuity?: boolean;
   monitorMode?: boolean;
   projectId?: string;
+  /** P02: Telegram-цель доставки (chat + optional forum thread). */
+  telegramTarget?: { chatId: string; threadId?: string };
 }
 
 /** Executes a cron job. Swap for a real LLM runner later. */
@@ -36,6 +39,8 @@ interface CronJobRow {
   notepad: string | null;
   state_snapshot: string | null;
   project_id: string | null;
+  chat_id: string | null;
+  thread_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,6 +53,7 @@ interface CronRunRow {
   status: string;
   result: string | null;
   used_llm: number;
+  delivery_status: string | null;
 }
 
 const SCHEMA_SQL = `
@@ -64,6 +70,8 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
   state_snapshot TEXT,
   notepad TEXT,
   project_id TEXT,
+  chat_id TEXT,
+  thread_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -75,7 +83,8 @@ CREATE TABLE IF NOT EXISTS cron_runs (
   finished_at TEXT,
   status TEXT NOT NULL,
   result TEXT,
-  used_llm INTEGER NOT NULL DEFAULT 0
+  used_llm INTEGER NOT NULL DEFAULT 0,
+  delivery_status TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cron_runs_job ON cron_runs(job_id);
@@ -102,6 +111,12 @@ export class CronService {
     private readonly runner?: CronRunner,
     private readonly changeDetector?: CronChangeDetector,
     private readonly clock: () => Date = () => new Date(),
+    /** P02: фабрика доставки результата в Telegram (registry читается в момент доставки). */
+    private readonly deliveryFactory?: () => CronDelivery | null,
+    /** P02: пауза между ретраями доставки, ms. */
+    private readonly deliveryRetryDelayMs = 2_000,
+    /** P02: число ДОПОЛНИТЕЛЬНЫХ ретраев доставки при временной ошибке. */
+    private readonly deliveryRetries = 2,
   ) {}
 
   private requireDb(): Database.Database {
@@ -118,6 +133,17 @@ export class CronService {
     const cols = this.db.prepare(`PRAGMA table_info(cron_jobs)`).all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === "state_snapshot")) {
       this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN state_snapshot TEXT`);
+    }
+    // P02: Telegram delivery target — nullable, backward-compatible.
+    if (!cols.some((c) => c.name === "chat_id")) {
+      this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN chat_id TEXT`);
+    }
+    if (!cols.some((c) => c.name === "thread_id")) {
+      this.db.exec(`ALTER TABLE cron_jobs ADD COLUMN thread_id TEXT`);
+    }
+    const runCols = this.db.prepare(`PRAGMA table_info(cron_runs)`).all() as Array<{ name: string }>;
+    if (!runCols.some((c) => c.name === "delivery_status")) {
+      this.db.exec(`ALTER TABLE cron_runs ADD COLUMN delivery_status TEXT`);
     }
   }
 
@@ -145,12 +171,14 @@ export class CronService {
       notepad: null,
       state_snapshot: null,
       project_id: input.projectId ?? null,
+      chat_id: input.telegramTarget?.chatId ?? null,
+      thread_id: input.telegramTarget?.threadId ?? null,
       created_at: now,
       updated_at: now,
     };
     db.prepare(
-      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, state_snapshot, project_id, created_at, updated_at)
-       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @state_snapshot, @project_id, @created_at, @updated_at)`,
+      `INSERT INTO cron_jobs (id, name, schedule, prompt, enabled, continuity, monitor_mode, last_run_at, last_result, notepad, state_snapshot, project_id, chat_id, thread_id, created_at, updated_at)
+       VALUES (@id, @name, @schedule, @prompt, @enabled, @continuity, @monitor_mode, @last_run_at, @last_result, @notepad, @state_snapshot, @project_id, @chat_id, @thread_id, @created_at, @updated_at)`,
     ).run(row);
     return this.rowToJob(row);
   }
@@ -270,6 +298,9 @@ export class CronService {
           .run(computeCronStateSnapshot(job), job.id);
       }
 
+      // P02: доставка в Telegram НЕ влияет на статус задачи (execution ≠ delivery).
+      const deliveryStatus = await this.deliverTelegram(job, result);
+
       return this.insertRun({
         id: runId,
         jobId: job.id,
@@ -278,6 +309,7 @@ export class CronService {
         status: "success",
         result,
         usedLlm,
+        deliveryStatus,
       });
     } catch (error) {
       return this.insertRun({
@@ -292,11 +324,61 @@ export class CronService {
     }
   }
 
+  /**
+   * P02: доставка результата в Telegram с ограниченным retry.
+   * Временные ошибки — до deliveryRetries повторов; permanent (403/400) —
+   * сразу фиксируется. Отсутствие моста/цели — "skipped" с диагностикой.
+   */
+  private async deliverTelegram(
+    job: CronJob,
+    text: string,
+  ): Promise<CronRunRecord["deliveryStatus"]> {
+    if (!job.chatId) return undefined;
+    const delivery = this.deliveryFactory?.();
+    if (!delivery) {
+      console.warn(
+        `[cron] no Telegram delivery bridge configured — job "${job.name}" result not delivered to ${job.chatId}`,
+      );
+      return "skipped";
+    }
+    const attempts = 1 + this.deliveryRetries;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      let res: { ok: boolean; permanent?: boolean; error?: string };
+      try {
+        res = await delivery(job.chatId, job.threadId, text);
+      } catch (err: unknown) {
+        res = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+      if (res.ok) {
+        console.log(`[cron] telegram delivery ok job="${job.name}" chat=${job.chatId}`);
+        return "ok";
+      }
+      if (res.permanent) {
+        console.error(
+          `[cron] telegram delivery permanent failure job="${job.name}" chat=${job.chatId}: ${res.error ?? "unknown"}`,
+        );
+        return "permanent_failure";
+      }
+      if (attempt < attempts) {
+        console.warn(
+          `[cron] telegram delivery temporary failure (attempt ${attempt}/${attempts}) job="${job.name}" chat=${job.chatId}: ${res.error ?? "unknown"}`,
+        );
+        await new Promise((r) => setTimeout(r, this.deliveryRetryDelayMs));
+      } else {
+        console.error(
+          `[cron] telegram delivery failed job="${job.name}" chat=${job.chatId}: ${res.error ?? "unknown"}`,
+        );
+        return "failed";
+      }
+    }
+    return "failed";
+  }
+
   private insertRun(run: CronRunRecord): CronRunRecord {
     const db = this.requireDb();
     db.prepare(
-      `INSERT INTO cron_runs (id, job_id, started_at, finished_at, status, result, used_llm)
-       VALUES (@id, @job_id, @started_at, @finished_at, @status, @result, @used_llm)`,
+      `INSERT INTO cron_runs (id, job_id, started_at, finished_at, status, result, used_llm, delivery_status)
+       VALUES (@id, @job_id, @started_at, @finished_at, @status, @result, @used_llm, @delivery_status)`,
     ).run({
       id: run.id,
       job_id: run.jobId,
@@ -305,6 +387,7 @@ export class CronService {
       status: run.status,
       result: run.result ?? null,
       used_llm: run.usedLlm ? 1 : 0,
+      delivery_status: run.deliveryStatus ?? null,
     });
     return run;
   }
@@ -323,6 +406,8 @@ export class CronService {
       notepad: row.notepad ?? undefined,
       stateSnapshot: row.state_snapshot ?? undefined,
       projectId: row.project_id ?? undefined,
+      chatId: row.chat_id ?? undefined,
+      threadId: row.thread_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -337,6 +422,7 @@ export class CronService {
       status: row.status as CronRunRecord["status"],
       result: row.result ?? undefined,
       usedLlm: row.used_llm !== 0,
+      deliveryStatus: (row.delivery_status as CronRunRecord["deliveryStatus"]) ?? undefined,
     };
   }
 }

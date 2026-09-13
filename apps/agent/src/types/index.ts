@@ -182,6 +182,9 @@ export interface CronJob {
   /** Snapshot of the monitorable state captured at the last successful run (monitorMode). */
   stateSnapshot?: string;
   projectId?: string;
+  /** P02: Telegram delivery target (chat + optional forum thread). */
+  chatId?: string;
+  threadId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -194,6 +197,8 @@ export interface CronRunRecord {
   status: "success" | "skipped" | "failed";
   result?: string;
   usedLlm: boolean;
+  /** P02: результат Telegram-доставки (не влияет на status задачи). */
+  deliveryStatus?: "ok" | "failed" | "permanent_failure" | "skipped";
 }
 
 /** Phase 9 — Continuous Personal Learning */

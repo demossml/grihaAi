@@ -57,6 +57,7 @@ import {
 import { presetRulesWithActor, presetMarkerKey, type PresetId } from "../chat-setup/RulePresets.js";
 import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
+import { setCronAuthCheck, setCronDelivery } from "../cron/cron-bridge.js";
 import { runUpdateCommand } from "../system-update/index.js";
 import { transcribeVoice } from "@griha/stt";
 
@@ -265,6 +266,17 @@ function getController(): TelegramBotController {
     const setup = getChatSetupService();
     // ACL для инструмента send_file — тот же источник (UsersService).
     setTelegramFileAclCheck((userId, chatId) => users.isAllowed(userId, chatId));
+    // P02: cron → Telegram. Registry читается в момент доставки; bot текущий.
+    setCronDelivery(async (chatId, threadId, text) => {
+      const c = controller;
+      if (!c) return { ok: false, error: "controller unavailable" };
+      return c.deliverExternalText(Number(chatId), threadId ? Number(threadId) : undefined, text);
+    });
+    setCronAuthCheck(async (chatId, userId) => {
+      const c = controller;
+      if (!c) throw new Error("controller unavailable");
+      return mapChatMemberStatus((await c.chatMemberStatus(Number(chatId), Number(userId))).status);
+    });
     controller = new TelegramBotController(
       grishaAgent(),
       cfg?.telegram?.allowedUserIds ?? [],
