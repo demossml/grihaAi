@@ -98,7 +98,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| I1 | execute_code (один скрипт вместо N tool calls) | spec | **Items 9.1–9.3**: `shouldUseExecuteCode`/`compactExecutionResult`, `classifyCodeRisk`/`sandboxForRisk` (опасный → runsc обязателен), `preflight`/`CodeExecutor` контракт в `src/runtime/programmatic/`; исполнение — существующий sandbox-слой | **PARTIAL** (план+безопасность+контракт) | wiring вызова в sandbox | высокий (безопасность) | K1 |
+| I1 | execute_code (один скрипт вместо N tool calls) | spec | **Items 9.1–9.3**: `shouldUseExecuteCode`/`compactExecutionResult`, `classifyCodeRisk`/`sandboxForRisk` (опасный → runsc обязателен), `preflight`/`CodeExecutor` контракт в `src/runtime/programmatic/`; **I1-wiring**: инструмент `execute_code` в core-agent — за флагом: preflight → node `-e` в sandbox (local/runsc по риску), compact-результат, python запрещён, sandbox-missing → ошибка; off = disabled | **COMPLETE** | — | — | — |
 | I2 | Sandbox исполнения команд | docs security | `src/sandbox` (local + gVisor runsc) | **COMPLETE** | — | — | — |
 
 ## J. Automation / Cron
@@ -167,15 +167,15 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | Статус | Кол-во |
 |---|---|
-| COMPLETE | 35 |
-| PARTIAL | 32 |
+| COMPLETE | 36 |
+| PARTIAL | 31 |
 | MISSING | 1 (F7 slash-команды по скиллам — низкий приоритет) |
 | DIFFERENT | 0 (DIFFERENT-статусы задокументированы внутри COMPLETE-строк) |
 | NOT_APPLICABLE | 2 (C5 prompt-cache, F6 offline-hub) |
 | UNKNOWN | 0 (непроверяемое вынесено в PARTIAL/риски) |
 
 MISSING: только F7 (slash-команды по скиллам, низкий приоритет). Оставшийся риск — в PARTIAL: B5 отдельные aux-модели, C2 compaction
-(production), F3 skill rollback (данные), I1 execute_code (безопасность),
+(production), F3 skill rollback (данные),
 отдельные шаги (дашборд observability, runsc-апгрейд MCP, thread_id-доставка,
 групповой profile-override). Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
 за флагом `HERMES_AGENT_RUNTIME`; off = полный паритет со старым поведением.

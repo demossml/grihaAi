@@ -1,9 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { discoverSkills, formatSkillsForPrompt } from "@griha/skills";
 import { loadConfig } from "@griha/config";
 import { buildRouterHint } from "../../../src/utils/routing/adaptive-router.js";
 import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
 import { buildProfileSection } from "./profile-section.js";
+import { runExecuteCode } from "./execute-code.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",
@@ -94,6 +96,30 @@ export default function coreAgent(pi: ExtensionAPI): void {
         display: true,
         details: skills,
       });
+    },
+  });
+
+  // I1 (§20): execute_code — N операций одним вызовом, sandbox обязателен для
+  // опасного кода. Off = инструмент отвечает disabled без исполнения.
+  pi.registerTool({
+    name: "execute_code",
+    label: "Execute code",
+    description:
+      "Выполнить TypeScript/JavaScript-код в sandbox (одна операция вместо серии tool-calls). Опасный код требует runsc. Python запрещён. Активно только при HERMES_AGENT_RUNTIME=1.",
+    parameters: Type.Object({
+      language: Type.Union([Type.Literal("typescript"), Type.Literal("javascript"), Type.Literal("python")]),
+      code: Type.String(),
+      expectedResult: Type.Optional(Type.String()),
+    }),
+    async execute(
+      _toolCallId: string,
+      params: { language: "typescript" | "javascript" | "python"; code: string; expectedResult?: string },
+    ) {
+      const outcome = await runExecuteCode(params, process.env);
+      return {
+        content: [{ type: "text", text: outcome.text }],
+        details: outcome,
+      };
     },
   });
 }

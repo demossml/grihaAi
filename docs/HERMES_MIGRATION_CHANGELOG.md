@@ -75,6 +75,7 @@
 | 2026-09-13 | W12 (Bot profiles: persona-секция) | **Нет изменений БД** | core-agent/profile-section.ts, core-agent/index.ts, shared-types (`profile`) | wiring-profiles.test.ts | — |
 | 2026-09-13 | W13 (Telemetry/cost в ModelRouter.call) | **Нет изменений БД** | runtime-observability.ts, model-router.ts | wiring-observability.test.ts | — |
 | 2026-09-13 | B3 (FallbackChain в ModelRouter.call) | **Нет изменений БД** | model-router.ts, runtime-observability.ts, shared-types (`models.fallbackModels`) | wiring-fallback.test.ts | — |
+| 2026-09-13 | I1 (execute_code tool) | **Нет изменений БД** | core-agent/execute-code.ts, core-agent/index.ts | wiring-execute-code.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

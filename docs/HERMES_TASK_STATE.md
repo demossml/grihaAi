@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: B3 (VERIFIED)
+Current item: I1 (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: B3 — FallbackChain в ModelRouter.call за флагом
-Last commits: 64d3337 (финальная оценка), B3 (этот коммит)
+Last completed items: I1 — execute_code tool (sandbox за флагом)
+Last commits: 5eeb0dc (B3), I1 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
