@@ -171,6 +171,31 @@ describe("onboarding handlers", () => {
     assert.ok(sent[0].hasButtons, "кнопки пресетов — в DM");
   });
 
+  it("P07: channel → отдельный текст (архив постов) без пресет-клавиатуры", async () => {
+    const { setup } = makeSetup();
+    const sent: Array<{ chatId: number; text: string; hasButtons: boolean }> = [];
+    await onChatMemberAdded(
+      {
+        oldStatus: "left",
+        newStatus: "administrator",
+        chat: { id: -200, type: "channel", title: "Новости" },
+        from: { id: 42 },
+      },
+      {
+        setup,
+        users: { canManage: async () => true },
+        sendMessage: async (chatId, text, extra) => {
+          sent.push({ chatId, text, hasButtons: (extra?.inlineButtons?.length ?? 0) > 0 });
+        },
+      },
+    );
+    assert.equal(sent.length, 1);
+    assert.ok(sent[0].text.includes("Новости"));
+    assert.ok(sent[0].text.includes("архивировать посты"));
+    assert.ok(sent[0].text.includes("группа обсуждений"), "подсказка про discussion group");
+    assert.equal(sent[0].hasButtons, false, "в канал пресеты не предлагаются");
+  });
+
   it("second add after completed → no DM, no rule rewrite", async () => {
     const { setup, rules } = makeSetup();
     const sent: string[] = [];

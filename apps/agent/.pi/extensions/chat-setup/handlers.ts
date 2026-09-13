@@ -15,6 +15,7 @@ import {
   buildOnboardingText,
   dedupeByKey,
   describeRules,
+  escapeHtml,
   parseCustomRulesText,
   PRESETS,
   type PresetId,
@@ -116,12 +117,22 @@ export async function onChatMemberAdded(
 
   const title = event.chat.title ?? chatId;
 
+  // P07: канал ≠ группа — диалога с подписчиками в канале нет. Отдельный текст
+  // без пресет-клавиатуры: архив постов + подсказка про группу обсуждений.
+  const isChannel = event.chat.type === "channel";
+  const dmText = isChannel
+    ? `Меня добавили в канал «${escapeHtml(title)}».\n\n` +
+      `Я буду молча архивировать посты канала. Отвечать пользователям в самом канале я не могу — ` +
+      `Telegram не позволяет подписчикам писать в канал. Если у канала есть группа обсуждений — ` +
+      `добавьте меня туда отдельно и настройте её как обычную группу (/setup в личном чате).`
+    : buildOnboardingText(title);
+
   // R-GR-2: онбординг-UI (кнопки пресетов) — ТОЛЬКО в DM. Один короткий fallback
   // в группу — только если DM не доставлен в момент добавления (без кнопок).
   try {
-    await deps.sendMessage(Number(actorId), buildOnboardingText(title), {
+    await deps.sendMessage(Number(actorId), dmText, {
       parseMode: "HTML",
-      inlineButtons: buildOnboardingKeyboard(chatId),
+      inlineButtons: isChannel ? undefined : buildOnboardingKeyboard(chatId),
     });
   } catch {
     // DM недоступен (нет /start) — короткая строка в группу, без кнопок пресетов.
