@@ -109,7 +109,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | J2 | One-shot / pause-resume / update / remove | docs cron | **Item 10.2**: §21 `AutomationEngine` контракт + `InMemoryAutomationEngine` (create/run/pause/resume/remove, one-shot→done) в `src/runtime/automation/engine.ts`; **W7**: `updateJob`/`removeJob`/`pauseJob`/`resumeJob` в `CronService` (аддитивные, поверх существующего `setEnabled`) | **COMPLETE** (one-shot — вне текущего schema, документировано) | — | — | — |
 | J3 | Fresh session на каждый прогон | docs cron | runner через SubAgentRunner (изолированная сессия) | **COMPLETE** | — | — | — |
 | J4 | No-agent (script) jobs | docs cron | **Item 10.3**: `ScriptJobSpec` + `validateScriptJob` + `scriptResultReport` в `src/runtime/automation/script.ts`; **W7**: `CronJob.script/scriptArgs` (nullable-колонки, идемпотентная миграция), в `run()` за флагом — валидация + исполнение через `CronScriptExecutor` (sandbox-слой `spawnToResult`), `usedLlm=false`, off = script игнорируется | **COMPLETE** (runsc-апгрейд executor — отдельный шаг) | — | — | — |
-| J5 | Delivery target в мессенджер | docs cron (gateway) | **Item 10.1**: P02-схема перенесена в main — `CronJob.chatId/threadId`, `CronRunRecord.deliveryStatus`, nullable-колонки + idempotent PRAGMA-миграции (тесты: clean + existing DB); Telegram-wiring НЕ переносится (M-слой не трогаем) | **PARTIAL** (схема в main) | wiring доставки за флагом | средний | J1 |
+| J5 | Delivery target в мессенджер | docs cron (gateway) | **Item 10.1**: P02-схема перенесена в main — `CronJob.chatId/threadId`, `CronRunRecord.deliveryStatus`, nullable-колонки + idempotent PRAGMA-миграции (тесты: clean + existing DB); **W10**: доставка за флагом — `CronDelivery` в CronService (успешные прогоны, execution≠delivery), `deliverCronResult` (P02-ретраи), `updateJob` умеет chatId/threadId | **COMPLETE** | — | — | — |
 
 ## K. Security / Approval
 
@@ -138,7 +138,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | M1 | Gateway → agent transport | gateway docs | **Сверено (Phase 13)**: `telegram-bot` (Bridge/Controller/Pool, retry, heartbeat, topics) — код НЕ менялся | **COMPLETE** (DIFFERENT, наш) | не трогать без необходимости | — | — |
 | M2 | Пер-групповые правила/mention/archive | gateway docs | group-runtime, prefilter, chat-setup, archive | **COMPLETE** | — | — | — |
 | M3 | Медиа/OCR/файлы | gateway media | полный конвейер (OCR/vision/expenses/retry) | **COMPLETE** | — | — | — |
-| M4 | Cron → Telegram | gateway cron | **Item 13.1**: `DeliveryTarget`/`DeliveryStatus`/`DeliveryTransport` + `classifyDeliveryError`/`shouldRetry` (P02: retry на временные, permanent→стоп, execution≠delivery) в `src/runtime/telegram/delivery.ts`; telegram-bot не менялся | **PARTIAL** (контракт готов) | wiring транспорта за флагом | средний | J1 |
+| M4 | Cron → Telegram | gateway cron | **Item 13.1**: `DeliveryTarget`/`DeliveryStatus`/`DeliveryTransport` + `classifyDeliveryError`/`shouldRetry` (P02: retry на временные, permanent→стоп, execution≠delivery) в `src/runtime/telegram/delivery.ts`; **W10**: `cron/delivery-wiring.ts` (notifier + `deliverCronResult` с P02-ретраями), telegram-bot регистрирует `sendNotify` (единственная правка TG-слоя), `CronService.deliveryStatus` пишется в `cron_runs`; thread_id-отправка — отдельный шаг (API sendNotify без message_thread_id) | **COMPLETE** | — | — | — |
 
 ## N. Proactive
 

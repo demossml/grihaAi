@@ -11,6 +11,10 @@ import {
   type ScriptJobSpec,
   type ScriptRunResult,
 } from "../../../src/runtime/automation/script.js";
+import type {
+  DeliveryStatus,
+  DeliveryTarget,
+} from "../../../src/runtime/telegram/delivery.js";
 
 export interface CronJobInput {
   name: string;
@@ -35,6 +39,9 @@ export interface CronJobPatch {
   monitorMode?: boolean;
   script?: string;
   scriptArgs?: string[];
+  /** J5 (P02): Telegram delivery target. */
+  chatId?: string;
+  threadId?: string;
 }
 
 /** Executes a cron job. Swap for a real LLM runner later. */
@@ -45,6 +52,11 @@ export interface CronRunner {
 /** W7 (J4): исполнение script-job (sandbox-слой). Инъекция для тестов. */
 export interface CronScriptExecutor {
   (spec: ScriptJobSpec): Promise<ScriptRunResult>;
+}
+
+/** W10 (M4): транспорт доставки результата в мессенджер (за флагом). */
+export interface CronDelivery {
+  (target: DeliveryTarget, text: string): Promise<{ status: DeliveryStatus }>;
 }
 
 /** Lightweight change detector for monitor mode (returns true = changed). */
@@ -143,6 +155,7 @@ export class CronService {
     private readonly clock: () => Date = () => new Date(),
     private readonly scriptExecutor?: CronScriptExecutor,
     private readonly env: NodeJS.ProcessEnv = process.env,
+    private readonly delivery?: CronDelivery,
   ) {}
 
   private requireDb(): Database.Database {
@@ -262,6 +275,8 @@ export class CronService {
         "script_args",
         (v) => (Array.isArray(v) && v.length > 0 ? JSON.stringify(v) : null),
       ],
+      ["chatId", "chat_id", (v) => (v == null || String(v) === "" ? null : String(v))],
+      ["threadId", "thread_id", (v) => (v == null || String(v) === "" ? null : String(v))],
     ];
     for (const [key, column, convert] of map) {
       if (patch[key] !== undefined) {
@@ -390,6 +405,8 @@ export class CronService {
           .run(computeCronStateSnapshot(job), job.id);
       }
 
+      const deliveryStatus = await this.deliverResult(job, result);
+
       return this.insertRun({
         id: runId,
         jobId: job.id,
@@ -398,6 +415,7 @@ export class CronService {
         status: "success",
         result,
         usedLlm,
+        deliveryStatus,
       });
     } catch (error) {
       return this.insertRun({
@@ -454,6 +472,7 @@ export class CronService {
       this.requireDb()
         .prepare(`UPDATE cron_jobs SET last_run_at = ?, last_result = ?, updated_at = ? WHERE id = ?`)
         .run(finishedAt, report, finishedAt, job.id);
+      const deliveryStatus = await this.deliverResult(job, report);
       return this.insertRun({
         id: runId,
         jobId: job.id,
@@ -462,6 +481,7 @@ export class CronService {
         status: "success",
         result: report,
         usedLlm: false,
+        deliveryStatus,
       });
     } catch (error) {
       return this.insertRun({
@@ -476,11 +496,26 @@ export class CronService {
     }
   }
 
+  /** W10 (M4): доставка результата успешного прогона. Off/без chatId → нет. */
+  private async deliverResult(
+    job: CronJob,
+    result: string,
+  ): Promise<CronRunRecord["deliveryStatus"]> {
+    if (!isAgentRuntimeEnabled(this.env) || !job.chatId || !this.delivery) {
+      return undefined;
+    }
+    const outcome = await this.delivery(
+      { chatId: job.chatId, threadId: job.threadId },
+      result,
+    );
+    return outcome.status;
+  }
+
   private insertRun(run: CronRunRecord): CronRunRecord {
     const db = this.requireDb();
     db.prepare(
-      `INSERT INTO cron_runs (id, job_id, started_at, finished_at, status, result, used_llm)
-       VALUES (@id, @job_id, @started_at, @finished_at, @status, @result, @used_llm)`,
+      `INSERT INTO cron_runs (id, job_id, started_at, finished_at, status, result, used_llm, delivery_status)
+       VALUES (@id, @job_id, @started_at, @finished_at, @status, @result, @used_llm, @delivery_status)`,
     ).run({
       id: run.id,
       job_id: run.jobId,
@@ -489,6 +524,7 @@ export class CronService {
       status: run.status,
       result: run.result ?? null,
       used_llm: run.usedLlm ? 1 : 0,
+      delivery_status: run.deliveryStatus ?? null,
     });
     return run;
   }

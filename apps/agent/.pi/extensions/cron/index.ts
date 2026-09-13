@@ -8,6 +8,7 @@ import { createRealSubAgentRunner } from "../multi-agent/RealSubAgentRunner.js";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
 import type { ScriptJobSpec, ScriptRunResult } from "../../../src/runtime/automation/script.js";
 import { spawnToResult } from "../../../src/sandbox/process.js";
+import { deliverCronResult } from "./delivery-wiring.js";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
 
@@ -46,6 +47,8 @@ async function getService(): Promise<CronService> {
       createRealCronChangeDetector((jobId) => svc.getStateSnapshot(jobId)),
       () => new Date(),
       scriptExecutor,
+      process.env,
+      deliverCronResult,
     );
     await svc.init();
     service = svc;

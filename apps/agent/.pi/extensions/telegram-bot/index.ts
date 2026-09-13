@@ -13,6 +13,7 @@ import {
   processMediaRetryJob,
   setExpenseBriefNotifier,
 } from "../../../src/services/documents/index.js";
+import { setCronDeliveryNotifier } from "../cron/delivery-wiring.js";
 import {
   MediaRetryQueue,
   isTransientMediaError,
@@ -573,6 +574,11 @@ async function startBot(): Promise<boolean> {
     await bootstrapUsers();
     getController().start(token);
     wireExpenseBriefNotify(getController());
+    // W10 (M4): Cron → TG доставка (P02). Единственная точка изменения
+    // Telegram-слоя в wiring-этапе: регистрация sendNotify-notifier.
+    setCronDeliveryNotifier(async (target, text) => {
+      await getController().sendNotify(Number(target.chatId), text);
+    });
     // R-GR-7: фоновый воркер ретраев медиа — с ботом стартует/останавливается.
     startMediaRetry();
     return true;
@@ -616,6 +622,7 @@ function wireExpenseBriefNotify(ctl: TelegramBotController): void {
 
 async function stopBot(): Promise<void> {
   await controller?.stop();
+  setCronDeliveryNotifier(null);
   stopMediaRetry();
 }
 
