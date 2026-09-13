@@ -77,6 +77,7 @@
 | 2026-09-13 | B3 (FallbackChain в ModelRouter.call) | **Нет изменений БД** | model-router.ts, runtime-observability.ts, shared-types (`models.fallbackModels`) | wiring-fallback.test.ts | — |
 | 2026-09-13 | I1 (execute_code tool) | **Нет изменений БД** | core-agent/execute-code.ts, core-agent/index.ts | wiring-execute-code.test.ts | — |
 | 2026-09-13 | C2 (структурная компакция в ContextBuilder) | **Нет изменений БД** | ContextBuilder.ts | wiring-compaction.test.ts | — |
+| 2026-09-13 | K4 (injection-stage: MCP-результаты) | **Нет изменений БД** | injection-gate.ts, mcp-session.ts, mcp-runtime/index.ts | wiring-injection.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

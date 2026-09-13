@@ -118,7 +118,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | K1 | Command approval | docs security | `approval-gate`, `approval-thresholds` skill | **COMPLETE** | — | — | — |
 | K2 | Action risk levels + requiresApproval | docs security | **Item 11.1**: `RiskLevel` (§24) + `classifyAction` (§25: read→safe … system→critical) + `requiresApproval` (конфигурируемый порог, alwaysAllow/alwaysRequire) в `src/runtime/security/risk.ts`; **W8**: `inferActionKind` + `evaluateRuntimeRisk` в approval-gate (`runtime-risk.ts`) — runtime-риск ДОБАВЛЯЕТ требование одобрения в `approval_required` за флагом, off = старый finance-гейт 1:1 | **COMPLETE** | — | — | — |
 | K3 | File write safety | docs security | **Item 11.3**: `isSafePath` (без `..`/абсолютных вне корней) + `checkFileOperation` (риск по K2) в `src/runtime/security/files.ts` | **PARTIAL** (проверка готова) | wiring в file-операции | низкий | — |
-| K4 | Prompt-injection scanning | docs security | **Item 11.2**: отдельный security stage (§26) — `scanForInjection` (override/identity/hidden-text; недоверенные источники → block, полу-доверенные → warn) в `src/runtime/security/injection.ts` | **PARTIAL** (сканер готов) | wiring в конвейер проверки контента | средний | — |
+| K4 | Prompt-injection scanning | docs security | **Item 11.2**: отдельный security stage (§26) — `scanForInjection` (override/identity/hidden-text; недоверенные источники → block, полу-доверенные → warn) в `src/runtime/security/injection.ts`; **K4-wiring**: `scanContent` в `injection-gate.ts`, подключено к MCP-результатам (warn в `mcp_call_tool`); memory-write гейтится W2; web/documents/telegram — через тот же `scanContent` при подключении их конвейеров | **COMPLETE** | — | — | — |
 | K5 | Session isolation | docs security | субсессии + session trust (`gateway-context`) | **COMPLETE** | — | — | — |
 | K6 | Sandbox | docs security | `src/sandbox` local + runsc | **COMPLETE** | — | — | — |
 | K7 | MCP credential isolation | docs security | **W9**: `McpSessionRuntime` + транспорт — `credentialScope` на сервер, env изолирован per server (stdio spawn) / headers per server (http), никогда не смешиваются | **COMPLETE** | — | — | — |
@@ -167,8 +167,8 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | Статус | Кол-во |
 |---|---|
-| COMPLETE | 37 |
-| PARTIAL | 30 |
+| COMPLETE | 38 |
+| PARTIAL | 29 |
 | MISSING | 1 (F7 slash-команды по скиллам — низкий приоритет) |
 | DIFFERENT | 0 (DIFFERENT-статусы задокументированы внутри COMPLETE-строк) |
 | NOT_APPLICABLE | 2 (C5 prompt-cache, F6 offline-hub) |

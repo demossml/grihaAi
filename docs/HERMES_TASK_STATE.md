@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: C2 (VERIFIED)
+Current item: K4 (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: C2 — структурная компакция в ContextBuilder за флагом
-Last commits: 5ef82c7 (I1), C2 (этот коммит)
+Last completed items: K4 — injection-stage (scanContent + MCP-результаты) за флагом
+Last commits: 0115a8c (C2), K4 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

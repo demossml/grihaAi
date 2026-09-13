@@ -7,6 +7,7 @@ import {
   type JsonRpcTransport,
   type McpToolCallResult,
 } from "../../../src/runtime/mcp/transport.js";
+import { scanContent } from "../../../src/utils/security/injection-gate.js";
 
 /**
  * W9 (L1) — сессионный MCP-runtime поверх McpRegistry + транспорта.
@@ -112,7 +113,18 @@ export class McpSessionRuntime {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
-    return invokeMcpTool(transport, toolName, args);
+    const outcome = await invokeMcpTool(transport, toolName, args);
+    // K4 (§26): injection-stage для MCP-результатов (полу-доверенные → warn).
+    if (outcome.ok && outcome.result !== undefined) {
+      const scan = scanContent(JSON.stringify(outcome.result), "mcp", this.env);
+      if (scan && scan.verdict !== "allow") {
+        return {
+          ...outcome,
+          warning: `injection-scan (${scan.verdict}): ${scan.reason}`,
+        };
+      }
+    }
+    return outcome;
   }
 
   dispose(): void {

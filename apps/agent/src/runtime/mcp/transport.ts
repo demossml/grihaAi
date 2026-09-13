@@ -195,6 +195,8 @@ export interface McpToolCallResult {
   ok: boolean;
   result?: unknown;
   error?: string;
+  /** K4: предупреждение injection-scan (не влияет на ok). */
+  warning?: string;
 }
 
 /** Discovery: tools/list. Пустой/битый ответ → пустой список (не роняет). */

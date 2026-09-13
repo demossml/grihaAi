@@ -103,12 +103,13 @@ export default function mcpRuntime(pi: ExtensionAPI): void {
         };
       }
       const result = await rt.callTool(params.server, params.tool, params.arguments);
+      const warningLine = result.warning ? `\n⚠️ ${result.warning}` : "";
       return {
         content: [
           {
             type: "text",
             text: result.ok
-              ? `MCP ${params.server}/${params.tool}: ${JSON.stringify(result.result)}`
+              ? `MCP ${params.server}/${params.tool}: ${JSON.stringify(result.result)}${warningLine}`
               : `MCP call failed: ${result.error}`,
           },
         ],
