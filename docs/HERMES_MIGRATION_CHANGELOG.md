@@ -61,6 +61,7 @@
 | 2026-09-13 | 16.1 (Token/cost accounting) | **Нет изменений БД** | — | — | — |
 | 2026-09-13 | 16.2 (Telemetry) | **Нет изменений БД** | — | — | — |
 | 2026-09-13 | 17.1 (Final evaluation) | **Нет изменений** (docs) | — | — | — |
+| 2026-09-13 | W1 (ModelRouter wiring) | **Нет изменений БД** | model-router.ts | wiring-model-router.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

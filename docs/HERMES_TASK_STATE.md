@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 17
-Current item: 17.1 (VERIFIED)
-Status: COMPLETE — проект Hermes→Griha parity (Phase 0–17) завершён
+Current phase: W (Wiring)
+Current item: W1 (VERIFIED)
+Status: IN_PROGRESS (W2 — после подтверждения)
 
-Last completed items: 17.1 — Final parity evaluation (docs/HERMES_FINAL_EVALUATION.md)
-Last commits: 6ea58cd (16.2), 17.1 (этот коммит)
+Last completed items: W1 — ModelRouter за флагом (flag off = старое поведение)
+Last commits: 8fd6852 (17.1), W1 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -34,9 +34,8 @@ Phase 17 (VERIFIED): Final parity evaluation — матрица COMPLETE 17 / PA
 
 ## Next item
 
-НЕТ — проект завершён. Следующий этап (по отдельному подтверждению): поэтапное
-включение подсистем за флагом HERMES_AGENT_RUNTIME по плану из
-docs/HERMES_FINAL_EVALUATION.md.
+W2 (Memory pipeline в SqliteRagMemoryService за флагом) — по плану
+docs/HERMES_FINAL_EVALUATION.md, ТОЛЬКО после явного подтверждения.
 
 ## Do not skip
 
