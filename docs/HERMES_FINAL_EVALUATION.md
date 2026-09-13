@@ -6,8 +6,8 @@
 
 | Статус | Кол-во | Комментарий |
 |---|---|---|
-| COMPLETE | 39 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + I1 execute_code + C4 summary + K4 injection + F3 skill versions |
-| PARTIAL | 28 | контракты/логика готовы; остаётся финальное включение (C2-гигиена) и отдельные шаги (дашборд, runsc-MCP, thread_id, profile-override) |
+| COMPLETE | 40 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + I1 execute_code + C3 prune + C4 summary + K4 injection + F3 skill versions |
+| PARTIAL | 27 | контракты/логика готовы; остаётся финальное включение и отдельные шаги (B5, C2 4-фазный, дашборд, runsc-MCP, thread_id, profile-override) |
 | MISSING | 1 | F7 slash-команды по скиллам (низкий приоритет, задокументировано) |
 | NOT_APPLICABLE | 2 | C5 (prompt-cache у провайдера), F6 (offline-ассистент) |
 | UNKNOWN | 0 | — |
@@ -64,14 +64,15 @@
 11. ✅ W11 Proactive: event-gate (§28) + nudge-тикер в proactive-assistant.
 12. ✅ W12 Profiles: persona-секция профиля бота в system prompt.
 13. ✅ W13 Observability: telemetry + cost-учёт в ModelRouter.call.
+14. ✅ C3 Prune tool results: pruneAgentToolResults в context-событии core-agent (лимит, ошибки сохраняются).
 
 Осознанно отложено (документировано в матрице): B5 отдельные aux-модели,
-C2 раздельная gateway-гигиена (pruneToolResults), дашборд
+C2 4-фазный алгоритм компакции (пороги уже подключены), дашборд
 observability, runsc-апгрейд MCP, thread_id-доставка, групповой
 profile-override, F7 slash-команды по скиллам (MISSING, низкий приоритет).
 B3 fallback, I1 execute_code, структурная компакция (C2/C4),
-injection-stage (K4) и версии скиллов (F3) — подключены (post-wiring,
-за флагом).
+injection-stage (K4), версии скиллов (F3) и tool-result pruning (C3) —
+подключены (post-wiring, за флагом).
 
 ## Рекомендации по включению в production
 

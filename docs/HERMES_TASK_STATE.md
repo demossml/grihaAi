@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: F3 (VERIFIED)
+Current item: C3 (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: F3 — skill version activate/rollback за флагом
-Last commits: 3e7ec55 (K4), F3 (этот коммит)
+Last completed items: C3 — prune tool results в context-событии за флагом
+Last commits: 4be9bf9 (F3), C3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

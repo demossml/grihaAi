@@ -6,6 +6,7 @@ import { buildRouterHint } from "../../../src/utils/routing/adaptive-router.js";
 import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
 import { buildProfileSection } from "./profile-section.js";
 import { runExecuteCode } from "./execute-code.js";
+import { pruneAgentToolResults } from "./tool-result-prune.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",
@@ -56,6 +57,13 @@ Just answer naturally in the matching language.
 `.trim();
 
 export default function coreAgent(pi: ExtensionAPI): void {
+  // C3 (§8): гигиена конвейера — старые tool-результаты сверх лимита
+  // вычищаются перед LLM-вызовом (только за флагом; off = 1:1).
+  pi.on("context", (event) => {
+    const pruned = pruneAgentToolResults(event.messages, process.env);
+    return pruned ? { messages: pruned } : undefined;
+  });
+
   pi.on("before_agent_start", async (event) => {
     const skills = await discoverSkills();
     const sections = [DELEGATION_POLICY, ORCHESTRATION_POLICY];
