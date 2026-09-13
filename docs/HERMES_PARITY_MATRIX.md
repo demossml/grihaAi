@@ -138,7 +138,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | M1 | Gateway → agent transport | gateway docs | `telegram-bot` (Bridge/Controller/Pool, retry, heartbeat, topics) | **COMPLETE** (DIFFERENT, наш) | не трогать без необходимости | — | — |
 | M2 | Пер-групповые правила/mention/archive | gateway docs | group-runtime, prefilter, chat-setup, archive | **COMPLETE** | — | — | — |
 | M3 | Медиа/OCR/файлы | gateway media | полный конвейер (OCR/vision/expenses/retry) | **COMPLETE** | — | — | — |
-| M4 | Cron → Telegram | gateway cron | MISSING в main (см. J5) | **PARTIAL** | Phase 10/13 | средний | J1 |
+| M4 | Cron → Telegram | gateway cron | **Item 13.1**: `DeliveryTarget`/`DeliveryStatus`/`DeliveryTransport` + `classifyDeliveryError`/`shouldRetry` (P02: retry на временные, permanent→стоп, execution≠delivery) в `src/runtime/telegram/delivery.ts`; telegram-bot не менялся | **PARTIAL** (контракт готов) | wiring транспорта за флагом | средний | J1 |
 
 ## N. Proactive
 
