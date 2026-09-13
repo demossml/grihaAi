@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 1
-Current item: 1.1 (VERIFIED)
-Status: IN_PROGRESS (следующий item — после подтверждения Phase 2)
+Current phase: 2
+Current item: 2.4 (VERIFIED)
+Status: IN_PROGRESS (Phase 3 — только после подтверждения пользователя)
 
-Last completed item: 1.1 — Agent Runtime interfaces (kernel + flag)
-Last commit: (см. ниже — коммит item 1.1)
+Last completed items: 2.1–2.4 — Model Runtime (типы/select/fallback/context-window)
+Last commits: f1ca33b (2.1), 8d4b5d3 (2.2), b4ebb00 (2.3), 2.4 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,8 @@ Last commit: (см. ниже — коммит item 1.1)
 
 ## Current objective
 
-Phase 0 (research only): инвентарь Griha, поведение Hermes, parity matrix,
-4 документа, отчёт. Production-код НЕ менять.
+Phase 2 (VERIFIED): Model Runtime + Router + fallback (B1–B4) — типы и чистые
+функции, production-код не переключён.
 
 ## Current blockers
 
@@ -34,8 +34,8 @@ Phase 0 (research only): инвентарь Griha, поведение Hermes, pa
 
 ## Next item
 
-Phase 1 (Agent Runtime interfaces) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 0 заканчивается STOP).
+Phase 3 (Context Engine, матрица C) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 2 заканчивается STOP). High-risk: C2 context compaction.
 
 ## Do not skip
 

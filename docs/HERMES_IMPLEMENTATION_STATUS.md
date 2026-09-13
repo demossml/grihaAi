@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 0 | Repository audit + parity matrix | **IN_PROGRESS** (документы созданы) | завершается отчётом |
 | 1 | Agent Runtime interfaces | **VERIFIED (item 1.1)** | `src/runtime/` interfaces + kernel + flag; prod не переключён |
-| 2 | Model Runtime + Router + fallback | NOT_STARTED | блокер: B3 high-risk |
+| 2 | Model Runtime + Router + fallback | **VERIFIED (items 2.1–2.4)** | типы/select/fallback-chain/context-window — чистые функции, prod не переключён |
 | 3 | Context Engine | NOT_STARTED | — |
 | 4 | Session Engine + Session Search | NOT_STARTED | D2 в основном COMPLETE |
 | 5 | Memory Engine | NOT_STARTED | E1/E2/E3 COMPLETE, E5/E6 MISSING |
@@ -27,9 +27,9 @@
 
 ## Сводка по матрице
 
-- COMPLETE: 17 | PARTIAL: 20 | MISSING: 21 | NOT_APPLICABLE: 2 | UNKNOWN: 0
-- High-risk MISSING: fallback chain (B3), context compaction (C2), skill
-  rollback (F3), execute_code (I1), background review (G1).
+- COMPLETE: 17 | PARTIAL: 21 | MISSING: 20 | NOT_APPLICABLE: 2 | UNKNOWN: 0
+- High-risk MISSING: context compaction (C2), skill rollback (F3),
+  execute_code (I1), background review (G1).
 
 ## Baseline (Phase 0, зафиксирован)
 

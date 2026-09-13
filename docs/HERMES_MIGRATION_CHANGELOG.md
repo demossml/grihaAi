@@ -14,6 +14,10 @@
 |---|---|---|---|---|---|
 | 2026-09-13 | Phase 0 | **Нет изменений** (research only) | — | — | — |
 | 2026-09-13 | 1.1 (Agent Runtime interfaces) | **Нет изменений БД** (только код/тесты) | — | — | — |
+| 2026-09-13 | 2.1 (Model roles/policies) | **Нет изменений БД** | — | — | — |
+| 2026-09-13 | 2.2 (TaskProfile select) | **Нет изменений БД** | — | — | — |
+| 2026-09-13 | 2.3 (FallbackChain) | **Нет изменений БД** | — | — | — |
+| 2026-09-13 | 2.4 (Context window chain) | `ModelConfig.contextWindow` — optional поле типа (обратно совместимо, не DB) | packages/shared-types/src/index.ts | — | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

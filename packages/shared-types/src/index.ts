@@ -19,6 +19,8 @@ export interface ModelConfig {
   model: string;
   apiKey?: string;
   baseUrl?: string;
+  /** Размер контекстного окна (явный override, Phase 2 B4). */
+  contextWindow?: number;
 }
 
 export interface TelegramConfig {
