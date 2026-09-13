@@ -60,7 +60,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | E5 | Candidate → confidence → conflict → persist | правила спеки | **Item 5.2**: контракт §10 (`MemoryType`/`MemoryRecord`/`MemoryEngine`) + пайплайн (`evaluateCandidate`/`detectConflict`/`decidePersist`) + `InMemoryMemoryStore` (reinforce/contradict) в `src/runtime/memory/`, не подключено | **PARTIAL** (логика готова) | wiring к SqliteRagMemoryService за флагом | средний | E1 |
 | E6 | Memory write_approval gate | docs memory | approval-gate есть для действий, не для memory | **MISSING** | Phase 11 | низкий | E1 |
 | E7 | Session memory ≠ persistent ≠ search | docs memory | контекст сессии pi + persistent + searchSessions — различимы | **COMPLETE** | — | — | — |
-| E8 | Honcho-диалектика (выводы о пользователе) | docs honcho | `personal-learning` + `learning-extractor` (частично) | **PARTIAL** | Phase 7: local dialectic (без Honcho) | средний | E2 |
+| E8 | Honcho-диалектика (выводы о пользователе) | docs honcho | **Item 7.3**: `UserModelStore` (§11: candidate/confirmed/deprecated, confidence, evidenceCount, contradict) в `src/runtime/learning/user-model.ts` | **PARTIAL** (local dialectic готов) | wiring к personal-learning | средний | E2 |
 
 ## F. Skills
 
