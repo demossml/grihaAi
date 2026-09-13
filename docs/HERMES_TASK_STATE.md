@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 12
-Current item: 12.3 (VERIFIED)
-Status: IN_PROGRESS (Phase 13 — только после подтверждения пользователя)
+Current phase: 13
+Current item: 13.2 (VERIFIED)
+Status: IN_PROGRESS (Phase 14 — только после подтверждения пользователя)
 
-Last completed items: 12.1–12.3 — MCP/Toolsets (registry / policy / activation)
-Last commits: 16e9142 (12.1), 27c0178 (12.2), 12.3 (этот коммит)
+Last completed items: 13.1–13.2 — Telegram (M4 контракт / M1–M3 сверка)
+Last commits: 0ff7470 (13.1), 13.2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,8 @@ Last commits: 16e9142 (12.1), 27c0178 (12.2), 12.3 (этот коммит)
 
 ## Current objective
 
-Phase 12 (VERIFIED): MCP + Toolsets (L1/L2, F8) — MCP registry (credentialScope,
-явные tools), toolset-политика §23 с запретом самодобавления, conditional
-activation. Production не переключён.
+Phase 13 (VERIFIED): Telegram (M1–M4) — M1–M3 сверены без изменений кода;
+M4 delivery-контракт (P02-семантика) без изменения telegram-bot.
 
 ## Current blockers
 
@@ -35,9 +34,8 @@ activation. Production не переключён.
 
 ## Next item
 
-Phase 13 (Telegram integration, матрица M) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 12 заканчивается STOP). M1–M3 COMPLETE — сверка без
-изменения кода Telegram-слоя.
+Phase 14 (Proactive Agent, матрица N) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 13 заканчивается STOP). N1 COMPLETE.
 
 ## Do not skip
 

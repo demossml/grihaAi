@@ -19,7 +19,7 @@
 | 10 | Automation / Cron | **VERIFIED (items 10.1–10.3)** | J5 P02-схема в main (без TG-wiring), AutomationEngine + script-jobs — prod-поведение не меняется |
 | 11 | Security + Approval | **VERIFIED (items 11.1–11.4)** | RiskLevel/approval policy, injection-stage, file safety, memory write gate — prod не переключён |
 | 12 | MCP + Toolsets | **VERIFIED (items 12.1–12.3)** | MCP registry, toolset policy (§23), conditional activation — prod не переключён |
-| 13 | Telegram integration | NOT_STARTED | M1–M3 COMPLETE, не трогать |
+| 13 | Telegram integration | **VERIFIED (items 13.1–13.2)** | M1–M3 сверены (код не менялся); M4 delivery-контракт (P02-семантика, без TG-изменений) |
 | 14 | Proactive Agent | NOT_STARTED | N1 COMPLETE |
 | 15 | Agent Profiles / Bot Mode | NOT_STARTED | O1 MISSING |
 | 16 | Observability + Cost | NOT_STARTED | P1 COMPLETE |
