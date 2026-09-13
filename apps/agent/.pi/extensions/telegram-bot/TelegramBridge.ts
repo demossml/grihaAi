@@ -27,6 +27,13 @@ export interface TgUser {
   firstName?: string;
 }
 
+/**
+ * P03: служебный отправитель анонимных администраторов групп
+ * (GroupAnonymousBot) — один и тот же id для ВСЕХ групп и админов.
+ * LIVE-UNVERIFIED: реальный payload сверяется на проде.
+ */
+export const TELEGRAM_ANONYMOUS_ADMIN_ID = 1087968824;
+
 /** sender_chat (channel_post/собственное имя отправителя). */
 export interface TgSenderChat {
   id?: number;
@@ -651,6 +658,14 @@ export class TelegramBridge {
     const chatId = msg.chat.id;
     const chatType = msg.chat.type ?? "private";
     const isChannel = chatType === "channel";
+    // P03: анонимный админ группы — Telegram шлёт служебный from
+    // (GroupAnonymousBot, 1087968824) и sender_chat = сама группа. Такой
+    // «пользователь» не должен объединять сессии разных людей и фальшиво
+    // атрибутироваться в архиве: сессия — групповая (tg:anon:{chat}), а
+    // msg.from стрипаем → архив пишет from_user_id = NULL (не фейковый id).
+    const isAnonymousAdmin = this.isAnonymousMessage(msg, chatId);
+    const sessionUserId = isAnonymousAdmin ? "anon" : userId;
+    if (isAnonymousAdmin) msg.from = undefined;
     const text = msg.text ?? "";
     // Все ответы этого апдейта уходят в тему входящего сообщения.
     const send = this.makeSender(msg.threadId);
@@ -696,7 +711,7 @@ export class TelegramBridge {
     if (text === "/new") {
       // D2: /new сбрасывает ТОЛЬКО сессию текущего чата(+темы), не все чаты.
       const sessionKey = buildTelegramSessionKey({
-        userId,
+        userId: sessionUserId,
         chatId,
         threadId: msg.threadId,
       });
@@ -907,7 +922,7 @@ export class TelegramBridge {
           userId,
           platform: "telegram",
           sessionKey: buildTelegramSessionKey({
-            userId,
+            userId: sessionUserId,
             chatId,
             threadId: msg.threadId,
           }),
@@ -946,7 +961,7 @@ export class TelegramBridge {
           message,
           userId,
           platform: "telegram",
-          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+          sessionKey: buildTelegramSessionKey({ userId: sessionUserId, chatId, threadId: msg.threadId }),
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate.rulesContext || undefined,
@@ -973,7 +988,7 @@ export class TelegramBridge {
           message,
           userId,
           platform: "telegram",
-          sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+          sessionKey: buildTelegramSessionKey({ userId: sessionUserId, chatId, threadId: msg.threadId }),
           chatId: String(chatId),
           threadId: msg.threadId,
           rulesContext: gate.rulesContext || undefined,
@@ -1011,7 +1026,7 @@ export class TelegramBridge {
         message: withReplyContext(text, msg),
         userId,
         platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+        sessionKey: buildTelegramSessionKey({ userId: sessionUserId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
@@ -1022,6 +1037,21 @@ export class TelegramBridge {
     } finally {
       await hb?.stop();
     }
+  }
+
+  /**
+   * P03: анонимный админ группы — Telegram шлёт служебный from
+   * (GroupAnonymousBot, 1087968824) и sender_chat = сама группа. LIVE-UNVERIFIED.
+   */
+  private isAnonymousMessage(msg: TgMessage, chatId: number): boolean {
+    const senderUserId = msg.from?.id;
+    return (
+      (msg.chat?.type ?? "private") === "supergroup" &&
+      (senderUserId === TELEGRAM_ANONYMOUS_ADMIN_ID ||
+        (senderUserId !== undefined &&
+          msg.senderChat?.id !== undefined &&
+          msg.senderChat.id === chatId))
+    );
   }
 
   /**
@@ -1119,7 +1149,11 @@ export class TelegramBridge {
         message: agentMessage,
         userId,
         platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+        sessionKey: buildTelegramSessionKey({
+          userId: this.isAnonymousMessage(msg, chatId) ? "anon" : userId,
+          chatId,
+          threadId: msg.threadId,
+        }),
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
@@ -1226,7 +1260,11 @@ export class TelegramBridge {
         message: agentMessage,
         userId,
         platform: "telegram",
-        sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
+        sessionKey: buildTelegramSessionKey({
+          userId: this.isAnonymousMessage(msg, chatId) ? "anon" : userId,
+          chatId,
+          threadId: msg.threadId,
+        }),
         chatId: String(chatId),
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
