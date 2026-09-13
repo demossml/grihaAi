@@ -64,6 +64,7 @@
 | 2026-09-13 | W1 (ModelRouter wiring) | **Нет изменений БД** | model-router.ts | wiring-model-router.test.ts | — |
 | 2026-09-13 | W2 (Memory write gate) | **Нет изменений БД** | MemoryService.ts | wiring-memory.test.ts | — |
 | 2026-09-13 | W3 (Context budget guard) | **Нет изменений БД** | ContextBuilder.ts | wiring-context.test.ts | — |
+| 2026-09-13 | W4 (Skill versioning on write) | **Нет изменений БД** | skill-improver.ts | wiring-skill.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

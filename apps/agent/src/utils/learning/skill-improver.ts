@@ -3,6 +3,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getConfigDir } from "@griha/config";
 import type { LearningLlm } from "./learning-extractor.js";
+import { isAgentRuntimeEnabled } from "../../runtime/index.js";
+import { SkillVersionStore } from "../../runtime/skill/index.js";
 
 export type SkillProposalKind = "core-edit" | "new-skill";
 export type SkillProposalStatus = "pending" | "applied" | "rejected";
@@ -217,15 +219,40 @@ function skillFrontmatter(name: string, description: string): string {
  * appended to `skills/core/SKILL.md`; new skills create `skills/<name>/SKILL.md`
  * with `autoCreated: true` frontmatter.
  */
+const versionStores = new Map<string, SkillVersionStore>();
+
+/** F3: store версионирования на core/SKILL.md (in-memory кэш, base = активный контент). */
+function getVersionStore(target: string, baseContent: string): SkillVersionStore {
+  let store = versionStores.get(target);
+  if (!store) {
+    store = new SkillVersionStore({ name: "core", initialContent: baseContent || "# Core\n" });
+    versionStores.set(target, store);
+  }
+  return store;
+}
+
 export async function applySkillProposal(
   proposal: SkillProposal,
   skillsRoot: string,
+  options: { env?: NodeJS.ProcessEnv } = {},
 ): Promise<string> {
   if (proposal.kind === "core-edit") {
     const target = path.join(skillsRoot, "core", "SKILL.md");
     const existing = await fs.readFile(target, "utf8").catch(() => "");
     const block = `\n\n## ${proposal.title}\n\n${proposal.content}\n`;
-    await fs.writeFile(target, `${existing.replace(/\s+$/, "")}${block}`, "utf8");
+    const nextContent = `${existing.replace(/\s+$/, "")}${block}`;
+    if (isAgentRuntimeEnabled(options.env ?? process.env)) {
+      // F3 (урок #55647): LLM не перезаписывает production skill —
+      // только новая версия рядом, активный SKILL.md не меняется.
+      const store = getVersionStore(target, existing);
+      const version = store.propose(nextContent, "skill-improver");
+      const versionsDir = path.join(skillsRoot, "core", ".versions");
+      await fs.mkdir(versionsDir, { recursive: true });
+      const versionFile = path.join(versionsDir, `v${version.version}.md`);
+      await fs.writeFile(versionFile, nextContent, "utf8");
+      return versionFile;
+    }
+    await fs.writeFile(target, nextContent, "utf8");
     return target;
   }
 
