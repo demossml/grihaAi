@@ -168,12 +168,13 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | Статус | Кол-во |
 |---|---|
 | COMPLETE | 17 |
-| PARTIAL | 20 |
-| MISSING | 21 |
+| PARTIAL | 43 |
+| MISSING | 0 |
 | DIFFERENT | (внутри COMPLETE с пометкой) |
 | NOT_APPLICABLE | 2 |
 | UNKNOWN | 0 (непроверяемое вынесено в PARTIAL/риски) |
 
-Самые рискованные MISSING: B3 fallback (production), C2 compaction (production),
-F3 skill rollback (данные), I1 execute_code (безопасность), G1 background review
+MISSING нет. Оставшийся риск — в PARTIAL (wiring за флагом): B3 fallback
+(production), C2 compaction (production), F3 skill rollback (данные),
+I1 execute_code (безопасность).
 (стоимость). Начинать — с Phase 1 (runtime interfaces) после подтверждения.

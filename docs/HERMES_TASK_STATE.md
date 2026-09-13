@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 16
-Current item: 16.2 (VERIFIED)
-Status: IN_PROGRESS (Phase 17 — только после подтверждения пользователя)
+Current phase: 17
+Current item: 17.1 (VERIFIED)
+Status: COMPLETE — проект Hermes→Griha parity (Phase 0–17) завершён
 
-Last completed items: 16.1–16.2 — Observability (usage accounting / telemetry)
-Last commits: def3eaa (16.1), 16.2 (этот коммит)
+Last completed items: 17.1 — Final parity evaluation (docs/HERMES_FINAL_EVALUATION.md)
+Last commits: 6ea58cd (16.2), 17.1 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,8 @@ Last commits: def3eaa (16.1), 16.2 (этот коммит)
 
 ## Current objective
 
-Phase 16 (VERIFIED): Observability + Cost (P2/P3) — §31 structured telemetry
-с correlation ID, §32 token/cost accounting для Model Router. Production не
-переключён.
+Phase 17 (VERIFIED): Final parity evaluation — матрица COMPLETE 17 / PARTIAL 43
+/ MISSING 0 / N/A 2; план поэтапного включения за флагом.
 
 ## Current blockers
 
@@ -35,9 +34,9 @@ Phase 16 (VERIFIED): Observability + Cost (P2/P3) — §31 structured telemetry
 
 ## Next item
 
-Phase 17 (Full parity evaluation, матрица-итог) — ТОЛЬКО после явного
-подтверждения пользователя (Phase 16 заканчивается STOP). Финальная оценка
-паритета Hermes→Griha.
+НЕТ — проект завершён. Следующий этап (по отдельному подтверждению): поэтапное
+включение подсистем за флагом HERMES_AGENT_RUNTIME по плану из
+docs/HERMES_FINAL_EVALUATION.md.
 
 ## Do not skip
 
