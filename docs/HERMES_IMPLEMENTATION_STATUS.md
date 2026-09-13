@@ -21,13 +21,13 @@
 | 12 | MCP + Toolsets | **VERIFIED (items 12.1–12.3)** | MCP registry, toolset policy (§23), conditional activation — prod не переключён |
 | 13 | Telegram integration | **VERIFIED (items 13.1–13.2)** | M1–M3 сверены (код не менялся); M4 delivery-контракт (P02-семантика, без TG-изменений) |
 | 14 | Proactive Agent | **VERIFIED (items 14.1–14.2)** | §28 decision pipeline (security выше proactive) + nudge-планировщик — prod не переключён |
-| 15 | Agent Profiles / Bot Mode | NOT_STARTED | O1 MISSING |
+| 15 | Agent Profiles / Bot Mode | **VERIFIED (items 15.1–15.2)** | профили §29 + registry + валидация — prod не переключён |
 | 16 | Observability + Cost | NOT_STARTED | P1 COMPLETE |
 | 17 | Full parity evaluation | NOT_STARTED | — |
 
 ## Сводка по матрице
 
-- COMPLETE: 17 | PARTIAL: 40 | MISSING: 1 | NOT_APPLICABLE: 2 | UNKNOWN: 0
+- COMPLETE: 17 | PARTIAL: 41 | MISSING: 0 | NOT_APPLICABLE: 2 | UNKNOWN: 0
 - High-risk MISSING: нет — все high-risk строки закрыты минимум до PARTIAL.
 
 ## Baseline (Phase 0, зафиксирован)

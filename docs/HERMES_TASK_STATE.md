@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 14
-Current item: 14.2 (VERIFIED)
-Status: IN_PROGRESS (Phase 15 — только после подтверждения пользователя)
+Current phase: 15
+Current item: 15.2 (VERIFIED)
+Status: IN_PROGRESS (Phase 16 — только после подтверждения пользователя)
 
-Last completed items: 14.1–14.2 — Proactive (decision pipeline / nudge)
-Last commits: 82d2ef2 (14.1), 14.2 (этот коммит)
+Last completed items: 15.1–15.2 — Profiles (registry / validation)
+Last commits: 1647b4d (15.1), 15.2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,8 @@ Last commits: 82d2ef2 (14.1), 14.2 (этот коммит)
 
 ## Current objective
 
-Phase 14 (VERIFIED): Proactive (N2) — §28 decision pipeline (security выше
-proactive) + nudge-планировщик self-improvement (на базе G1). Production не
+Phase 15 (VERIFIED): Profiles (O1) — §29 AgentProfile (persona/modelRole/
+toolsets/policies), дефолтные профили, registry, валидация. Production не
 переключён.
 
 ## Current blockers
@@ -35,8 +35,8 @@ proactive) + nudge-планировщик self-improvement (на базе G1). P
 
 ## Next item
 
-Phase 15 (Agent Profiles / Bot Mode, матрица O) — ТОЛЬКО после явного
-подтверждения пользователя (Phase 14 заканчивается STOP). O1 MISSING.
+Phase 16 (Observability + Cost, матрица P) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 15 заканчивается STOP). P1 COMPLETE.
 
 ## Do not skip
 
