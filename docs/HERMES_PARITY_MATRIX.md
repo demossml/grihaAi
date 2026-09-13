@@ -151,7 +151,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| O1 | Именованные боты (model/memory/skills/persona) | docs bot mode | **Items 15.1–15.2**: `AgentProfile` (§29: id/persona/modelRole/toolsets/policies) + дефолтные профили (accountant/developer/secretary/researcher/travel) + `ProfileRegistry` + `validateProfile` в `src/runtime/profiles/` | **PARTIAL** (контракт готов) | wiring в boot/config за флагом | средний | A3 |
+| O1 | Именованные боты (model/memory/skills/persona) | docs bot mode | **Items 15.1–15.2**: `AgentProfile` (§29: id/persona/modelRole/toolsets/policies) + дефолтные профили (accountant/developer/secretary/researcher/travel) + `ProfileRegistry` + `validateProfile` в `src/runtime/profiles/`; **W12**: `config.profile` → `buildProfileSection` в core-agent (persona-секция system prompt за флагом, case-insensitive, невалидный молча игнорируется) | **COMPLETE** (групповой override через rulesContext — документированный отдельный шаг) | — | — | — |
 
 ## P. Observability / Cost
 

@@ -75,6 +75,8 @@ export interface GrishAiConfig {
   mcp?: {
     servers?: McpServerConfig[];
   };
+  /** W12 (O1): id/имя §29-профиля бота (persona-секция за флагом). */
+  profile?: string;
 }
 
 // --- MCP (W9, L1/§22) ---

@@ -3,6 +3,7 @@ import { discoverSkills, formatSkillsForPrompt } from "@griha/skills";
 import { loadConfig } from "@griha/config";
 import { buildRouterHint } from "../../../src/utils/routing/adaptive-router.js";
 import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
+import { buildProfileSection } from "./profile-section.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",
@@ -71,6 +72,9 @@ export default function coreAgent(pi: ExtensionAPI): void {
       } catch {
         // Router hint is best-effort — never break the agent on it.
       }
+      // W12 (O1/§29): профиль бота — только за флагом (off = секция пустая).
+      const profile = buildProfileSection(process.env, cfg.profile);
+      if (profile.section) sections.push(profile.section);
     }
 
     return { systemPrompt: `${event.systemPrompt}\n\n${sections.join("\n\n")}` };
