@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: W (Wiring)
-Current item: W5 (VERIFIED)
-Status: IN_PROGRESS (W6 — после подтверждения)
+Current item: W6 (VERIFIED)
+Status: IN_PROGRESS (W7 — после подтверждения)
 
-Last completed items: W5 — lesson routing в applyLearning за флагом
-Last commits: 44181d7 (W4), W5 (этот коммит)
+Last completed items: W6 — DelegationGuard в createRealSubAgentRunner за флагом
+Last commits: b3c4772 (W5), W6 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

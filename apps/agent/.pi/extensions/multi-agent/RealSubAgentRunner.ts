@@ -15,6 +15,13 @@ import modelRouter from "../model-router/index.js";
 import userRules from "../user-rules/index.js";
 import gateway from "../gateway/index.js";
 import { setSessionTrust } from "../../../src/sandbox/gateway-context.js";
+import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
+import {
+  DelegationGuard,
+  DEFAULT_DELEGATION_LIMITS,
+  type DelegationLimits,
+} from "../../../src/runtime/delegation/limits.js";
+import { estimateTokens } from "../../../src/runtime/context/usage.js";
 import type { SubAgentRunTask, SubAgentRunner } from "./SubAgentManager.js";
 
 /**
@@ -51,6 +58,16 @@ export interface RealSubAgentRunnerOptions {
   cwd?: string;
   /** Injectable factory for tests. Defaults to the real SDK-backed factory. */
   sessionFactory?: (task: SubAgentRunTask) => Promise<AgentSession>;
+  /**
+   * Env used to check the `HERMES_AGENT_RUNTIME` feature flag.
+   * Defaults to process.env. When the flag is off the runner behaves exactly
+   * as before (no delegation gating).
+   */
+  env?: NodeJS.ProcessEnv;
+  /** Overrides for delegation limits (depth/timeout/token budget/workers). */
+  delegationLimits?: Partial<DelegationLimits>;
+  /** Injectable clock for tests. Defaults to Date.now. */
+  now?: () => number;
 }
 
 /**
@@ -64,16 +81,46 @@ export function createRealSubAgentRunner(
   const cwd = options.cwd ?? process.cwd();
   const sessionFactory =
     options.sessionFactory ?? ((task: SubAgentRunTask) => createSession(cwd, task));
+  const env = options.env ?? process.env;
+  const limits: DelegationLimits = {
+    ...DEFAULT_DELEGATION_LIMITS,
+    ...options.delegationLimits,
+  };
+  const now = options.now ?? Date.now;
 
   return async (task) => {
+    // Часы стартуют до создания сессии: таймаут покрывает весь запуск.
+    const startedAt = now();
     const session = await sessionFactory(task);
 
     // Redirects delivered by the manager land here (Phase 6 live steering).
     task.onSteer = (message: string) => {
       void session.steer(message).catch(() => {});
     };
-
     try {
+      if (isAgentRuntimeEnabled(env)) {
+        // W6: delegation gate (depth/timeout/budget) applied before execution.
+        // The runner is a depth-1 worker that cannot spawn further sub-agents
+        // (multi-agent tools are absent from sub-sessions), so depth is 0.
+        const guard = new DelegationGuard(limits);
+        const decision = guard.canDelegate({
+          currentDepth: 0,
+          elapsedMs: 0,
+          usedTokens: estimateTokens(task.goal + (task.context ?? "")),
+          workerCount: 1,
+        });
+        if (!decision.allowed) {
+          throw new Error(`delegation blocked: ${decision.reason}`);
+        }
+        const result = await runPrompt(session, task);
+        const elapsed = now() - startedAt;
+        if (elapsed >= limits.timeoutMs) {
+          throw new Error(
+            `delegation timeout: ${elapsed}ms >= ${limits.timeoutMs}ms`,
+          );
+        }
+        return result;
+      }
       return await runPrompt(session, task);
     } finally {
       session.dispose();

@@ -91,7 +91,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | H1 | Subagents с изолированным контекстом | docs delegation | `multi-agent` + `createRealSubAgentRunner` (изолированные сессии) | **COMPLETE** | — | — | — |
 | H2 | Только summary в parent | docs delegation | SubAgentRunner возвращает результат | **COMPLETE** | — | — | — |
 | H3 | Orchestrator + parallel workers + synthesis | docs delegation | **Item 8.2**: `DelegationPlan`/`synthesize` (только structured summaries, §18), `verifyPlanSecurity` (§19), `validatePlan` в `src/runtime/delegation/orchestrator.ts` | **PARTIAL** (контракт готов) | LLM-planner + workers wiring | средний | H1 |
-| H4 | Depth limit, timeout, budget, toolset per worker | docs delegation | **Item 8.1**: `DelegationGuard` (maxDepth recursion protection, timeout, budget, maxWorkers, remaining*) в `src/runtime/delegation/limits.ts` | **PARTIAL** (guard готов) | wiring в runner | средний | H1 |
+| H4 | Depth limit, timeout, budget, toolset per worker | docs delegation | **Item 8.1**: `DelegationGuard` (maxDepth recursion protection, timeout, budget, maxWorkers, remaining*) в `src/runtime/delegation/limits.ts`; **W6**: гейт подключён в `createRealSubAgentRunner` за флагом (budget pre-check + timeout post-check) | **COMPLETE** (toolset per worker = toolset-конфиг subagent-сессий, существующее поведение) | — | — | — |
 | H5 | Отдельная delegation-модель | docs delegation | **Item 8.3**: `DelegationPolicy` (modelRole `"delegation"` — роль в `ModelRuntimeRole` с Phase 2; `resolveModelConfig` fallback на main) в `src/runtime/delegation/policy.ts` | **PARTIAL** (политика готова) | конфиг `models.delegation` + wiring | низкий | B1 |
 
 ## I. Programmatic execution

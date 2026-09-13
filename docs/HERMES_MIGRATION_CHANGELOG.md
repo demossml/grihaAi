@@ -66,6 +66,7 @@
 | 2026-09-13 | W3 (Context budget guard) | **Нет изменений БД** | ContextBuilder.ts | wiring-context.test.ts | — |
 | 2026-09-13 | W4 (Skill versioning on write) | **Нет изменений БД** | skill-improver.ts | wiring-skill.test.ts | — |
 | 2026-09-13 | W5 (Learning lesson routing) | **Нет изменений БД** | learning-extractor.ts | wiring-learning.test.ts | — |
+| 2026-09-13 | W6 (Delegation gate in runner) | **Нет изменений БД** | RealSubAgentRunner.ts | wiring-delegation.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 
