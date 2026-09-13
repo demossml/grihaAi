@@ -37,7 +37,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | C1 | Token accounting (usage anchor, provider usage) | docs context-compression, `usage_anchor.py` | **Item 3.1**: `estimateTokens`/`estimateMessageTokens`/`getActualUsage`/`ContextBudget` в `src/runtime/context/usage.ts`, не подключено | **PARTIAL** (чистые функции) | wiring + реальные usage-анкоры | средний | A3 |
 | C2 | Dual compaction (50% agent / 85% gateway hygiene) | docs dual system | **Item 3.2**: `shouldCompress` (агент 0.5 / gateway 0.85, cooldown, minTurns) в `src/runtime/context/compaction.ts`, не подключено | **PARTIAL** (решение готово) | сам compress-алгоритм (4 фазы) + wiring | высокий | C1 |
 | C3 | Prune старых tool results | Phase 1 алгоритма | **Item 3.3**: `pruneToolResults` (лимит, ошибки сохраняются, не-tool не трогаются) в `src/runtime/context/prune.ts`, не подключено | **PARTIAL** (чистая функция) | wiring в конвейер компакции | средний | C2 |
-| C4 | Структурированный summary (Goal/Progress/Decisions/…) + iterative re-compression | Phase 3–4 | нет | **MISSING** | Phase 3 (+ aux compression model B5) | средний | C2 |
+| C4 | Структурированный summary (Goal/Progress/Decisions/…) + iterative re-compression | Phase 3–4 | **Item 3.4**: `preserveSystemContext`/`preserveRecentTurns`/`summarizeMiddle`/`mergeSummaries`/`persistSummary`/`restoreSummary` + `CONTEXT_PRIORITY` в `src/runtime/context/summary.ts`, не подключено | **PARTIAL** (структурный шаблон) | aux compression model B5 (LLM-резюме) | средний | C2 |
 | C5 | Prompt-cache awareness (Anthropic system_and_3) | `prompt_caching.py` | pi.dev провайдер-специфика; Griha на DeepSeek — cache у провайдера | **NOT_APPLICABLE** (пока) | — | — | — |
 
 ## D. Sessions / Session Search

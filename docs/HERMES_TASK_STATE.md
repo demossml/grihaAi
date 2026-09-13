@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 2
-Current item: 2.4 (VERIFIED)
-Status: IN_PROGRESS (Phase 3 — только после подтверждения пользователя)
+Current phase: 3
+Current item: 3.4 (VERIFIED)
+Status: IN_PROGRESS (Phase 4 — только после подтверждения пользователя)
 
-Last completed items: 2.1–2.4 — Model Runtime (типы/select/fallback/context-window)
-Last commits: f1ca33b (2.1), 8d4b5d3 (2.2), b4ebb00 (2.3), 2.4 (этот коммит)
+Last completed items: 3.1–3.4 — Context Engine (usage/compaction/prune/summary)
+Last commits: 9def4b7 (3.1), e1fd5df (3.2), 4706767 (3.3), 3.4 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,9 @@ Last commits: f1ca33b (2.1), 8d4b5d3 (2.2), b4ebb00 (2.3), 2.4 (этот ком�
 
 ## Current objective
 
-Phase 2 (VERIFIED): Model Runtime + Router + fallback (B1–B4) — типы и чистые
-функции, production-код не переключён.
+Phase 3 (VERIFIED): Context Engine (C1–C4) — token accounting, compaction
+decision, tool-result pruning, structured summary. Чистые функции, production
+не переключён.
 
 ## Current blockers
 
@@ -34,8 +35,9 @@ Phase 2 (VERIFIED): Model Runtime + Router + fallback (B1–B4) — типы и 
 
 ## Next item
 
-Phase 3 (Context Engine, матрица C) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 2 заканчивается STOP). High-risk: C2 context compaction.
+Phase 4 (Session Engine + Session Search, матрица D) — ТОЛЬКО после явного
+подтверждения пользователя (Phase 3 заканчивается STOP). D2 в основном
+COMPLETE.
 
 ## Do not skip
 

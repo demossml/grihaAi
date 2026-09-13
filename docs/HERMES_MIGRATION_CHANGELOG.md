@@ -18,6 +18,10 @@
 | 2026-09-13 | 2.2 (TaskProfile select) | **Нет изменений БД** | — | — | — |
 | 2026-09-13 | 2.3 (FallbackChain) | **Нет изменений БД** | — | — | — |
 | 2026-09-13 | 2.4 (Context window chain) | `ModelConfig.contextWindow` — optional поле типа (обратно совместимо, не DB) | packages/shared-types/src/index.ts | — | — |
+| 2026-09-13 | 3.1 (Token accounting) | **Нет изменений БД** | — | — | — |
+| 2026-09-13 | 3.2 (Compaction decision) | **Нет изменений БД** | — | — | — |
+| 2026-09-13 | 3.3 (Tool result pruning) | **Нет изменений БД** | — | — | — |
+| 2026-09-13 | 3.4 (Structured summary) | **Нет изменений БД** (persistSummary — сериализация, SQLite-wiring позже) | — | — | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 
