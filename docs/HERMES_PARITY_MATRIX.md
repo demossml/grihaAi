@@ -24,7 +24,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| B1 | Роли моделей (main + aux slots) | docs configuring-models: main + 11 aux tasks | `ModelRole = "main" \| "vision"` (`src/utils/routing/model-router.ts`); vision (`createHttpVisionCaller`), learning (`createHttpLearningLlm`), embedding (`HttpEmbeddingService`) | **PARTIAL** | Phase 2: `ModelRole` union + `ModelPolicy` (compression/summarization/approval/delegation/…), без хардкода | средний | A3 |
+| B1 | Роли моделей (main + aux slots) | docs configuring-models: main + 11 aux tasks | prod: `ModelRole = "main" \| "vision"`; **Item 2.1**: `ModelRuntimeRole` (9 ролей) + `ModelPolicy` + `TaskProfile` в `src/runtime/model/types.ts`, не подключено | **PARTIAL** (типы готовы) | Phase 3/8/11/12: подключение aux-слотов | средний | A3 |
 | B2 | Машинный выбор модели (TaskProfile → router) | router семантика | `adaptive-router` (подсказки LLM), `ModelRouter` (getConfig vision), `ModelCaller` НЕ реализован (ARCHITECTURE.md) | **PARTIAL** | Phase 2: TaskProfile + детерминированный select | высокий (production defaults!) | B1 |
 | B3 | Fallback chain (credential pool → primary → auxiliary) | docs providers: `fallback_providers`, credential pools | только bootstrap-fallback регистрации DeepSeek endpoint; runtime fallback нет | **MISSING** | Phase 2: `FallbackChain`, разные политики на 429/5xx/сеть/context-overflow; не терять session/task/correlation | высокий | B1 |
 | B4 | Контекст-детект окна модели | docs: multi-source resolution | `contextWindow` в `makeModel` (128000 const) | **PARTIAL** | Phase 2: resolution chain (config→catalog→provider) | низкий | B1 |
