@@ -118,7 +118,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | K1 | Command approval | docs security | `approval-gate`, `approval-thresholds` skill | **COMPLETE** | — | — | — |
 | K2 | Action risk levels + requiresApproval | docs security | **Item 11.1**: `RiskLevel` (§24) + `classifyAction` (§25: read→safe … system→critical) + `requiresApproval` (конфигурируемый порог, alwaysAllow/alwaysRequire) в `src/runtime/security/risk.ts` | **PARTIAL** (логика готова) | wiring в approval-gate | низкий | K1 |
 | K3 | File write safety | docs security | валидация путей (file-send), gateway | **PARTIAL** | Phase 11 | низкий | — |
-| K4 | Prompt-injection scanning | docs security | gateway (частично) | **PARTIAL** | Phase 11 | средний | — |
+| K4 | Prompt-injection scanning | docs security | **Item 11.2**: отдельный security stage (§26) — `scanForInjection` (override/identity/hidden-text; недоверенные источники → block, полу-доверенные → warn) в `src/runtime/security/injection.ts` | **PARTIAL** (сканер готов) | wiring в конвейер проверки контента | средний | — |
 | K5 | Session isolation | docs security | субсессии + session trust (`gateway-context`) | **COMPLETE** | — | — | — |
 | K6 | Sandbox | docs security | `src/sandbox` local + runsc | **COMPLETE** | — | — | — |
 | K7 | MCP credential isolation | docs security | MCP нет | **NOT_APPLICABLE** пока | Phase 12 | — | L1 |
