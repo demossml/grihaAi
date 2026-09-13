@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: C2 (VERIFIED)
+Current item: O2 (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: C2 — 4-фазный конвейер компакции за флагом
-Last commits: 6480555 (G1), C2 (этот коммит)
+Last completed items: O2 — дашборд observability (snapshot + /observability) за флагом
+Last commits: 723b590 (C2), O2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

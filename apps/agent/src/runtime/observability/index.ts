@@ -18,3 +18,9 @@ export {
   type TelemetryEvent,
   type TelemetryEventKind,
 } from "./telemetry.js";
+export {
+  renderTelemetryDashboard,
+  recentErrors,
+  type ObservabilitySnapshot,
+  type RoleTotal,
+} from "./dashboard.js";

@@ -9,6 +9,8 @@ import { buildProfileSection } from "./profile-section.js";
 import { runExecuteCode } from "./execute-code.js";
 import { pruneAgentToolResults } from "./tool-result-prune.js";
 import { maybeBackgroundReview } from "./background-review.js";
+import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
+import { renderTelemetryDashboard } from "../../../src/runtime/observability/dashboard.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",
@@ -124,6 +126,29 @@ export default function coreAgent(pi: ExtensionAPI): void {
         content: [{ type: "text", text }],
         display: true,
         details: skills,
+      });
+    },
+  });
+
+  // O2 (§31/§32): дашборд телеметрии. Off = disabled-сообщение (1:1).
+  pi.registerCommand("/observability", {
+    description: "Показать дашборд телеметрии (runs, события, токены/стоимость по ролям)",
+    async handler(_args: string) {
+      if (!isAgentRuntimeEnabled(process.env)) {
+        pi.sendMessage({
+          customType: "observability",
+          content: [
+            { type: "text", text: "Observability dashboard отключён (HERMES_AGENT_RUNTIME=1 для включения)." },
+          ],
+          display: true,
+        });
+        return;
+      }
+      const report = renderTelemetryDashboard(runtimeObservability.snapshot());
+      pi.sendMessage({
+        customType: "observability",
+        content: [{ type: "text", text: report }],
+        display: true,
       });
     },
   });

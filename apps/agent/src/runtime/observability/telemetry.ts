@@ -85,4 +85,23 @@ export class TelemetryBuffer {
     }
     return counts;
   }
+
+  /** Снимок всех runs (копии; порядок = порядок создания). */
+  listRuns(): RunTelemetry[] {
+    return [...this.runs.values()].map((run) => ({
+      correlationId: run.correlationId,
+      events: [...run.events],
+    }));
+  }
+
+  /** Суммарные счётчики событий по kind по всем runs (для дашборда). */
+  totalEventCounts(): Map<TelemetryEventKind, number> {
+    const counts = new Map<TelemetryEventKind, number>();
+    for (const run of this.runs.values()) {
+      for (const event of run.events) {
+        counts.set(event.kind, (counts.get(event.kind) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }
 }

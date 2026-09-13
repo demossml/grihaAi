@@ -7,6 +7,7 @@ import {
   ModelUsageAccumulator,
   type TokenUsage,
 } from "../../runtime/observability/usage.js";
+import type { ObservabilitySnapshot } from "../../runtime/observability/dashboard.js";
 import { estimateTokens } from "../../runtime/context/usage.js";
 
 /**
@@ -126,6 +127,16 @@ export class RuntimeObservability {
     calls: number;
   }> {
     return this.usage.totalsByRole();
+  }
+
+  /** O2/§31: снимок для дашборда (runs + события по kind + тоталы по ролям). */
+  snapshot(): ObservabilitySnapshot {
+    return {
+      generatedAt: new Date().toISOString(),
+      runs: this.buffer.listRuns(),
+      eventCounts: Object.fromEntries(this.buffer.totalEventCounts()),
+      roleTotals: this.usage.totalsByRole(),
+    };
   }
 
   /** Оценка стоимости одного вызова. */

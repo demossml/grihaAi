@@ -68,14 +68,16 @@
 15. ✅ B5 Aux-модели: слоты title/compression/summarization/approval/delegation/learning + learning-вызов за флагом.
 16. ✅ G1 Background review: maybeBackgroundReview после turn_end (модель learning, бюджет, событие learning в telemetry).
 17. ✅ C2 4-фазный конвейер: compactContext (prune→structural→summarize→merge) в ContextBuilder за флагом.
+18. ✅ O2 Дашборд observability: snapshot + renderTelemetryDashboard + команда /observability за флагом.
 
-Осознанно отложено (документировано в матрице): дашборд observability,
-runsc-апгрейд MCP, thread_id-доставка, групповой profile-override,
-F7 slash-команды по скиллам (MISSING, низкий приоритет).
+Осознанно отложено (документировано в матрице): runsc-апгрейд MCP,
+thread_id-доставка, групповой profile-override, F7 slash-команды по
+скиллам (MISSING, низкий приоритет).
 B3 fallback, I1 execute_code, структурная компакция (C2/C4),
 injection-stage (K4), версии скиллов (F3), tool-result pruning (C3),
-aux-слоты моделей (B5), background review (G1) и 4-фазный конвейер
-компакции (C2) — подключены (post-wiring, за флагом).
+aux-слоты моделей (B5), background review (G1), 4-фазный конвейер
+компакции (C2) и дашборд observability (O2) — подключены
+(post-wiring, за флагом).
 
 ## Рекомендации по включению в production
 
