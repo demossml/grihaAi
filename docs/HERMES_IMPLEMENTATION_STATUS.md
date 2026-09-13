@@ -11,7 +11,7 @@
 | 2 | Model Runtime + Router + fallback | **VERIFIED (items 2.1–2.4)** | типы/select/fallback-chain/context-window — чистые функции, prod не переключён |
 | 3 | Context Engine | **VERIFIED (items 3.1–3.4)** | usage/compaction/prune/summary — чистые функции, prod не переключён |
 | 4 | Session Engine + Session Search | **VERIFIED (items 4.1–4.3)** | scroll-контракт + summaries store + RRF-фьюжн — prod не переключён |
-| 5 | Memory Engine | NOT_STARTED | E1/E2/E3 COMPLETE, E5/E6 MISSING |
+| 5 | Memory Engine | **VERIFIED (items 5.1–5.3)** | E3 верифицирован; контракт §10 + пайплайн + in-memory store + scan — prod не переключён; E6 → Phase 11 |
 | 6 | Skill Engine | NOT_STARTED | F3 версионирование — обязательно |
 | 7 | Experience Store + Learning | NOT_STARTED | — |
 | 8 | Delegation | NOT_STARTED | H1/H2 COMPLETE |
@@ -27,7 +27,7 @@
 
 ## Сводка по матрице
 
-- COMPLETE: 17 | PARTIAL: 25 | MISSING: 16 | NOT_APPLICABLE: 2 | UNKNOWN: 0
+- COMPLETE: 17 | PARTIAL: 26 | MISSING: 15 | NOT_APPLICABLE: 2 | UNKNOWN: 0
 - High-risk MISSING: skill rollback (F3), execute_code (I1),
   background review (G1).
 

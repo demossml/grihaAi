@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 4
-Current item: 4.3 (VERIFIED)
-Status: IN_PROGRESS (Phase 5 — только после подтверждения пользователя)
+Current phase: 5
+Current item: 5.3 (VERIFIED)
+Status: IN_PROGRESS (Phase 6 — только после подтверждения пользователя)
 
-Last completed items: 4.1–4.3 — Session (scroll contract / summaries store / RRF)
-Last commits: 2df750d (4.1), f861567 (4.2), 4.3 (этот коммит)
+Last completed items: 5.1–5.3 — Memory (E3 verify / engine+pipeline / scan)
+Last commits: a094640 (5.1), dbff5a7 (5.2), 5.3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,8 +17,9 @@ Last commits: 2df750d (4.1), f861567 (4.2), 4.3 (этот коммит)
 
 ## Current objective
 
-Phase 4 (VERIFIED): Session Engine + Session Search (D2/D3) — scroll-контракт,
-session summaries store, RRF-фьюжн. Чистые функции, production не переключён.
+Phase 5 (VERIFIED): Memory Engine (E3/E4/E5) — верификация dedup, контракт §10
++ candidate-пайплайн + in-memory store, scan при записи. Production не
+переключён.
 
 ## Current blockers
 
@@ -34,8 +35,8 @@ session summaries store, RRF-фьюжн. Чистые функции, production
 
 ## Next item
 
-Phase 5 (Memory Engine, матрица E) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 4 заканчивается STOP). E1/E2/E3 COMPLETE, E5/E6 MISSING.
+Phase 6 (Skill Engine, матрица F) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 5 заканчивается STOP). F3 версионирование — обязательно.
 
 ## Do not skip
 
