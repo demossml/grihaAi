@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: W (Wiring)
-Current item: W12 (VERIFIED)
-Status: IN_PROGRESS (W13 — после подтверждения)
+Current item: W13 (VERIFIED — последний пункт плана)
+Status: WIRING COMPLETE (13/13)
 
-Last completed items: W12 — профиль бота (persona-секция) за флагом
-Last commits: 679d9c9 (W11), W12 (этот коммит)
+Last completed items: W13 — telemetry/cost в ModelRouter.call за флагом
+Last commits: ceeae93 (W12), W13 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

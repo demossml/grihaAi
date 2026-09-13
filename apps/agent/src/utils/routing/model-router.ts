@@ -14,6 +14,7 @@ import {
   type ModelRuntimeRole,
   type TaskProfile,
 } from "../../runtime/model/index.js";
+import { runtimeObservability } from "./runtime-observability.js";
 
 export type ModelRole = "main" | "vision"; // | "voice" later
 
@@ -65,6 +66,30 @@ export class ModelRouter {
     messages: Array<{ role: string; content: string }>,
   ): Promise<string> {
     if (!this.caller) throw new Error("No model caller configured");
-    return this.caller(this.getConfig(role), messages);
+    const config = this.getConfig(role);
+
+    // W13 (P2/P3, §31/§32): telemetry + cost-учёт только за флагом.
+    // Off = прямой вызов без записи телеметрии (1:1 старое поведение).
+    if (isAgentRuntimeEnabled(this.env)) {
+      const { correlationId } = runtimeObservability.begin(
+        role,
+        `${config.provider}/${config.model}`,
+      );
+      const startedAt = Date.now();
+      try {
+        const result = await this.caller(config, messages);
+        runtimeObservability.end(correlationId, role, config.model, {
+          inputTokens: runtimeObservability.estimateInputTokens(messages),
+          outputTokens: result.length,
+          toolCalls: 0,
+          durationMs: Date.now() - startedAt,
+        });
+        return result;
+      } catch (error) {
+        runtimeObservability.fail(correlationId, error);
+        throw error;
+      }
+    }
+    return this.caller(config, messages);
   }
 }

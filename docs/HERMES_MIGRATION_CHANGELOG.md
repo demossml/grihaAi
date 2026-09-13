@@ -73,6 +73,7 @@
 | 2026-09-13 | W10 (Cron→TG доставка, P02) | **Нет изменений БД** (J5-колонки уже в main) | cron/delivery-wiring.ts, CronService.ts, cron/index.ts, telegram-bot/index.ts (notifier) | wiring-telegram-delivery.test.ts | — |
 | 2026-09-13 | W11 (Proactive event-gate + nudge) | **Нет изменений БД** | proactive-gate.ts, proactive-assistant/index.ts | wiring-proactive.test.ts | — |
 | 2026-09-13 | W12 (Bot profiles: persona-секция) | **Нет изменений БД** | core-agent/profile-section.ts, core-agent/index.ts, shared-types (`profile`) | wiring-profiles.test.ts | — |
+| 2026-09-13 | W13 (Telemetry/cost в ModelRouter.call) | **Нет изменений БД** | runtime-observability.ts, model-router.ts | wiring-observability.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 
