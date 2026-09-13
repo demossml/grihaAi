@@ -66,7 +66,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| F1 | Discovery + progressive disclosure (levels 0/1/2) | docs skills | `@griha/skills` discoverSkills + formatSkillsForPrompt; references нет | **PARTIAL** | Phase 6: skill_view по файлам | низкий | — |
+| F1 | Discovery + progressive disclosure (levels 0/1/2) | docs skills | **Item 6.1**: `discloseSkill` (уровни 0/1/2) в `src/runtime/skill/disclosure.ts`; существующий discovery не менялся | **PARTIAL** (дисклозер готов) | wiring в формат промпта за флагом | низкий | — |
 | F2 | `skill_manage` create/patch/edit/delete/write_file/remove_file | docs skills | `learning/skill-improver.ts` (создание); patch/diff нет | **PARTIAL** | Phase 6 | средний | — |
 | F3 | Версионирование: read-before-write, diff, validation, rollback | Hermes issue #55647 урок | нет | **MISSING** | Phase 6 (обязательно, урок Hermes) | высокий | F2 |
 | F4 | Skill quality score (successRate/usage/regression) | spec | нет | **MISSING** | Phase 7 | низкий | F3 |
