@@ -98,7 +98,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| I1 | execute_code (один скрипт вместо N tool calls) | spec | нет (sandbox для команд есть: LocalSandbox + RunscSandbox) | **MISSING** | Phase 9 (Node/TS) | высокий (безопасность) | K1 |
+| I1 | execute_code (один скрипт вместо N tool calls) | spec | **Items 9.1–9.3**: `shouldUseExecuteCode`/`compactExecutionResult`, `classifyCodeRisk`/`sandboxForRisk` (опасный → runsc обязателен), `preflight`/`CodeExecutor` контракт в `src/runtime/programmatic/`; исполнение — существующий sandbox-слой | **PARTIAL** (план+безопасность+контракт) | wiring вызова в sandbox | высокий (безопасность) | K1 |
 | I2 | Sandbox исполнения команд | docs security | `src/sandbox` (local + gVisor runsc) | **COMPLETE** | — | — | — |
 
 ## J. Automation / Cron
