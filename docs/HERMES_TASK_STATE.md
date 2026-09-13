@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: W (Wiring)
-Current item: W1 (VERIFIED)
-Status: IN_PROGRESS (W2 — после подтверждения)
+Current item: W2 (VERIFIED)
+Status: IN_PROGRESS (W3 — после подтверждения)
 
-Last completed items: W1 — ModelRouter за флагом (flag off = старое поведение)
-Last commits: 8fd6852 (17.1), W1 (этот коммит)
+Last completed items: W2 — memory scan+approval gate в addFact за флагом
+Last commits: 3230bc6 (W1), W2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -34,8 +34,8 @@ Phase 17 (VERIFIED): Final parity evaluation — матрица COMPLETE 17 / PA
 
 ## Next item
 
-W2 (Memory pipeline в SqliteRagMemoryService за флагом) — по плану
-docs/HERMES_FINAL_EVALUATION.md, ТОЛЬКО после явного подтверждения.
+W3 (Context pipeline: shouldCompress/prune/summary в конвейер за флагом) — по
+плану docs/HERMES_FINAL_EVALUATION.md, ТОЛЬКО после явного подтверждения.
 
 ## Do not skip
 

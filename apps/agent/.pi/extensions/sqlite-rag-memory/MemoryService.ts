@@ -12,6 +12,10 @@ import type {
 } from "../../../src/types/index.js";
 import type { MemoryService } from "./types.js";
 import type { EmbeddingService } from "../../../src/utils/memory/embeddings.js";
+import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
+import { memoryWriteNeedsApproval } from "../../../src/runtime/security/index.js";
+import { scanDecision } from "../../../src/runtime/memory/index.js";
+import type { MemoryType } from "../../../src/runtime/memory/types.js";
 
 interface FactRow {
   id: string;
@@ -24,6 +28,22 @@ interface FactRow {
   updated_at: string;
   metadata: string | null;
   embedding: Buffer | null;
+}
+
+/** W2: отображение категорий Griha на MemoryType §10. */
+function mapFactCategory(category: MemoryFact["category"]): MemoryType {
+  switch (category) {
+    case "procedure":
+      return "workflow";
+    case "decision":
+      return "goal";
+    case "user_profile":
+      return "preference";
+    case "other":
+      return "fact";
+    default:
+      return category;
+  }
 }
 
 interface MessageRow {
@@ -231,7 +251,10 @@ export class SqliteRagMemoryService implements MemoryService {
   private db: Database.Database | null = null;
   private vecLoaded = false;
 
-  constructor(private readonly embeddingService?: EmbeddingService) {}
+  constructor(
+    private readonly embeddingService?: EmbeddingService,
+    private readonly env: NodeJS.ProcessEnv = process.env,
+  ) {}
 
   private requireDb(): Database.Database {
     if (!this.db) throw new Error("MemoryService not initialized — call init(dbPath) first");
@@ -261,7 +284,29 @@ export class SqliteRagMemoryService implements MemoryService {
     }
   }
 
+  /** W2: E4 scan + E6 approval gate на write-path (только при флаге). */
+  private applyRuntimeWriteGate(fact: Omit<MemoryFact, "id" | "createdAt" | "updatedAt">): void {
+    const scan = scanDecision(fact.content);
+    if (!scan.allowed) {
+      throw new Error(`memory write blocked: ${scan.issues.map((i) => i.kind).join(", ")}`);
+    }
+    const confidence =
+      typeof fact.metadata?.confidence === "number" ? fact.metadata.confidence : 0.9;
+    const decision = memoryWriteNeedsApproval({
+      type: mapFactCategory(fact.category),
+      content: fact.content,
+      source: "memory-tools",
+      confidence,
+    });
+    if (decision.approvalRequired) {
+      throw new Error(`memory write requires approval: ${decision.reasons.join("; ")}`);
+    }
+  }
+
   async addFact(fact: Omit<MemoryFact, "id" | "createdAt" | "updatedAt">): Promise<MemoryFact> {
+    if (isAgentRuntimeEnabled(this.env)) {
+      this.applyRuntimeWriteGate(fact);
+    }
     const db = this.requireDb();
 
     // Dedup: если почти точный дубль уже есть в той же категории/scope — не
