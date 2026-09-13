@@ -71,12 +71,35 @@ export class MediaGroupBuffer {
     }
   }
 
-  /** Остановить все таймеры (shutdown). */
-  dispose(): void {
-    for (const [, entry] of this.pending) {
-      clearTimeout(entry.timer);
-    }
+  /**
+   * P05: graceful shutdown — НЕ silent loss. Таймеры останавливаются, но
+   * накопленные альбомы флашатся (onFlush) и дожидаются завершения.
+   * Ошибки отдельного флаша логируются и не роняют shutdown.
+   */
+  async dispose(): Promise<void> {
+    const entries = [...this.pending.entries()];
     this.pending.clear();
+    for (const [, entry] of entries) clearTimeout(entry.timer);
+    if (entries.length === 0) return;
+    console.warn(
+      `[media-group] dispose with ${entries.length} pending album(s) — flushing (no silent loss)`,
+    );
+    await Promise.all(
+      entries.map(([groupId, entry]) =>
+        Promise.resolve(
+          this.onFlush({
+            groupId,
+            items: entry.items,
+            caption: pickAlbumCaption(entry.items),
+          }),
+        ).catch((err: unknown) => {
+          console.error(
+            `[media-group] dispose flush failed for ${groupId}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }),
+      ),
+    );
   }
 
   pendingCount(): number {

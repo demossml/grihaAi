@@ -347,6 +347,9 @@ export class TelegramBotController {
    */
   private readonly memberCache = new ChatMemberTtlCache();
 
+  /** P05: текущий bridge (для graceful dispose при stop/reconnect). */
+  private currentBridge: TelegramBridge | null = null;
+
   constructor(
     private readonly agent: GrishaAgent,
     private readonly allowedUserIds: number[],
@@ -477,6 +480,20 @@ export class TelegramBotController {
           sendChatAction: (chatId, action, extra) => bot.api.sendChatAction(chatId, action, extra),
         },
       );
+
+      // P05: при реконнекте старый bridge флашит pending-альбомы (без await —
+      // не блокируем polling; отправка может падать на мёртвом боте, архив
+      // и инжест выполнятся).
+      const prevBridge = this.currentBridge;
+      this.currentBridge = bridge;
+      if (prevBridge) {
+        void prevBridge.dispose().catch((err: unknown) => {
+          console.error(
+            "[telegram-bot] bridge dispose failed:",
+            err instanceof Error ? err.message : err,
+          );
+        });
+      }
 
       for (const filter of ["message", "channel_post", "edited_message", "edited_channel_post"] as const) {
         bot.on(filter, (ctx: unknown) => {
@@ -649,6 +666,19 @@ export class TelegramBotController {
       } catch (err: unknown) {
         console.error(
           "[telegram-bot] bot.stop() failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    // P05: graceful shutdown — флаш pending-альбомов (до pool.disposeAll в index.ts).
+    const bridge = this.currentBridge;
+    this.currentBridge = null;
+    if (bridge) {
+      try {
+        await bridge.dispose();
+      } catch (err: unknown) {
+        console.error(
+          "[telegram-bot] bridge dispose failed on stop:",
           err instanceof Error ? err.message : err,
         );
       }

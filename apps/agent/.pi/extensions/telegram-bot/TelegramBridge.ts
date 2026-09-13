@@ -364,6 +364,11 @@ export function withReplyContext(message: string, msg: TgMessage): string {
 export class TelegramBridge {
   private readonly agent: GrishaAgent;
 
+  /** P05: graceful shutdown — флаш pending-альбомов вместо тихой потери. */
+  async dispose(): Promise<void> {
+    await this.albumBuffer?.dispose();
+  }
+
   /** G1: буфер альбомов + контекст gate на группу. */
   private albumBuffer: MediaGroupBuffer | null = null;
   private readonly albumGates = new Map<
