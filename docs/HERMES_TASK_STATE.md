@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 7
-Current item: 7.5 (VERIFIED)
-Status: IN_PROGRESS (Phase 8 — только после подтверждения пользователя)
+Current phase: 8
+Current item: 8.3 (VERIFIED)
+Status: IN_PROGRESS (Phase 9 — только после подтверждения пользователя)
 
-Last completed items: 7.1–7.5 — Learning/Experience (routing/experience/user-model/quality/background)
-Last commits: 6720c45 (7.1), cb30554 (7.2), 8b1cd92 (7.3), 32f4a51 (7.4), 7.5 (этот коммит)
+Last completed items: 8.1–8.3 — Delegation (limits guard / orchestrator / policy)
+Last commits: b1c00ad (8.1), 0dd42f1 (8.2), 8.3 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,9 @@ Last commits: 6720c45 (7.1), cb30554 (7.2), 8b1cd92 (7.3), 32f4a51 (7.4), 7.5 (�
 
 ## Current objective
 
-Phase 7 (VERIFIED): Experience Store + Learning (G1–G4, E8, F4) — маршрутизация
-уроков, experience store, user model, quality score, background-review триггер.
-Production не переключён.
+Phase 8 (VERIFIED): Delegation (H3/H4/H5) — лимиты с recursion protection,
+orchestrator-контракт (§18/§19), политика delegation-модели. Production не
+переключён.
 
 ## Current blockers
 
@@ -35,9 +35,9 @@ Production не переключён.
 
 ## Next item
 
-Phase 8 (Delegation Engine, матрица H) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 7 заканчивается STOP). H1/H2 COMPLETE, H3 PARTIAL,
-H4/H5 MISSING.
+Phase 9 (Programmatic tool execution, матрица I) — ТОЛЬКО после явного
+подтверждения пользователя (Phase 8 заканчивается STOP). High-risk: I1
+execute_code (безопасность).
 
 ## Do not skip
 
