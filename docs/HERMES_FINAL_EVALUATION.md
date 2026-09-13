@@ -6,8 +6,8 @@
 
 | Статус | Кол-во | Комментарий |
 |---|---|---|
-| COMPLETE | 36 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + I1 execute_code |
-| PARTIAL | 31 | контракты/логика готовы; остаётся финальное включение рисковых подсистем (C2/F3) и отдельные шаги (дашборд, runsc-MCP, thread_id, profile-override) |
+| COMPLETE | 37 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + I1 execute_code + C4 summary |
+| PARTIAL | 30 | контракты/логика готовы; остаётся финальное включение рисковых подсистем (C2-гигиена/F3) и отдельные шаги (дашборд, runsc-MCP, thread_id, profile-override) |
 | MISSING | 1 | F7 slash-команды по скиллам (низкий приоритет, задокументировано) |
 | NOT_APPLICABLE | 2 | C5 (prompt-cache у провайдера), F6 (offline-ассистент) |
 | UNKNOWN | 0 | — |
@@ -66,11 +66,12 @@
 13. ✅ W13 Observability: telemetry + cost-учёт в ModelRouter.call.
 
 Осознанно отложено (документировано в матрице): B5 отдельные aux-модели,
-C2 LLM-компакция в конвейере, F3 активное
+C2 раздельная gateway-гигиена (pruneToolResults), F3 активное
 переключение версий скиллов, дашборд
 observability, runsc-апгрейд MCP, thread_id-доставка, групповой
 profile-override, F7 slash-команды по скиллам (MISSING, низкий приоритет).
-B3 fallback и I1 execute_code — подключены (post-wiring, за флагом).
+B3 fallback, I1 execute_code и структурная компакция (C2/C4) — подключены
+(post-wiring, за флагом).
 
 ## Рекомендации по включению в production
 

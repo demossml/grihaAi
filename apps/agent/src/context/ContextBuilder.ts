@@ -13,9 +13,13 @@ import { summarizeExpenses } from "../utils/finance/finance.js";
 import { isAgentRuntimeEnabled } from "../runtime/index.js";
 import {
   estimateTokens,
+  extractSummarySections,
+  renderSummary,
   shouldCompress,
   usableBudget,
+  type ChatMessage,
 } from "../runtime/context/index.js";
+import { InMemorySessionSummaryStore } from "../runtime/session/index.js";
 
 /**
  * ContextBuilder — the single place that assembles relevant context for skills.
@@ -46,7 +50,11 @@ export class ContextBuilder {
     private readonly readers: ContextReaders,
     private readonly env: NodeJS.ProcessEnv = process.env,
     private readonly contextBudgetTokens = 8000,
+    private readonly sessionKey?: string,
   ) {}
+
+  /** C2: итеративная ре-компрессия summary по ключу сессии (in-memory). */
+  private readonly summaries = new InMemorySessionSummaryStore();
 
   /**
    * W3: единый финишер ContextResult — при флаге применяет token-бюджет
@@ -65,6 +73,12 @@ export class ContextBuilder {
       undefined,
     );
     if (decision.level === "none") return { text, items };
+
+    // C2: структурная компакция середины (шаблон, без LLM — aux B5 позже).
+    const summaryResult = this.compressWithSummary(items, budget, used);
+    if (summaryResult) return summaryResult;
+
+    // Fallback W3: приоритетное ужатие, если резюмировать нечего.
     const kept: string[] = [];
     let keptTokens = 0;
     for (const item of items) {
@@ -75,6 +89,51 @@ export class ContextBuilder {
     }
     kept.push(`…(контекст ужат: ${used} → ~${keptTokens} токенов)`);
     return { text: kept.join("\n"), items: kept };
+  }
+
+  /** C2: head (system) + rendered summary + tail (recent). */
+  private compressWithSummary(
+    items: string[],
+    budget: number,
+    used: number,
+  ): ContextResult | null {
+    const headCount = 1; // первый item — system-секция (порядок сборки §8)
+    const tailCount = 8; // 4 turn'а × 2 сообщения
+    const tailStart = Math.max(headCount, items.length - tailCount);
+    const middleItems = items.slice(headCount, tailStart);
+    if (middleItems.length === 0) return null;
+
+    // Механическое извлечение: builder-префиксы списка убираются, чтобы
+    // паттерны Decision/Question матчились на контенте (шаблон без LLM).
+    const stripListPrefix = (s: string): string =>
+      s.replace(/^\s*[-*]\s+(\[[^\]]*\]\s+)?/gm, "");
+    const middleMessages: ChatMessage[] = middleItems.map((content, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: stripListPrefix(content),
+    }));
+    const summary = extractSummarySections(middleMessages);
+    // Локальная нормализация (дедуп): детерминированный вывод для одинакового
+    // ввода при итеративной ре-компрессии.
+    const normalized = {
+      goal: summary.goal,
+      progress: summary.progress,
+      decisions: [...new Set(summary.decisions)],
+      openQuestions: [...new Set(summary.openQuestions)],
+    };
+    const entry = this.summaries.upsert(
+      this.sessionKey ?? "context",
+      normalized,
+    );
+    const rendered = renderSummary(entry.sections);
+    const finalItems = [
+      ...items.slice(0, headCount),
+      rendered,
+      ...items.slice(tailStart),
+      `…(контекст ужат: ${used} → ~${estimateTokens(rendered)} токенов резюме)`,
+    ];
+    const finalText = finalItems.join("\n");
+    if (estimateTokens(finalText) > budget * 1.5) return null;
+    return { text: finalText, items: finalItems };
   }
 
   async getContactContext(userId: string, contactName: string): Promise<ContextResult> {

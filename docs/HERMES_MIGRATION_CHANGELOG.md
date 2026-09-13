@@ -76,6 +76,7 @@
 | 2026-09-13 | W13 (Telemetry/cost в ModelRouter.call) | **Нет изменений БД** | runtime-observability.ts, model-router.ts | wiring-observability.test.ts | — |
 | 2026-09-13 | B3 (FallbackChain в ModelRouter.call) | **Нет изменений БД** | model-router.ts, runtime-observability.ts, shared-types (`models.fallbackModels`) | wiring-fallback.test.ts | — |
 | 2026-09-13 | I1 (execute_code tool) | **Нет изменений БД** | core-agent/execute-code.ts, core-agent/index.ts | wiring-execute-code.test.ts | — |
+| 2026-09-13 | C2 (структурная компакция в ContextBuilder) | **Нет изменений БД** | ContextBuilder.ts | wiring-compaction.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 
