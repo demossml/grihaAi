@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
-Current phase: 9
-Current item: 9.3 (VERIFIED)
-Status: IN_PROGRESS (Phase 10 — только после подтверждения пользователя)
+Current phase: 10
+Current item: 10.2 (VERIFIED)
+Status: IN_PROGRESS (Phase 11 — только после подтверждения пользователя)
 
-Last completed items: 9.1–9.3 — Programmatic execution (plan / safety / contract)
-Last commits: 10fc6fa (9.1), ce3186a (9.2), e27d49d (9.3)
+Last completed items: 10.1–10.3 — Automation (J5-схема / engine / script jobs)
+Last commits: b370917 (10.1), 603cf00 (10.3), 10.2 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -17,9 +17,8 @@ Last commits: 10fc6fa (9.1), ce3186a (9.2), e27d49d (9.3)
 
 ## Current objective
 
-Phase 9 (VERIFIED): Programmatic execution (I1) — решение о скрипте вместо N
-tool calls, классификация риска (sandbox обязателен для опасного кода),
-preflight-контракт. Исполнение — существующий sandbox-слой.
+Phase 10 (VERIFIED): Automation/Cron (J2/J4/J5) — P02-схема доставки (без
+Telegram-wiring), AutomationEngine-контракт §21, script-jobs без LLM.
 
 ## Current blockers
 
@@ -35,9 +34,9 @@ preflight-контракт. Исполнение — существующий sa
 
 ## Next item
 
-Phase 10 (Automation/Cron, матрица J) — ТОЛЬКО после явного подтверждения
-пользователя (Phase 9 заканчивается STOP). J2 PARTIAL; J5 = перенос P02
-(chat_id/thread_id, delivery_status) из archive/pre-rollback-2026-09-13.
+Phase 11 (Security + Approval, матрица K) — ТОЛЬКО после явного подтверждения
+пользователя (Phase 10 заканчивается STOP). K1/K5/K6 COMPLETE; E6 memory
+write_approval gate.
 
 ## Do not skip
 
