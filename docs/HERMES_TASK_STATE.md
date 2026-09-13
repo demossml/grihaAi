@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: B5 (VERIFIED)
+Current item: G1 (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: B5 — aux-слоты моделей + learning-вызов за флагом
-Last commits: c4caa78 (C3), B5 (этот коммит)
+Last completed items: G1 — background review (models.learning) за флагом
+Last commits: e213d48 (B5), G1 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

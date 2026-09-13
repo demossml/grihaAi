@@ -6,8 +6,8 @@
 
 | Статус | Кол-во | Комментарий |
 |---|---|---|
-| COMPLETE | 41 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + B5 aux-слоты/learning + I1 execute_code + C3 prune + C4 summary + K4 injection + F3 skill versions |
-| PARTIAL | 26 | контракты/логика готовы; остаётся финальное включение и отдельные шаги (C2 4-фазный, дашборд, runsc-MCP, thread_id, profile-override) |
+| COMPLETE | 42 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + B5 aux-слоты/learning + G1 background review + I1 execute_code + C3 prune + C4 summary + K4 injection + F3 skill versions |
+| PARTIAL | 25 | контракты/логика готовы; остаётся финальное включение и отдельные шаги (C2 4-фазный, дашборд, runsc-MCP, thread_id, profile-override) |
 | MISSING | 1 | F7 slash-команды по скиллам (низкий приоритет, задокументировано) |
 | NOT_APPLICABLE | 2 | C5 (prompt-cache у провайдера), F6 (offline-ассистент) |
 | UNKNOWN | 0 | — |
@@ -66,14 +66,16 @@
 13. ✅ W13 Observability: telemetry + cost-учёт в ModelRouter.call.
 14. ✅ C3 Prune tool results: pruneAgentToolResults в context-событии core-agent (лимит, ошибки сохраняются).
 15. ✅ B5 Aux-модели: слоты title/compression/summarization/approval/delegation/learning + learning-вызов за флагом.
+16. ✅ G1 Background review: maybeBackgroundReview после turn_end (модель learning, бюджет, событие learning в telemetry).
 
 Осознанно отложено (документировано в матрице): C2 4-фазный алгоритм
 компакции (пороги уже подключены), дашборд observability, runsc-апгрейд
 MCP, thread_id-доставка, групповой profile-override, F7 slash-команды по
 скиллам (MISSING, низкий приоритет).
 B3 fallback, I1 execute_code, структурная компакция (C2/C4),
-injection-stage (K4), версии скиллов (F3), tool-result pruning (C3) и
-aux-слоты моделей (B5) — подключены (post-wiring, за флагом).
+injection-stage (K4), версии скиллов (F3), tool-result pruning (C3),
+aux-слоты моделей (B5) и background review (G1) — подключены
+(post-wiring, за флагом).
 
 ## Рекомендации по включению в production
 

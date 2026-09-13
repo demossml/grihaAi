@@ -98,6 +98,17 @@ export class RuntimeObservability {
     });
   }
 
+  /** G1: фоновый review хода (событие learning, §31). Возвращает correlationId. */
+  backgroundReview(turnIndex: number, lessonCount: number): string {
+    const correlationId = this.buffer.startRun();
+    this.buffer.record(correlationId, {
+      kind: "learning",
+      atMs: Date.now(),
+      data: { turnIndex, lessonCount },
+    });
+    return correlationId;
+  }
+
   /** Оценка токенов входа по тексту сообщений (§8-оценка). */
   estimateInputTokens(messages: Array<{ role: string; content: string }>): number {
     let total = 0;

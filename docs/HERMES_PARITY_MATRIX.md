@@ -79,7 +79,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| G1 | Background review после хода (cheaper model) | docs memory background_review | **Item 7.5**: `shouldBackgroundReview` (ошибка/tool-вызов/плановый N-turn) в `src/runtime/learning/background.ts`; LLM-вызов (cheaper model, B5) — wiring за флагом | **PARTIAL** (триггер готов) | wiring LLM-вызова + бюджет | высокий (нагрузка/стоимость) | B5 |
+| G1 | Background review после хода (cheaper model) | docs memory background_review | **Item 7.5**: `shouldBackgroundReview` (ошибка/tool-вызов/плановый N-turn) в `src/runtime/learning/background.ts`; **G1-wiring**: `maybeBackgroundReview` в core-agent — после `turn_end` вызов дешёвой модели (`models.learning`, B5) за флагом, бюджет maxLessons + политика, ошибки глушатся, событие `learning` в telemetry | **COMPLETE** | — | — | — |
 | G2 | Lesson routing: factual→memory, procedural→skill, preference→user model | spec | **Item 7.1**: `classifyLesson`/`routeLesson` (маркеры, приоритет preference→procedural→factual, unknown→drop) в `src/runtime/learning/routing.ts` | **PARTIAL** (классификатор готов) | wiring в G1-review конвейер | средний | G1 |
 | G3 | Experience store (task/context/tools/errors/result/eval/lesson) | spec | **Item 7.2**: `ExperienceStore` (in-memory: add/list/get) в `src/runtime/learning/experience.ts` | **PARTIAL** (in-memory готов) | SQLite (nullable) за флагом | низкий | G1 |
 | G4 | Contradiction check / deprecate | Honcho semantics | **Item 7.2**: `contradictionCheck` (похожий task + другой result → deprecate старого опыта) в `src/runtime/learning/experience.ts` | **PARTIAL** (логика готова) | wiring | низкий | E5 |
@@ -167,8 +167,8 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | Статус | Кол-во |
 |---|---|
-| COMPLETE | 41 |
-| PARTIAL | 26 |
+| COMPLETE | 42 |
+| PARTIAL | 25 |
 | MISSING | 1 (F7 slash-команды по скиллам — низкий приоритет) |
 | DIFFERENT | 0 (DIFFERENT-статусы задокументированы внутри COMPLETE-строк) |
 | NOT_APPLICABLE | 2 (C5 prompt-cache, F6 offline-hub) |

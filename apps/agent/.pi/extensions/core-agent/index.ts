@@ -3,10 +3,12 @@ import { Type } from "typebox";
 import { discoverSkills, formatSkillsForPrompt } from "@griha/skills";
 import { loadConfig } from "@griha/config";
 import { buildRouterHint } from "../../../src/utils/routing/adaptive-router.js";
+import { runtimeObservability } from "../../../src/utils/routing/runtime-observability.js";
 import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning.js";
 import { buildProfileSection } from "./profile-section.js";
 import { runExecuteCode } from "./execute-code.js";
 import { pruneAgentToolResults } from "./tool-result-prune.js";
+import { maybeBackgroundReview } from "./background-review.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",
@@ -62,6 +64,25 @@ export default function coreAgent(pi: ExtensionAPI): void {
   pi.on("context", (event) => {
     const pruned = pruneAgentToolResults(event.messages, process.env);
     return pruned ? { messages: pruned } : undefined;
+  });
+
+  // G1: фоновый review хода дешёвой моделью (models.learning) за флагом.
+  // Fire-and-forget: результат не блокирует turn, ошибки глушатся внутри.
+  pi.on("turn_end", (event) => {
+    void maybeBackgroundReview(
+      {
+        turnIndex: event.turnIndex,
+        usedTools: event.toolResults.length > 0,
+        hadError: event.toolResults.some((t) =>
+          /error|ошибк|failed|exception/i.test(JSON.stringify(t.content ?? "")),
+        ),
+      },
+      { config: loadConfig() },
+    ).then((result) => {
+      if (result && result.lessons.length > 0) {
+        runtimeObservability.backgroundReview(result.turnIndex, result.lessons.length);
+      }
+    });
   });
 
   pi.on("before_agent_start", async (event) => {
