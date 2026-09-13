@@ -2,14 +2,14 @@
 
 Дата: 2026-09-13. Основание: `HERMES_PARITY_MASTER_SPEC.md`, `docs/HERMES_PARITY_MATRIX.md`, `instr.md`.
 
-## Итог матрицы (62 строки)
+## Итог матрицы (70 строк)
 
 | Статус | Кол-во | Комментарий |
 |---|---|---|
-| COMPLETE | 17 | существующие Griha-возможности (Telegram-слой, sandbox, cron-ядро, память и др.) |
-| PARTIAL | 43 | контракты/чистые функции Hermes-механик готовы в `src/runtime/`, wiring — за флагом |
-| MISSING | 0 | — |
-| NOT_APPLICABLE | 2 | C5 (prompt-cache у DeepSeek на стороне провайдера), F6 (offline-ассистент) |
+| COMPLETE | 34 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) |
+| PARTIAL | 33 | контракты/логика готовы; остаётся финальное включение рисковых подсистем (B3/C2/F3/I1) и отдельные шаги (дашборд, runsc-MCP, thread_id, profile-override) |
+| MISSING | 1 | F7 slash-команды по скиллам (низкий приоритет, задокументировано) |
+| NOT_APPLICABLE | 2 | C5 (prompt-cache у провайдера), F6 (offline-ассистент) |
 | UNKNOWN | 0 | — |
 
 ## Выполненные фазы (0–16)
@@ -27,49 +27,67 @@
 - Phase 10: Automation (J5 P02-схема с идемпотентной миграцией, AutomationEngine §21, script-jobs J4).
 - Phase 11: Security (risk/approval K2, injection-stage K4, file safety K3, memory gate E6).
 - Phase 12: MCP/Toolsets (registry L1, toolsets L2, conditional activation F8).
-- Phase 13: Telegram (M4 delivery-контракт; M1–M3 сверены, код не менялся).
+- Phase 13: Telegram (M4 delivery-контракт; M1–M3 сверены; W10: доставка подключена за флагом — единственная правка TG-слоя, notifier).
 - Phase 14: Proactive (decision pipeline §28, nudge N2).
 - Phase 15: Profiles (AgentProfile §29, registry, validation O1).
-- Phase 16: Observability (telemetry §31 + correlation ID, cost accounting §32).
+- Phase 16: Observability (telemetry §31 + correlation ID, cost accounting §32; W13: подключено в ModelRouter.call).
+
+## Стадия Wiring (W1–W13) — завершена 2026-09-13
+
+13/13 VERIFIED-отчётов; коммиты b3c4772…dc4f121 (W5–W13) и W1–W4 ранее;
+все запушены в origin/main. Флаг `HERMES_AGENT_RUNTIME` off по умолчанию.
 
 ## Статистика
 
-- Коммитов в проекте: 47 item-коммитов (по одному на item, линейная история).
-- Новый код: `apps/agent/src/runtime/` — 17 подсистем, 63 файла.
-- Тесты: **944/944 unit pass** (baseline Phase 0 = 678).
+- Коммитов в проекте: 60 item-коммитов (по одному на item, линейная история).
+- Новый код: `apps/agent/src/runtime/` — 17 подсистем, 63+ файла + 13 wiring-модулей.
+- Тесты: **1033/1033 unit pass** (baseline Phase 0 = 678).
+- Регрессия с флагом on (`HERMES_AGENT_RUNTIME=1`): **1033/1033 pass**.
 - Typecheck/build: `npx turbo run typecheck build` → 12/12.
 - Lint: НЕ НАСТРОЕН в проекте (нет script) — остаётся как известный факт.
-- БД: единственная миграция — J5 (3 nullable-колонки, idempotent, тесты clean/existing DB).
-- Production-поведение: НЕ изменено (все новые модули не вызываются из prod-путей).
+- БД: миграции — J5 (nullable, idempotent) + W7 (`script`/`script_args`, nullable, idempotent); тесты clean/existing DB.
+- Production-поведение: НЕ изменено (флаг off = 1:1; все подключения за `HERMES_AGENT_RUNTIME`).
 
 ## Что осталось (осознанно, за флагом `HERMES_AGENT_RUNTIME`)
 
-Включение (wiring) по подсистемам — следующий этап работы, отдельными item'ами:
-1. Model Runtime: подключить select/fallback к вызовам (production defaults — отдельно).
-2. Context: подключить shouldCompress/prune/summary в конвейер (LLM-резюме — aux B5).
-3. Memory: pipeline E5 в SqliteRagMemoryService + scan на write-path + approval gate E6.
-4. Skills: versioning в skill_manage + disclosure в prompt-формат.
-5. Learning: background review (cheaper model) + experience SQLite (nullable).
-6. Delegation: guard/orchestrator в SubAgentRunner.
-7. Automation: update/remove/pause/resume в CronService + script-jobs; доставка Cron→TG (транспорт).
-8. Security: risk-классификация в approval-gate, injection-stage в конвейер контента.
-9. MCP: транспорт stdio/http (K7 credential isolation).
-10. Telegram: J5-доставка (единственная точка, где появится изменение Telegram-слоя).
-11. Proactive: event-system с policy.
-12. Profiles: выбор профиля на бота/группу.
-13. Observability: telemetry в runtime-вызовы + дашборд.
+Все 13 пунктов плана wiring — **VERIFIED и запушены**:
+1. ✅ W1 ModelRouter (resolveModelConfig + selectForTask).
+2. ✅ W2 Memory write gate (scanDecision + approval) в SqliteRagMemoryService.
+3. ✅ W3 Context budget guard (estimateTokens + usableBudget + приоритетное ужатие) в ContextBuilder.
+4. ✅ W4 Skill versioning на core-edit (SkillVersionStore, активный SKILL.md не меняется).
+5. ✅ W5 Lesson routing в applyLearning (routes: factual/procedural/preference/drop).
+6. ✅ W6 Delegation guard (depth/timeout/budget) в createRealSubAgentRunner.
+7. ✅ W7 Automation: update/remove/pause/resume + script-jobs в CronService.
+8. ✅ W8 Security: runtime risk-классификация в approval-gate.
+9. ✅ W9 MCP: транспорт stdio/http + McpSessionRuntime (K7 credential isolation).
+10. ✅ W10 Telegram: Cron→TG доставка с P02-ретраями (единственная правка TG-слоя — notifier).
+11. ✅ W11 Proactive: event-gate (§28) + nudge-тикер в proactive-assistant.
+12. ✅ W12 Profiles: persona-секция профиля бота в system prompt.
+13. ✅ W13 Observability: telemetry + cost-учёт в ModelRouter.call.
 
-## Рекомендации по включению
+Осознанно отложено (документировано в матрице): B3 fallback в prod-вызовах,
+B5 отдельные aux-модели, C2 LLM-компакция в конвейере, F3 активное
+переключение версий скиллов, I1 execute_code в prod-инструмент, дашборд
+observability, runsc-апгрейд MCP, thread_id-доставка, групповой
+profile-override, F7 slash-команды по скиллам (MISSING, низкий приоритет).
 
-- По одному item'у с VERIFIED-отчётом (instr.md §23), флаг остаётся off до полной проверки подсистемы.
-- Высокорисковые подключения первыми: B3 fallback (production), I1 execute_code (безопасность),
-  C2 compaction (не терять контекст), F3 skill rollback (данные).
-- §33 regression suite: расширить integration-тесты на подключённые подсистемы
-  (basic conversation, tool call, long conversation, context compression,
-  session restoration, remember/contradiction, skill create/version/rollback,
-  model routing/fallback, delegation recursion protection).
+## Рекомендации по включению в production
+
+1. Сначала — shadow mode: `HERMES_AGENT_RUNTIME=1` на dev/staging с наблюдением
+   (все 13 точек уже VERIFIED отдельно; обе регрессии 1033/1033).
+2. Последовательное включение на проде по риску: сперва наблюдение/безопасность
+   (W8 risk-gate, W13 telemetry), затем memory/learning (W2/W5), context (W3),
+   automation (W7), delegation (W6), MCP (W9), proactive (W11), profiles (W12),
+   skill versioning (W4) — перед включением снять F3-риск (данные) отдельным
+   прогоном.
+3. Telegram-доставка (W10) включается только с реальным тестом отправки в
+   тестовый чат (единственная точка изменения TG-слоя).
+4. B3 fallback в prod-вызовах — отдельный item с тестом provider-failure.
+5. §33 regression suite: расширять integration-тесты на подключённые подсистемы
+   по мере включения.
 
 ## Статус
 
-**Hermes→Griha parity: контракты и чистые функции — готовы (PARTIAL по wiring).
-MISSING: 0. Проект Phase 0–17 завершён.**
+**Hermes→Griha parity: Phases 0–17 + Wiring W1–W13 завершены. MISSING: 1
+(F7, низкий приоритет). Все подключения за флагом, off = старое поведение 1:1.
+Обе регрессии (off и on) — 1033/1033, typecheck/build 12/12.**

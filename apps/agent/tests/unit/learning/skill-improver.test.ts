@@ -93,7 +93,8 @@ describe("applySkillProposal", () => {
       const proposal = parseSkillProposal(
         '{"kind":"core-edit","title":"Новое правило","content":"Делай так."}',
       )!;
-      const target = await applySkillProposal(proposal, root);
+      // Явный off: тест проверяет старое поведение независимо от process.env.
+      const target = await applySkillProposal(proposal, root, { env: {} });
       assert.equal(target, path.join(root, "core", "SKILL.md"));
       const content = fs.readFileSync(target, "utf8");
       assert.match(content, /Новое правило/);

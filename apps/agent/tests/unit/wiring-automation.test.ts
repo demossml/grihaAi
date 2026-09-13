@@ -31,7 +31,8 @@ describe("wiring: automation в CronService (W7/J2/J4)", () => {
   it("flag off + script: выполняется как обычная LLM-джоба (script игнорируется)", async () => {
     cleanTestDb(DB);
     const runner = makeRunner();
-    const svc = new CronService(getTestDbPath(DB), runner);
+    // Явный off-env: тест не зависит от process.env (флаг-on прогон).
+    const svc = new CronService(getTestDbPath(DB), runner, undefined, undefined, undefined, {});
     await svc.init();
     try {
       const job = await svc.createJob({
