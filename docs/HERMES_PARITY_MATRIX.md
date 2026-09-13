@@ -34,7 +34,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| C1 | Token accounting (usage anchor, provider usage) | docs context-compression, `usage_anchor.py` | нет | **MISSING** | Phase 3: estimateTokens + provider usage | средний | A3 |
+| C1 | Token accounting (usage anchor, provider usage) | docs context-compression, `usage_anchor.py` | **Item 3.1**: `estimateTokens`/`estimateMessageTokens`/`getActualUsage`/`ContextBudget` в `src/runtime/context/usage.ts`, не подключено | **PARTIAL** (чистые функции) | wiring + реальные usage-анкоры | средний | A3 |
 | C2 | Dual compaction (50% agent / 85% gateway hygiene) | docs dual system | нет (Telegram: turn timeout + clip, но не compaction) | **MISSING** | Phase 3: shouldCompress + compress (4 фазы), in_place, cooldown | высокий | C1 |
 | C3 | Prune старых tool results | Phase 1 алгоритма | нет | **MISSING** | Phase 3 | средний | C2 |
 | C4 | Структурированный summary (Goal/Progress/Decisions/…) + iterative re-compression | Phase 3–4 | нет | **MISSING** | Phase 3 (+ aux compression model B5) | средний | C2 |
