@@ -68,6 +68,7 @@
 | 2026-09-13 | W5 (Learning lesson routing) | **Нет изменений БД** | learning-extractor.ts | wiring-learning.test.ts | — |
 | 2026-09-13 | W6 (Delegation gate in runner) | **Нет изменений БД** | RealSubAgentRunner.ts | wiring-delegation.test.ts | — |
 | 2026-09-13 | W7 (Automation: update/remove/pause/resume + script-jobs) | +`script`, `script_args` (cron_jobs, nullable, идемпотентно) | CronService.ts, cron/index.ts, types/index.ts | wiring-automation.test.ts | — |
+| 2026-09-13 | W8 (Runtime risk в approval-gate) | **Нет изменений БД** | approval-gate/index.ts, runtime-risk.ts | wiring-security.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

@@ -16,6 +16,7 @@ import { requiresApproval } from "../../../src/utils/finance/approval-policy.js"
 import { ApprovalService } from "./ApprovalService.js";
 import { getSessionContext } from "../user-rules/context.js";
 import { addSessionInlineButtons } from "../../../src/utils/telegram/session-files.js";
+import { evaluateRuntimeRisk, riskActionClass } from "./runtime-risk.js";
 
 const DB_PATH = path.join(getConfigDir(), "approvals.sqlite");
 
@@ -110,18 +111,34 @@ export default function approvalGate(pi: ExtensionAPI): void {
         policy,
       });
 
-      if (!decision.required) {
+      // W8 (K2): runtime risk-классификация. Только за флагом; только ДОБАВЛЯЕТ
+      // требование одобрения (никогда не снимает решение старого гейта).
+      const runtime = evaluateRuntimeRisk(params.action, process.env);
+      const finalRequired = decision.required || runtime.required;
+
+      if (!finalRequired) {
         return {
           content: [{ type: "text", text: `No approval required: ${decision.reason}` }],
           details: { required: false, reason: decision.reason },
         };
       }
 
+      const actionClass = decision.required
+        ? decision.actionClass
+        : runtime.risk
+          ? riskActionClass(runtime.risk.action)
+          : "SIDE_EFFECT";
+      const finalReason = decision.required
+        ? decision.reason
+        : runtime.risk
+          ? `runtime risk [${runtime.risk.level}]: ${runtime.risk.reason}`
+          : "runtime risk";
+
       const request = service.createRequest({
         userId,
         sessionId: ctx.sessionManager.getSessionId(),
         action: params.action,
-        actionClass: decision.actionClass,
+        actionClass,
         target: params.target,
         args,
         scope: params.scope,
@@ -143,14 +160,14 @@ export default function approvalGate(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: `Approval required for "${params.action}" (${decision.actionClass}, scope=${request.scope}).\nReason: ${decision.reason}\nRequest id: ${request.id}\nAsk the user to approve or deny this request (Telegram shows inline buttons; CLI fallback: /approve ${request.id.slice(0, 8)} or /deny ${request.id.slice(0, 8)}). Do NOT perform the action until approval_status says approved.`,
+            text: `Approval required for "${params.action}" (${actionClass}, scope=${request.scope}).\nReason: ${finalReason}\nRequest id: ${request.id}\nAsk the user to approve or deny this request (Telegram shows inline buttons; CLI fallback: /approve ${request.id.slice(0, 8)} or /deny ${request.id.slice(0, 8)}). Do NOT perform the action until approval_status says approved.`,
           },
         ],
         details: {
           required: true,
           requestId: request.id,
-          actionClass: decision.actionClass,
-          reason: decision.reason,
+          actionClass,
+          reason: finalReason,
         },
       };
     },
