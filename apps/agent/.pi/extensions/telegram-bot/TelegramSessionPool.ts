@@ -207,14 +207,30 @@ export class TelegramSessionPool {
   }
 
   /**
-   * Reset сессии по ключу (`/new` в конкретном чате/теме). Текущий AgentSession
-   * закрывается (файлы сессии остаются на диске), новый создаётся лениво.
-   * Другие чаты пользователя НЕ затрагиваются (D2).
+   * Reset сессии по ключу (`/new` в конкретном чате/теме).
+   *
+   * PROMPT 3: lifecycle protocol без гонок (drain-then-dispose):
+   *   1. Entry отцепляется от пула СИНХРОННО (до первого await): новые
+   *      операции для старой entry больше не принимаются — следующее
+   *      сообщение создаст НОВУЮ entry/сессию.
+   *   2. Ждём terminal state ВСЕХ принятых операций (`entry.queue`): начатая
+   *      работа завершается, queued-ходы выполняются на ещё живой сессии.
+   *      Watchdog (PROMPT 2) гарантирует settle каждого хода — зависания нет.
+   *   3. Только после этого — dispose: старый run больше не обращается к
+   *      runtime. НЕ глобальный лок: queue персональная у sessionKey, другие
+   *      чаты/темы не затрагиваются (D2).
+   *
+   * Файлы сессии остаются на диске; новый AgentSession создаётся лениво.
    */
   async reset(sessionKey: string): Promise<void> {
     const entry = this.sessions.get(sessionKey);
     if (!entry) return;
+    // 1) Отцепляем entry от пула до любого await (4: новая session независимо).
     this.sessions.delete(sessionKey);
+    // 2) Terminal state всех принятых операций (2, 7). Chain не отвергается
+    //    в штатном режиме; на случай сбоя factory — не роняем /new.
+    await entry.queue.catch(() => undefined);
+    // 3) Dispose только после полного drain (3, 5).
     const session = await entry.sessionPromise.catch(() => null);
     if (session) {
       session.dispose();
