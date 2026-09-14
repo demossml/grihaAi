@@ -72,7 +72,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | F4 | Skill quality score (successRate/usage/regression) | spec | **Item 7.4**: `SkillQualityTracker` (decay-взвешенный score, regression-окно) в `src/runtime/learning/quality.ts` | **PARTIAL** (трекер готов) | wiring: исходы из вызовов скиллов | низкий | F3 |
 | F5 | `/learn` из источников | docs skills | `learning-extractor` (частично) | **PARTIAL** | Phase 7 | средний | F2 |
 | F6 | Hub/регистры/сканы при установке | docs skills hub | нет | **NOT_APPLICABLE** (offline-ассистент) | — | — | — |
-| F7 | Slash-команды по скиллам | docs skills | нет (скиллы — в промпт агента) | **MISSING** (низкий приоритет) | позже | низкий | — |
+| F7 | Slash-команды по скиллам | docs skills | нет (скиллы — в промпт агента) | **F7-wiring**: frontmatter `commands:` в @griha/skills (parse/discover), `collectSkillCommands` (валидация/дедуп/слэш-префикс) + регистрация команд в core-agent за флагом (команда шлёт `sendUserMessage` «Use the skill…») | **COMPLETE** | — | — | — |
 | F8 | Conditional activation (requires/fallback toolsets) | docs skills | **Item 12.3**: `isSkillActivatable` (requires → fallback → нет) в `src/runtime/toolsets/activation.ts` | **PARTIAL** (гейт готов) | wiring в skill discovery | низкий | F1 |
 
 ## G. Learning / Experience / User model
@@ -167,14 +167,14 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | Статус | Кол-во |
 |---|---|
-| COMPLETE | 43 |
+| COMPLETE | 44 |
 | PARTIAL | 24 |
-| MISSING | 1 (F7 slash-команды по скиллам — низкий приоритет) |
+| MISSING | 0 |
 | DIFFERENT | 0 (DIFFERENT-статусы задокументированы внутри COMPLETE-строк) |
 | NOT_APPLICABLE | 2 (C5 prompt-cache, F6 offline-hub) |
 | UNKNOWN | 0 (непроверяемое вынесено в PARTIAL/риски) |
 
-MISSING: только F7 (slash-команды по скиллам, низкий приоритет). Оставшийся риск — в PARTIAL: F3 skill rollback
+Оставшийся риск — в PARTIAL: F3 skill rollback
 (данные).
 Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
 за флагом `HERMES_AGENT_RUNTIME`; off = полный паритет со старым поведением.

@@ -10,4 +10,6 @@ export interface SkillMeta {
   version?: string;
   tags?: string[];
   autoCreated?: boolean;
+  /** F7: slash-команды скилла (фронтматтер `commands:`). */
+  commands?: string[];
 }

@@ -6,9 +6,9 @@
 
 | Статус | Кол-во | Комментарий |
 |---|---|---|
-| COMPLETE | 43 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + B5 aux-слоты/learning + G1 background review + I1 execute_code + C2 4-фазный конвейер + C3 prune + C4 summary + K4 injection + F3 skill versions |
-| PARTIAL | 24 | контракты/логика готовы; остаётся финальное включение и отдельные шаги (дашборд, runsc-MCP, thread_id, profile-override) |
-| MISSING | 1 | F7 slash-команды по скиллам (низкий приоритет, задокументировано) |
+| COMPLETE | 44 | существующие Griha-возможности + все 13 wiring-подключений (W1–W13) + B3 fallback + B5 aux-слоты/learning + G1 background review + I1 execute_code + C2 4-фазный конвейер + C3 prune + C4 summary + K4 injection + F3 skill versions + F7 slash-команды |
+| PARTIAL | 24 | контракты/логика готовы; остаётся финальное включение в production |
+| MISSING | 0 | — |
 | NOT_APPLICABLE | 2 | C5 (prompt-cache у провайдера), F6 (offline-ассистент) |
 | UNKNOWN | 0 | — |
 
@@ -72,15 +72,15 @@
 19. ✅ L1 runsc-MCP: sandbox "runsc" для stdio-серверов (gVisor --network=none) за флагом, ошибка как результат.
 20. ✅ M4 thread_id: notifierArgs + sendNotify(messageThreadId) — cron в форум-топики.
 21. ✅ O1 Групповой profile-override: правило чата agent_profile → persona-секция в rulesContext за флагом.
+22. ✅ F7 Slash-команды скиллов: frontmatter commands → collectSkillCommands + регистрация в core-agent за флагом.
 
-Осознанно отложено (документировано в матрице): F7 slash-команды по
-скиллам (MISSING, низкий приоритет).
+Осознанно отложено: ничего (F7 закрыт).
 B3 fallback, I1 execute_code, структурная компакция (C2/C4),
 injection-stage (K4), версии скиллов (F3), tool-result pruning (C3),
 aux-слоты моделей (B5), background review (G1), 4-фазный конвейер
 компакции (C2), дашборд observability (O2), runsc-MCP (L1),
-thread_id-доставка (M4) и групповой profile-override (O1) —
-подключены (post-wiring, за флагом).
+thread_id-доставка (M4), групповой profile-override (O1) и
+slash-команды скиллов (F7) — подключены (post-wiring, за флагом).
 
 ## Рекомендации по включению в production
 
@@ -99,6 +99,6 @@ thread_id-доставка (M4) и групповой profile-override (O1) —
 
 ## Статус
 
-**Hermes→Griha parity: Phases 0–17 + Wiring W1–W13 завершены. MISSING: 1
-(F7, низкий приоритет). Все подключения за флагом, off = старое поведение 1:1.
-Обе регрессии (off и on) — 1033/1033, typecheck/build 12/12.**
+**Hermes→Griha parity: Phases 0–17 + Wiring W1–W13 завершены. MISSING: 0.
+Все подключения за флагом, off = старое поведение 1:1.
+Обе регрессии (off и on) — 1123/1123, typecheck/build 12/12.**

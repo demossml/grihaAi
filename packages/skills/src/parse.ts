@@ -14,6 +14,8 @@ export interface SkillFrontmatter {
   version?: string;
   tags?: string[] | string;
   autoCreated?: boolean;
+  /** F7: slash-команды (строка, flow-список или block-список). */
+  commands?: string[] | string;
   [key: string]: unknown;
 }
 
@@ -59,6 +61,9 @@ export function parseFrontmatter(raw: string): SkillFrontmatter {
     }
 
     if (key === "tags") {
+      fm[key] = parseTags(value);
+    } else if (key === "commands") {
+      // F7: flow-список/строка (block-список обрабатывается выше).
       fm[key] = parseTags(value);
     } else if (key === "autoCreated") {
       fm[key] = value === "true" || value === "1" || value.toLowerCase() === "yes";

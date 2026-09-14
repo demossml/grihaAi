@@ -11,6 +11,7 @@ import { pruneAgentToolResults } from "./tool-result-prune.js";
 import { maybeBackgroundReview } from "./background-review.js";
 import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
 import { renderTelemetryDashboard } from "../../../src/runtime/observability/dashboard.js";
+import { collectSkillCommands } from "./skill-commands.js";
 
 const LEARNING_LOOP_POLICY = [
   "## Closed learning loop",
@@ -112,6 +113,27 @@ export default function coreAgent(pi: ExtensionAPI): void {
 
     return { systemPrompt: `${event.systemPrompt}\n\n${sections.join("\n\n")}` };
   });
+
+  // F7: slash-команды скиллов (frontmatter `commands:`) — только за флагом.
+  // Off = новых команд нет (1:1). Best-effort: ошибки не ломают запуск.
+  void (async () => {
+    if (!isAgentRuntimeEnabled(process.env)) return;
+    try {
+      const skillCommands = collectSkillCommands(await discoverSkills());
+      for (const command of skillCommands) {
+        pi.registerCommand(command.name, {
+          description: `Запустить скилл "${command.skillName}"`,
+          async handler(_args: string) {
+            await pi.sendUserMessage(
+              `Use the "${command.skillName}" skill for this task. ${command.description}`,
+            );
+          },
+        });
+      }
+    } catch {
+      // Команды скиллов — best-effort.
+    }
+  })();
 
   pi.registerCommand("/skills", {
     description: "List available skills",

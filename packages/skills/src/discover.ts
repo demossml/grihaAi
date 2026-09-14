@@ -29,6 +29,21 @@ function normalizeTags(value: string[] | string | undefined): string[] | undefin
   return undefined;
 }
 
+function normalizeCommands(value: string[] | string | undefined): string[] | undefined {
+  if (Array.isArray(value)) {
+    const commands = value.map((c) => String(c).trim()).filter(Boolean);
+    return commands.length > 0 ? commands : undefined;
+  }
+  if (typeof value === "string") {
+    const commands = value
+      .split(/[,\s]+/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+    return commands.length > 0 ? commands : undefined;
+  }
+  return undefined;
+}
+
 async function parseSkillFile(filePath: string, baseDir: string): Promise<SkillMeta> {
   const raw = await fs.readFile(filePath, "utf8");
   const frontmatter = parseFrontmatter(raw);
@@ -48,6 +63,7 @@ async function parseSkillFile(filePath: string, baseDir: string): Promise<SkillM
     version: frontmatter.version != null ? String(frontmatter.version) : undefined,
     tags: normalizeTags(frontmatter.tags),
     autoCreated: frontmatter.autoCreated === true ? true : undefined,
+    commands: normalizeCommands(frontmatter.commands),
   };
 }
 

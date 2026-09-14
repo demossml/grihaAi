@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: O1 group profile (VERIFIED)
-Status: IN_PROGRESS (следующий — после подтверждения)
+Current item: F7 (VERIFIED) — МАТРИЦА ЗАКРЫТА (MISSING 0)
+Status: готово к финальному включению (shadow mode → prod)
 
-Last completed items: O1 group profile — правило чата agent_profile за флагом
-Last commits: e8f68bf (M4 thread_id), O1 group profile (этот коммит)
+Last completed items: F7 — slash-команды по скиллам за флагом
+Last commits: 22601df (O1 group profile), F7 (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

@@ -87,6 +87,7 @@
 | 2026-09-14 | L1 runsc-MCP (gVisor для stdio-серверов) | **Нет изменений БД** | runtime/mcp/runsc-spawn.ts, transport.ts, mcp-session.ts, mcp-runtime/index.ts, shared-types (McpServerConfig.sandbox) | wiring-mcp-runsc.test.ts | — |
 | 2026-09-14 | M4 thread_id (cron → форум-топики) | **Нет изменений БД** (J5-колонка thread_id уже есть) | TelegramBotController.sendNotify(+thread), cron/delivery-wiring.ts (notifierArgs), telegram-bot/index.ts | wiring-thread-delivery.test.ts | — |
 | 2026-09-14 | O1 групповой profile-override (правило agent_profile) | **Нет изменений БД** | telegram-bot/group-profile.ts, group-runtime.ts, telegram-bot/index.ts | wiring-group-profile.test.ts | — |
+| 2026-09-14 | F7 slash-команды по скиллам | **Нет изменений БД** | packages/skills (parse/discover/types: commands), core-agent/skill-commands.ts, core-agent/index.ts | wiring-skill-commands.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 
