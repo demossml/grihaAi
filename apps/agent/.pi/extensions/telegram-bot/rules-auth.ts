@@ -7,6 +7,7 @@
  * При API error — deny (fail closed). DM (private) — правила своего чата.
  */
 import type { TelegramRulesHandler } from "./TelegramBridge.js";
+import { logTelegramError } from "./telegram-diagnostics.js";
 
 export interface RulesAuthDeps {
   /** Исходный handler (runRulesCommand). */
@@ -38,7 +39,14 @@ export function makeGuardedRulesHandler(deps: RulesAuthDeps): TelegramRulesHandl
       if (isGroupAdminStatus(status)) return deps.run(args, ctx);
       if (await deps.users.canManage(ctx.userId)) return deps.run(args, ctx);
       return "Нужны права администратора группы.";
-    } catch {
+    } catch (err: unknown) {
+      // PROMPT 4: сбой проверки фиксируется диагностикой.
+      logTelegramError({
+        operation: "rules_auth_check",
+        chatId: ctx.chatId,
+        userId: ctx.userId,
+        error: err,
+      });
       // Fail closed: при ошибке API — deny, без catch { return true }.
       return "Не удалось проверить права, попробуйте позже.";
     }

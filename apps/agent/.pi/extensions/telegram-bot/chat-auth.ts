@@ -3,6 +3,7 @@
  * Только реальный creator/administrator ТЕКУЩЕЙ группы может применять пресеты.
  */
 import { parseTelegramError } from "./telegram-errors.js";
+import { logTelegramError } from "./telegram-diagnostics.js";
 
 export type ChatMemberStatus =
   | "creator"
@@ -44,6 +45,14 @@ export async function assertCanConfigureGroup(input: {
   } catch (err: unknown) {
     // Fail closed. Сетевые сбои — «попробуйте позже», 400/403 — «нет прав».
     const parsed = parseTelegramError(err);
+    // PROMPT 4: сбой getChatMember фиксируется (kind ошибки — в detail).
+    logTelegramError({
+      operation: "chat_auth_get_chat_member",
+      chatId: input.chatId,
+      userId: input.userId,
+      error: err,
+      detail: `kind=${parsed.kind}`,
+    });
     if (parsed.kind === "forbidden" || parsed.kind === "bad_request") {
       return { ok: false, reason: "Нужны права администратора группы." };
     }
@@ -55,7 +64,12 @@ export async function assertCanConfigureGroup(input: {
   if (isGroupAdminStatus(status)) return { ok: true };
   try {
     if (await input.users.canManage(input.userId)) return { ok: true };
-  } catch {
+  } catch (err: unknown) {
+    logTelegramError({
+      operation: "chat_auth_can_manage",
+      userId: input.userId,
+      error: err,
+    });
     /* canManage упал → трактуем как false */
   }
   return { ok: false, reason: "Нужны права администратора группы." };

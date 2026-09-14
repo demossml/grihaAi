@@ -5,6 +5,7 @@
 
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import { buildTelegramSessionKey } from "./session-key.js";
+import { logTelegramError } from "./telegram-diagnostics.js";
 import { startTypingHeartbeat } from "./typing-heartbeat.js";
 import {
   MediaGroupBuffer,
@@ -631,7 +632,14 @@ export class TelegramBridge {
       if (chatType === "private" && this.options?.pendingGroupsHint) {
         try {
           extra = await this.options.pendingGroupsHint(String(userId));
-        } catch {
+        } catch (err: unknown) {
+          // PROMPT 4: сбой hint'а не теряется, но старт не ломается.
+          logTelegramError({
+            operation: "pending_groups_hint",
+            chatId: String(chatId),
+            userId: String(userId),
+            error: err,
+          });
           /* ignore */
         }
       }
@@ -820,7 +828,16 @@ export class TelegramBridge {
             chatId: String(chatId),
             userId: String(userId),
           });
-        } catch {
+        } catch (err: unknown) {
+          // PROMPT 4: сбой STT — диагностика; пользователю — безопасное
+          // сообщение (транскрипт/голос не логируются).
+          logTelegramError({
+            operation: "voice_transcribe",
+            chatId: String(chatId),
+            userId: String(userId),
+            threadId: msg.threadId,
+            error: err,
+          });
           await send(chatId, "Не удалось распознать голос.");
           return { handled: true, reason: "stt-failed" };
         }

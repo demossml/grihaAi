@@ -6,6 +6,8 @@
  * Запускается ТОЛЬКО после того, как pipeline разрешил ход (не silent):
  * pending-группа / ACL deny / prefilter block — без typing.
  */
+import { logTelegramError } from "./telegram-diagnostics.js";
+
 export interface TypingHeartbeatDeps {
   sendChatAction: (
     chatId: number,
@@ -34,6 +36,9 @@ export function startTypingHeartbeat(
   const intervalMs = deps.intervalMs ?? 4000;
   const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   let active = true;
+  // PROMPT 4: логируем только ПЕРВУЮ ошибку пульса — иначе кик/сеть
+  // спамили бы лог каждые intervalMs до stop().
+  let loggedFirstError = false;
 
   const pulse = async (): Promise<void> => {
     while (active) {
@@ -41,8 +46,17 @@ export function startTypingHeartbeat(
         await deps.sendChatAction(chatId, "typing", {
           messageThreadId: threadId !== undefined ? Number(threadId) : undefined,
         });
-      } catch {
-        // бот кикнут/сеть — игнорируем, loop продолжает работать до stop()
+      } catch (err: unknown) {
+        // бот кикнут/сеть — игнорируем, loop продолжает работать до stop().
+        if (!loggedFirstError) {
+          loggedFirstError = true;
+          logTelegramError({
+            operation: "typing_heartbeat",
+            chatId,
+            threadId,
+            error: err,
+          });
+        }
       }
       if (!active) break;
       await sleep(intervalMs);

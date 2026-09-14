@@ -29,6 +29,7 @@ import telegramFileSend from "../telegram-file-send/index.js";
 import documents from "../documents/index.js";
 import groupMemory from "../group-memory/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
+import { logTelegramError } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
 
 /**
@@ -229,9 +230,25 @@ export class TelegramSessionPool {
     this.sessions.delete(sessionKey);
     // 2) Terminal state всех принятых операций (2, 7). Chain не отвергается
     //    в штатном режиме; на случай сбоя factory — не роняем /new.
-    await entry.queue.catch(() => undefined);
+    await entry.queue.catch((err: unknown) => {
+      // PROMPT 4: rejection очереди (сбой factory/хода) не теряется.
+      logTelegramError({
+        operation: "reset",
+        stage: "drain",
+        error: err,
+        detail: sessionKey,
+      });
+    });
     // 3) Dispose только после полного drain (3, 5).
-    const session = await entry.sessionPromise.catch(() => null);
+    const session = await entry.sessionPromise.catch((err: unknown) => {
+      logTelegramError({
+        operation: "reset",
+        stage: "session_create",
+        error: err,
+        detail: sessionKey,
+      });
+      return null;
+    });
     if (session) {
       session.dispose();
     }
@@ -315,6 +332,15 @@ export class TelegramSessionPool {
 
     // PROMPT 2: watchdog — agent runtime не завершил lifecycle вовремя.
     timer = setTimeout(() => {
+      // PROMPT 4: аномалия lifecycle фиксируется диагностикой.
+      logTelegramError({
+        operation: "agent_prompt",
+        stage: "watchdog",
+        sessionId,
+        chatId,
+        userId,
+        threadId,
+      });
       finish({ text: PROMPT_TIMEOUT_MESSAGE });
     }, this.promptTimeoutMs);
 
@@ -328,11 +354,31 @@ export class TelegramSessionPool {
         source: "extension",
         ...(session.isStreaming ? { streamingBehavior: "followUp" as const } : {}),
       });
-      promptPromise.catch(() => {
+      promptPromise.catch((err: unknown) => {
+        // PROMPT 4: ошибка хода — структурированная диагностика, без
+        // пользовательского текста; пользователю — безопасное сообщение.
+        logTelegramError({
+          operation: "agent_prompt",
+          stage: "prompt",
+          sessionId,
+          chatId,
+          userId,
+          threadId,
+          error: err,
+        });
         finish({ text: "Не удалось получить ответ от Гриши." });
       });
-    } catch {
+    } catch (err) {
       // Синхронный throw session.prompt.
+      logTelegramError({
+        operation: "agent_prompt",
+        stage: "prompt_sync",
+        sessionId,
+        chatId,
+        userId,
+        threadId,
+        error: err,
+      });
       finish({ text: "Не удалось получить ответ от Гриши." });
     }
 
@@ -343,7 +389,15 @@ export class TelegramSessionPool {
     const entries = [...this.sessions.values()];
     this.sessions.clear();
     for (const entry of entries) {
-      const session = await entry.sessionPromise.catch(() => null);
+      const session = await entry.sessionPromise.catch((err: unknown) => {
+        // PROMPT 4: сбой создания сессии при shutdown не теряется.
+        logTelegramError({
+          operation: "dispose_all",
+          stage: "session_create",
+          error: err,
+        });
+        return null;
+      });
       if (session) {
         session.dispose();
       }

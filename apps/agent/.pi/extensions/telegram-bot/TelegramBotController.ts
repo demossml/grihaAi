@@ -34,6 +34,7 @@ import {
   type TelegramFileSendResult,
 } from "./file-send-bridge.js";
 import { setTelegramPinApi } from "./pin-bridge.js";
+import { logTelegramError } from "./telegram-diagnostics.js";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -750,7 +751,15 @@ export class TelegramBotController {
       const stat = fs.statSync(input.filePath);
       if (!stat.isFile()) return { ok: false, error: "Это не файл." };
       sizeBytes = stat.size;
-    } catch {
+    } catch (err: unknown) {
+      // PROMPT 4: причина сбоя stat фиксируется диагностикой (ответ пользователю
+      // остаётся прежним безопасным).
+      logTelegramError({
+        operation: "send_file_stat",
+        chatId: input.chatId,
+        error: err,
+        detail: input.filePath,
+      });
       return { ok: false, error: `Файл не найден: ${input.filePath}` };
     }
     if (sizeBytes > TELEGRAM_MAX_FILE_BYTES) {

@@ -10,6 +10,7 @@
  */
 import type { UserRule } from "@griha/shared-types";
 import { buildTelegramSessionKey } from "./session-key.js";
+import { logTelegramError } from "./telegram-diagnostics.js";
 import { formatRulesContext } from "../user-rules/format-rules-context.js";
 import type { evaluatePreFilter, RulePreFilterInput } from "../user-rules/prefilter.js";
 
@@ -169,7 +170,15 @@ export async function processInboundMessage(
       }
       const gate2 = prepareGroupTurn({ ...ctx, text: messageText }, deps);
       if (!gate2.process) return { action: "silent", reason: "prefilter-after-stt" };
-    } catch {
+    } catch (err: unknown) {
+      // PROMPT 4: сбой STT — диагностика; ответ пользователю прежний.
+      logTelegramError({
+        operation: "group_voice_transcribe",
+        chatId: ctx.chatId,
+        userId: ctx.userId,
+        threadId: ctx.threadId,
+        error: err,
+      });
       await deps.send(Number(ctx.chatId), "Не удалось распознать голос.", {
         threadId: ctx.threadId,
       });
