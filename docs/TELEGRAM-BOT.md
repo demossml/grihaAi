@@ -317,6 +317,27 @@ OS-процесса/субагента на группу нет — изоляц
   (полная история темы), `scope=chat` — только по явному «по всей группе». Даты — только
   по явной просьбе. Onboarding/ACL/rules остаются chat-level.
 
+### Scope-семантика: POLICY per chat, SESSION per topic (explicit contract)
+
+Осознанное решение (PROMPT 8/9 серии): **политика — на чат, история/контекст — на тему**.
+Расхождение session-per-topic vs policy-per-chat — НЕ дефект, а архитектурный контракт,
+закреплённый regression-тестами (`tests/unit/policy-per-chat-contract.test.ts`).
+
+| Аспект | Scope | Поведение |
+|---|---|---|
+| Сессии (`TelegramSessionPool`, ключ `tg:{u}:{chat}[:t:{thread}]`) | per topic | разные темы одного чата — **разные** AgentSession и истории; `/new` сбрасывает только свою тему |
+| Policy (prefilter, `listen_only`/`require_mention`/…) | **per chat** | правила применяются одинаково ко ВСЕМ темам чата |
+| Rules (`UserRulesService`, `user_rules.chat_id`) | **per chat** | `getHardRules/getSoftRules` — по chatId, thread не участвует |
+| Onboarding (`ChatSetupService`) | **per chat** | pending-чат молчит во всех темах; настройка из любой темы/DM — на весь чат |
+| `rulesContext` (R-GR-3) | per chat | один и тот же контекст правил уходит в prompt каждой темы |
+| Profile override (`agent_profile`) | per chat | профиль чата, не темы |
+| ACL (`UsersService.isAllowed`) | per chat | без thread |
+| Роутинг ответов | per topic | ответ всегда в тему входящего сообщения (`message_thread_id`) |
+| Данные (archive/expenses/media/cron) | per topic запись | хранят `thread_id`; решения «архивировать/OCR» — из chat-policy |
+
+Изменение runtime-поведения этих пунктов = нарушение контракта; если понадобится
+policy per topic — это отдельный проект (PROMPT 8, вариант B), а не правка здесь.
+
 ### Hardening P0+P1 (D1–D10)
 
 Патч устойчивости/безопасности бота (см. `TELEGRAM_HARDENING_REPORT.md`). Не меняет
