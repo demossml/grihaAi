@@ -9,6 +9,14 @@ import {
 } from "../../../src/utils/reports/report-schemas.js";
 import { renderPdfReport, renderPresentation } from "../../../src/utils/reports/report-renderer.js";
 import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
+import { getSessionContext } from "../user-rules/context.js";
+import { getDocumentsRepository } from "../../../src/services/documents/index.js";
+import {
+  buildExpenseReportData,
+  EXPENSE_REPORT_EMPTY_MESSAGE,
+  type ExpenseReportBuildResult,
+} from "../../../src/services/documents/expenseReportTools.js";
+import type { DocumentsRepository } from "../../../src/services/documents/DocumentsRepository.js";
 
 /**
  * Deterministic document generation.
@@ -55,7 +63,10 @@ function buildPresentationCaption(slides: GeneratePresentationParams["slides"]):
   return first ? `Презентация: ${first}` : `Презентация (${slides.length} слайдов)`;
 }
 
-export default function reportGenerator(pi: ExtensionAPI): void {
+export default function reportGenerator(
+  pi: ExtensionAPI,
+  deps?: { documentsRepo?: DocumentsRepository },
+): void {
   pi.registerTool({
     name: "generate_report",
     label: "Generate report",
@@ -78,24 +89,43 @@ export default function reportGenerator(pi: ExtensionAPI): void {
         };
       }
 
-      // E2: пустые данные (без строк и без ненулевого итога) → явная ошибка.
-      // Файл не рендерится и НЕ регистрируется в session-files — пользователь
-      // не получает «успешный» пустой PDF.
-      if (
-        params.reportType === "expense-report" &&
-        !hasExpenseReportData(params.data as ExpenseReportData)
-      ) {
-        return {
-          content: [{ type: "text", text: "Нет данных для PDF-отчёта." }],
-          details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
-        };
+      // E2/E3: данные для PDF-отчёта. Если LLM передал пустой объект — данные
+      // подтягиваются из БД по чату сессии (канонический источник, тот же, что
+      // у текстового эталона expenses_sum). Пусто в БД — явная ошибка, файл не
+      // создаётся и не регистрируется.
+      let renderData: Record<string, unknown> = params.data;
+      if (params.reportType === "expense-report") {
+        const expenseData = params.data as ExpenseReportData;
+        if (!hasExpenseReportData(expenseData)) {
+          const sessionCtx = getSessionContext(ctx.sessionManager.getSessionId());
+          // Без чата сессии наполнять не из чего — ошибка без открытия БД.
+          if (!sessionCtx?.chatId) {
+            return {
+              content: [{ type: "text", text: EXPENSE_REPORT_EMPTY_MESSAGE }],
+              details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
+            };
+          }
+          const repo = deps?.documentsRepo ?? getDocumentsRepository();
+          const built: ExpenseReportBuildResult = await buildExpenseReportData(repo, {
+            chatId: sessionCtx.chatId,
+            threadId: sessionCtx.threadId,
+            period: typeof expenseData.period === "string" ? expenseData.period : undefined,
+          });
+          if (!built.ok) {
+            return {
+              content: [{ type: "text", text: built.error }],
+              details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
+            };
+          }
+          renderData = built.data;
+        }
       }
 
       try {
-        const filePath = await renderPdfReport(params.reportType, params.data);
+        const filePath = await renderPdfReport(params.reportType, renderData);
         // Register the file for the session so the Telegram layer can attach it
         // to the reply as a document (same per-session form as file_id handling).
-        setSessionFile(ctx.sessionManager.getSessionId(), filePath, buildReportCaption(params.reportType, params.data));
+        setSessionFile(ctx.sessionManager.getSessionId(), filePath, buildReportCaption(params.reportType, renderData));
         return {
           content: [{ type: "text", text: `Report generated: ${filePath}` }],
           details: { path: filePath },
