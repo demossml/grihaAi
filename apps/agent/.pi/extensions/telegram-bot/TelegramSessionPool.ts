@@ -98,7 +98,19 @@ export interface TelegramSessionPoolOptions {
   cwd?: string;
   /** Injectable factory for tests. Defaults to the real SDK-backed factory. */
   sessionFactory?: TelegramSessionFactory;
+  /**
+   * PROMPT 2: watchdog одного агентского хода (мс). Ход = LLM-цикл + tool-calls,
+   * поэтому дефолт больше воркерных таймаутов проекта (delegation 120s, MCP 30s).
+   */
+  promptTimeoutMs?: number;
 }
+
+/** PROMPT 2: watchdog хода агента (5 минут). Больше воркерных таймаутов проекта. */
+export const DEFAULT_PROMPT_TIMEOUT_MS = 300_000;
+
+/** PROMPT 2: ответ при срабатывании watchdog (не раскрывает причину пользователю). */
+export const PROMPT_TIMEOUT_MESSAGE =
+  "Гриша слишком долго отвечал. Попробуйте отправить сообщение ещё раз.";
 
 interface SessionEntry {
   sessionPromise: Promise<AgentSession>;
@@ -124,9 +136,11 @@ export class TelegramSessionPool {
   private readonly sessions = new Map<string, SessionEntry>();
   private readonly sessionFactory: TelegramSessionFactory;
   private readonly cwd: string;
+  private readonly promptTimeoutMs: number;
 
   constructor(options: TelegramSessionPoolOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
+    this.promptTimeoutMs = options.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS;
     this.sessionFactory =
       options.sessionFactory ??
       ((sessionKey, userId, meta) => this.createSession(sessionKey, userId, meta));
@@ -223,6 +237,18 @@ export class TelegramSessionPool {
     return entry.queue;
   }
 
+  /**
+   * PROMPT 2: terminal state machine хода.
+   *
+   *   START → RUNNING
+   *     ├── agent_end      → SUCCESS
+   *     ├── prompt error   → ERROR
+   *     └── watchdog       → TIMEOUT
+   *
+   * Каждый terminal state выполняет cleanup ровно один раз (settled-guard):
+   * unsubscribe от событий, сброс таймера, очистка session context, finish
+   * ровно один раз — очередь при этом всегда освобождается.
+   */
   private async runPrompt(
     session: AgentSession,
     chatId: string | undefined,
@@ -237,19 +263,27 @@ export class TelegramSessionPool {
       resolveReply = resolve;
     });
 
+    // Объявлены до finish, чтобы cleanup не падал по TDZ.
+    let unsubscribe: () => void = () => {};
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const sessionId = session.sessionId;
+
     const finish = (value: TelegramReply): void => {
       if (settled) return;
       settled = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      unsubscribe();
+      clearSessionContext(sessionId);
       resolveReply(value);
     };
 
-    const sessionId = session.sessionId;
     setSessionContext(sessionId, chatId ? { chatId, userId, threadId } : undefined);
 
-    const unsubscribe = session.subscribe((event) => {
+    unsubscribe = session.subscribe((event) => {
       if (event.type !== "agent_end") return;
-      unsubscribe();
-      clearSessionContext(sessionId);
       const text = session.getLastAssistantText();
       // Pick up any file a tool registered for this session (report-generator)
       // plus inline buttons (approval-gate) queued during the turn.
@@ -263,16 +297,26 @@ export class TelegramSessionPool {
       });
     });
 
+    // PROMPT 2: watchdog — agent runtime не завершил lifecycle вовремя.
+    timer = setTimeout(() => {
+      finish({ text: PROMPT_TIMEOUT_MESSAGE });
+    }, this.promptTimeoutMs);
+
     try {
       // R-GR-3: rulesContext — явный per-turn префикс (не только первый ход).
       const fullMessage = rulesContext ? `${rulesContext}\n\n${message}` : message;
-      await session.prompt(fullMessage, {
+      // ВАЖНО: не await зависшего prompt напрямую — иначе runPrompt (и очередь)
+      // останутся pending после finish. Terminal state решает результат;
+      // висящий prompt остаётся фоновым, его ошибка глушится settled-guard'ом.
+      const promptPromise = session.prompt(fullMessage, {
         source: "extension",
         ...(session.isStreaming ? { streamingBehavior: "followUp" as const } : {}),
       });
+      promptPromise.catch(() => {
+        finish({ text: "Не удалось получить ответ от Гриши." });
+      });
     } catch {
-      unsubscribe();
-      clearSessionContext(sessionId);
+      // Синхронный throw session.prompt.
       finish({ text: "Не удалось получить ответ от Гриши." });
     }
 
