@@ -60,6 +60,11 @@ export interface TelegramJoinRequestEvent {
   bio?: string;
 }
 
+/** M4 (thread_id): extra для sendMessage — messageThreadId только когда задан (1:1 иначе). */
+export function sendNotifyExtra(messageThreadId?: number): { messageThreadId?: number } {
+  return messageThreadId !== undefined ? { messageThreadId } : {};
+}
+
 /** Minimal surface of a grammy Bot needed for long polling. */
 export interface TelegramBotLike {
   on(
@@ -359,12 +364,12 @@ export class TelegramBotController {
    * per-chat очередь + retry. Plain text, без кнопок. Если бот не поднят —
    * молча пропускаем (уведомление не критично).
    */
-  async sendNotify(chatId: number, text: string): Promise<boolean> {
+  async sendNotify(chatId: number, text: string, messageThreadId?: number): Promise<boolean> {
     if (!this.bot) return false;
     let ok = false;
     await this.sendQueue.enqueue(chatId, async () => {
       ok = await this.sendWithRetry(
-        () => this.bot!.api.sendMessage(chatId, text, {}),
+        () => this.bot!.api.sendMessage(chatId, text, sendNotifyExtra(messageThreadId)),
         "sendNotify",
       );
     });

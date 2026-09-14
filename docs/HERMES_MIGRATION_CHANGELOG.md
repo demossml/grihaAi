@@ -85,6 +85,7 @@
 | 2026-09-13 | C2 (4-фазный конвейер компакции) | **Нет изменений БД** | runtime/context/pipeline.ts, runtime/context/summary.ts (preserveRecentTurns turns=0), ContextBuilder.ts | compaction-pipeline.test.ts | — |
 | 2026-09-13 | O2 (дашборд observability) | **Нет изменений БД** | runtime/observability/dashboard.ts, telemetry.ts (listRuns/eventCounts), runtime-observability.ts (snapshot), core-agent/index.ts | observability-dashboard.test.ts | — |
 | 2026-09-14 | L1 runsc-MCP (gVisor для stdio-серверов) | **Нет изменений БД** | runtime/mcp/runsc-spawn.ts, transport.ts, mcp-session.ts, mcp-runtime/index.ts, shared-types (McpServerConfig.sandbox) | wiring-mcp-runsc.test.ts | — |
+| 2026-09-14 | M4 thread_id (cron → форум-топики) | **Нет изменений БД** (J5-колонка thread_id уже есть) | TelegramBotController.sendNotify(+thread), cron/delivery-wiring.ts (notifierArgs), telegram-bot/index.ts | wiring-thread-delivery.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

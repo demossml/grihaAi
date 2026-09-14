@@ -138,7 +138,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | M1 | Gateway → agent transport | gateway docs | **Сверено (Phase 13)**: `telegram-bot` (Bridge/Controller/Pool, retry, heartbeat, topics) — код НЕ менялся | **COMPLETE** (DIFFERENT, наш) | не трогать без необходимости | — | — |
 | M2 | Пер-групповые правила/mention/archive | gateway docs | group-runtime, prefilter, chat-setup, archive | **COMPLETE** | — | — | — |
 | M3 | Медиа/OCR/файлы | gateway media | полный конвейер (OCR/vision/expenses/retry) | **COMPLETE** | — | — | — |
-| M4 | Cron → Telegram | gateway cron | **Item 13.1**: `DeliveryTarget`/`DeliveryStatus`/`DeliveryTransport` + `classifyDeliveryError`/`shouldRetry` (P02: retry на временные, permanent→стоп, execution≠delivery) в `src/runtime/telegram/delivery.ts`; **W10**: `cron/delivery-wiring.ts` (notifier + `deliverCronResult` с P02-ретраями), telegram-bot регистрирует `sendNotify` (единственная правка TG-слоя), `CronService.deliveryStatus` пишется в `cron_runs`; thread_id-отправка — отдельный шаг (API sendNotify без message_thread_id) | **COMPLETE** | — | — | — |
+| M4 | Cron → Telegram | gateway cron | **Item 13.1**: `DeliveryTarget`/`DeliveryStatus`/`DeliveryTransport` + `classifyDeliveryError`/`shouldRetry` (P02: retry на временные, permanent→стоп, execution≠delivery) в `src/runtime/telegram/delivery.ts`; **W10**: `cron/delivery-wiring.ts` (notifier + `deliverCronResult` с P02-ретраями), telegram-bot регистрирует `sendNotify` (единственная правка TG-слоя), `CronService.deliveryStatus` пишется в `cron_runs`; **thread_id-доставка**: `notifierArgs` (J5 `thread_id` → `message_thread_id`), `sendNotify(chatId, text, messageThreadId?)` — форум-топики | **COMPLETE** | — | — | — |
 
 ## N. Proactive
 
@@ -176,7 +176,6 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 MISSING: только F7 (slash-команды по скиллам, низкий приоритет). Оставшийся риск — в PARTIAL: F3 skill rollback
 (данные),
-отдельные шаги (thread_id-доставка,
-групповой profile-override). Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
+отдельный шаг (групповой profile-override). Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
 за флагом `HERMES_AGENT_RUNTIME`; off = полный паритет со старым поведением.
 Регрессия с флагом on: 1033/1033 (off: 1033/1033).

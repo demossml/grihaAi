@@ -19,6 +19,19 @@ import {
 
 export type CronDeliveryNotifier = (target: DeliveryTarget, text: string) => Promise<void>;
 
+/** M4 (thread_id): параметры sendNotify из DeliveryTarget (J5 chat_id/thread_id). */
+export function notifierArgs(
+  target: DeliveryTarget,
+): { chatId: number; messageThreadId?: number } {
+  const args: { chatId: number; messageThreadId?: number } = {
+    chatId: Number(target.chatId),
+  };
+  if (target.threadId !== undefined) {
+    args.messageThreadId = Number(target.threadId);
+  }
+  return args;
+}
+
 let notifier: CronDeliveryNotifier | null = null;
 
 /** Регистрация транспорта (telegram-bot при старте). */

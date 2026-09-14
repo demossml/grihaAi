@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: L1 runsc-MCP (VERIFIED)
+Current item: M4 thread_id (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: L1 runsc-MCP — gVisor-песочница для stdio-серверов за флагом
-Last commits: 6b6bd1f (O2), L1 runsc-MCP (этот коммит)
+Last completed items: M4 thread_id — cron-доставка в форум-топики
+Last commits: 900f1a9 (L1 runsc-MCP), M4 thread_id (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
