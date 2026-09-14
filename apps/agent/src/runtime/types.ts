@@ -3,7 +3,7 @@
  *
  * Только контракты. Ни один production-путь не переключается на этот слой,
  * пока `HERMES_AGENT_RUNTIME` не включён явно (§19 instr.md: feature flag).
- * Имена engines соответствуют матрице A (docs/HERMES_PARITY_MATRIX.md).
+ * Имена engines соответствуют матрице A (docs/GRIHA_PARITY_MATRIX.md).
  */
 
 /** Имена движков ядра (порядок = порядок init). */

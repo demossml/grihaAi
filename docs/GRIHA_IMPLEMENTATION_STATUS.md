@@ -23,7 +23,7 @@
 | 14 | Proactive Agent | **VERIFIED (items 14.1–14.2)** | §28 decision pipeline (security выше proactive) + nudge-планировщик — prod не переключён |
 | 15 | Agent Profiles / Bot Mode | **VERIFIED (items 15.1–15.2)** | профили §29 + registry + валидация — prod не переключён |
 | 16 | Observability + Cost | **VERIFIED (items 16.1–16.2)** | §31 telemetry + correlation ID, §32 token/cost accounting — prod не переключён |
-| 17 | Full parity evaluation | **VERIFIED (item 17.1)** | `docs/HERMES_FINAL_EVALUATION.md`: MISSING=0, PARTIAL=43 (wiring за флагом), план включения |
+| 17 | Full parity evaluation | **VERIFIED (item 17.1)** | `docs/GRIHA_FINAL_EVALUATION.md`: MISSING=0, PARTIAL=43 (wiring за флагом), план включения |
 
 ## Сводка по матрице
 

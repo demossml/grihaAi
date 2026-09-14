@@ -26,20 +26,20 @@ Phase 17 (VERIFIED): Final parity evaluation — матрица COMPLETE 17 / PA
 
 ## Files changed (Phase 0)
 
-- docs/HERMES_PARITY_MATRIX.md (создан)
-- docs/HERMES_IMPLEMENTATION_STATUS.md (создан)
-- docs/HERMES_MIGRATION_CHANGELOG.md (создан)
-- docs/HERMES_TASK_STATE.md (этот файл)
-- (HERMES_PARITY_MASTER_SPEC.md, instr.md — файлы пользователя, untracked)
+- docs/GRIHA_PARITY_MATRIX.md (создан)
+- docs/GRIHA_IMPLEMENTATION_STATUS.md (создан)
+- docs/GRIHA_MIGRATION_CHANGELOG.md (создан)
+- docs/GRIHA_TASK_STATE.md (этот файл)
+- (GRIHA_PARITY_MASTER_SPEC.md, instr.md — файлы пользователя, untracked)
 
 ## Next item
 
 W6 (Delegation: guard/orchestrator в SubAgentRunner за флагом) — по плану
-docs/HERMES_FINAL_EVALUATION.md, ТОЛЬКО после явного подтверждения.
+docs/GRIHA_FINAL_EVALUATION.md, ТОЛЬКО после явного подтверждения.
 
 ## Do not skip
 
-- Перед Phase 1: перечитать HERMES_TASK_STATE.md → master spec → matrix.
+- Перед Phase 1: перечитать GRIHA_TASK_STATE.md → master spec → matrix.
 - Baseline перед каждым item.
 - План (## Item X.Y — Plan) до кода.
 - Report по §23 instr.md после каждого item.

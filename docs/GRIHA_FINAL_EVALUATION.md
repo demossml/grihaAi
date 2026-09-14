@@ -1,6 +1,6 @@
 # HERMES → GRIHA — FINAL PARITY EVALUATION (Phase 17)
 
-Дата: 2026-09-13. Основание: `HERMES_PARITY_MASTER_SPEC.md`, `docs/HERMES_PARITY_MATRIX.md`, `instr.md`.
+Дата: 2026-09-13. Основание: `GRIHA_PARITY_MASTER_SPEC.md`, `docs/GRIHA_PARITY_MATRIX.md`, `instr.md`.
 
 ## Итог матрицы (70 строк)
 
