@@ -3,6 +3,11 @@ import {
   DEFAULT_MCP_EXECUTION_POLICY,
   type McpExecutionPolicy,
 } from "./registry.js";
+import {
+  DEFAULT_RUNSC_PATH,
+  runscSpawn,
+  sandboxedSpawnFactory,
+} from "./runsc-spawn.js";
 
 /**
  * W9 (матрица L1, §22) — MCP транспорт: stdio и http JSON-RPC.
@@ -52,6 +57,14 @@ export interface StdioTransportOptions {
   /** K7: env только этого сервера. */
   env?: Record<string, string>;
   timeoutMs?: number;
+  /**
+   * Песочница (runsc-апгрейд MCP): "none" (дефолт, 1:1) или "runsc"
+   * (gVisor, --network=none). Активация — только за флагом на стороне
+   * вызывающего; здесь — механизм.
+   */
+  sandbox?: "none" | "runsc";
+  /** Путь к runsc (default: "runsc" на PATH). */
+  runscPath?: string;
   /** Инъекция для тестов. Default: child_process.spawn. */
   spawnFn?: SpawnMcpFn;
 }
@@ -67,7 +80,22 @@ export class StdioJsonRpcTransport implements JsonRpcTransport {
 
   constructor(private readonly options: StdioTransportOptions) {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_MCP_EXECUTION_POLICY.timeoutMs;
-    this.child = (options.spawnFn ?? defaultSpawn)(options.command, options.args ?? [], {
+    // База: инъекция (тесты) или обычный spawn. runsc-обёртка применяется
+    // поверх базы, чтобы sandbox работал и с инъекцией.
+    const baseSpawn: SpawnMcpFn =
+      options.spawnFn ?? sandboxedSpawnFactory("none");
+    const spawnFn: SpawnMcpFn =
+      options.sandbox === "runsc"
+        ? (command, args, opts) =>
+            runscSpawn(
+              command,
+              args,
+              opts,
+              options.runscPath ?? DEFAULT_RUNSC_PATH,
+              baseSpawn as unknown as typeof spawn,
+            )
+        : baseSpawn;
+    this.child = spawnFn(options.command, options.args ?? [], {
       env: options.env ?? {},
     });
     this.child.stdout.on("data", (chunk) => this.onData(chunk.toString("utf8")));
@@ -122,14 +150,6 @@ export class StdioJsonRpcTransport implements JsonRpcTransport {
     this.pending.clear();
     this.child.kill();
   }
-}
-
-function defaultSpawn(
-  command: string,
-  args: string[],
-  opts: { env: Record<string, string> },
-): McpChildProcess {
-  return spawn(command, args, { env: opts.env, stdio: ["pipe", "pipe", "pipe"] });
 }
 
 export interface HttpTransportOptions {

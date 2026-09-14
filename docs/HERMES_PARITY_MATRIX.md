@@ -127,7 +127,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| L1 | MCP registry/discovery/execution | docs MCP | **Item 12.1**: `McpRegistry` (register/discovery, credentialScope — K7-фундамент, явное resolveTools — не все tools сразу, §22) в `src/runtime/mcp/registry.ts`; **W9**: транспорт stdio/http JSON-RPC (`transport.ts`, таймауты, errors-as-result, K7 env-isolation), сессионный `McpSessionRuntime` + расширение `mcp-runtime` (`mcp_list_tools`/`mcp_call_tool`) за флагом; off = инструменты отвечают disabled, соединений нет | **COMPLETE** | — | — | — |
+| L1 | MCP registry/discovery/execution | docs MCP | **Item 12.1**: `McpRegistry` (register/discovery, credentialScope — K7-фундамент, явное resolveTools — не все tools сразу, §22) в `src/runtime/mcp/registry.ts`; **W9**: транспорт stdio/http JSON-RPC (`transport.ts`, таймауты, errors-as-result, K7 env-isolation), сессионный `McpSessionRuntime` + расширение `mcp-runtime` (`mcp_list_tools`/`mcp_call_tool`) за флагом; off = инструменты отвечают disabled, соединений нет; **runsc-апгрейд**: `sandbox: "runsc"` в `McpServerConfig` → stdio-сервер в gVisor (`runsc do --rootless --network=none`, `runsc-spawn.ts`) за флагом; недоступный runsc → ошибка как результат | **COMPLETE** | — | — | — |
 | L2 | Toolsets + запрет самодобавления | docs toolsets | **Item 12.2**: `Toolset` union (§23) + `ToolsetPolicy`/`canUseToolset`/`canModifyPolicy` (запрет самодобавления) в `src/runtime/toolsets/toolsets.ts` | **PARTIAL** (контракт готов) | wiring в subagent-конфиг | низкий | H4 |
 | L3 | Tool permission layer | docs security | gateway + approval | **PARTIAL** | Phase 11/12 | низкий | K1 |
 
@@ -176,7 +176,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 MISSING: только F7 (slash-команды по скиллам, низкий приоритет). Оставшийся риск — в PARTIAL: F3 skill rollback
 (данные),
-отдельные шаги (runsc-апгрейд MCP, thread_id-доставка,
+отдельные шаги (thread_id-доставка,
 групповой profile-override). Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
 за флагом `HERMES_AGENT_RUNTIME`; off = полный паритет со старым поведением.
 Регрессия с флагом on: 1033/1033 (off: 1033/1033).

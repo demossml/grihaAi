@@ -84,6 +84,7 @@
 | 2026-09-13 | G1 (background review после хода) | **Нет изменений БД** | core-agent/background-review.ts, core-agent/index.ts, runtime-observability.ts | wiring-background-review.test.ts | — |
 | 2026-09-13 | C2 (4-фазный конвейер компакции) | **Нет изменений БД** | runtime/context/pipeline.ts, runtime/context/summary.ts (preserveRecentTurns turns=0), ContextBuilder.ts | compaction-pipeline.test.ts | — |
 | 2026-09-13 | O2 (дашборд observability) | **Нет изменений БД** | runtime/observability/dashboard.ts, telemetry.ts (listRuns/eventCounts), runtime-observability.ts (snapshot), core-agent/index.ts | observability-dashboard.test.ts | — |
+| 2026-09-14 | L1 runsc-MCP (gVisor для stdio-серверов) | **Нет изменений БД** | runtime/mcp/runsc-spawn.ts, transport.ts, mcp-session.ts, mcp-runtime/index.ts, shared-types (McpServerConfig.sandbox) | wiring-mcp-runsc.test.ts | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

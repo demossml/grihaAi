@@ -69,15 +69,16 @@
 16. ✅ G1 Background review: maybeBackgroundReview после turn_end (модель learning, бюджет, событие learning в telemetry).
 17. ✅ C2 4-фазный конвейер: compactContext (prune→structural→summarize→merge) в ContextBuilder за флагом.
 18. ✅ O2 Дашборд observability: snapshot + renderTelemetryDashboard + команда /observability за флагом.
+19. ✅ L1 runsc-MCP: sandbox "runsc" для stdio-серверов (gVisor --network=none) за флагом, ошибка как результат.
 
-Осознанно отложено (документировано в матрице): runsc-апгрейд MCP,
-thread_id-доставка, групповой profile-override, F7 slash-команды по
-скиллам (MISSING, низкий приоритет).
+Осознанно отложено (документировано в матрице): thread_id-доставка,
+групповой profile-override, F7 slash-команды по скиллам (MISSING,
+низкий приоритет).
 B3 fallback, I1 execute_code, структурная компакция (C2/C4),
 injection-stage (K4), версии скиллов (F3), tool-result pruning (C3),
 aux-слоты моделей (B5), background review (G1), 4-фазный конвейер
-компакции (C2) и дашборд observability (O2) — подключены
-(post-wiring, за флагом).
+компакции (C2), дашборд observability (O2) и runsc-MCP (L1) —
+подключены (post-wiring, за флагом).
 
 ## Рекомендации по включению в production
 

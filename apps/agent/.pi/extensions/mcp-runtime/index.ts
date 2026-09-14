@@ -2,7 +2,12 @@ import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "@griha/config";
 import type { McpServerConfig } from "@griha/shared-types";
-import { HttpJsonRpcTransport, StdioJsonRpcTransport } from "../../../src/runtime/mcp/transport.js";
+import {
+  HttpJsonRpcTransport,
+  StdioJsonRpcTransport,
+  type JsonRpcTransport,
+} from "../../../src/runtime/mcp/transport.js";
+import { runscAvailable } from "../../../src/runtime/mcp/runsc-spawn.js";
 import { McpSessionRuntime } from "./mcp-session.js";
 
 /**
@@ -14,9 +19,22 @@ import { McpSessionRuntime } from "./mcp-session.js";
  * (`mcp.servers`); K7 credential isolation — env каждого сервера изолирован.
  */
 
-const transportFactory = (server: McpServerConfig) => {
+const transportFactory = (server: McpServerConfig): JsonRpcTransport => {
   if (server.transport === "http") {
     return new HttpJsonRpcTransport({ url: server.url ?? "" });
+  }
+  // runsc-апгрейд: только для stdio-серверов с sandbox: "runsc";
+  // недоступный runsc → понятная ошибка (не падение агента).
+  if (server.sandbox === "runsc") {
+    if (!runscAvailable()) {
+      throw new Error(`runsc not available for mcp server "${server.name}"`);
+    }
+    return new StdioJsonRpcTransport({
+      command: server.command ?? "",
+      args: server.args,
+      env: server.env,
+      sandbox: "runsc",
+    });
   }
   return new StdioJsonRpcTransport({
     command: server.command ?? "",

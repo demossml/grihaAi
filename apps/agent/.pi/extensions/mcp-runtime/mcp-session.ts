@@ -29,6 +29,7 @@ export interface McpToolListResult {
 export class McpSessionRuntime {
   private readonly registry = new McpRegistry();
   private readonly transports = new Map<string, JsonRpcTransport>();
+  private readonly transportErrors = new Map<string, string>();
   private readonly configByName = new Map<string, McpServerConfig>();
 
   constructor(
@@ -58,8 +59,17 @@ export class McpSessionRuntime {
     if (!transport) {
       const cfg = this.configByName.get(name);
       if (!cfg) return null;
-      transport = this.factory(cfg);
-      this.transports.set(name, transport);
+      try {
+        transport = this.factory(cfg);
+        this.transports.set(name, transport);
+      } catch (error) {
+        // runsc missing и т.п.: ошибка как результат, агент не падает.
+        this.transportErrors.set(
+          name,
+          error instanceof Error ? error.message : String(error),
+        );
+        return null;
+      }
     }
     return transport;
   }
@@ -76,7 +86,13 @@ export class McpSessionRuntime {
       return { ok: false, error: "MCP runtime disabled (HERMES_AGENT_RUNTIME off)" };
     }
     const transport = this.transportFor(serverName);
-    if (!transport) return { ok: false, error: `unknown mcp server: ${serverName}` };
+    if (!transport) {
+      const setupError = this.transportErrors.get(serverName);
+      return {
+        ok: false,
+        error: setupError ?? `unknown mcp server: ${serverName}`,
+      };
+    }
     try {
       const discovered = await discoverMcpTools(transport);
       const tools = discovered.filter((t) => this.isAllowed(serverName, t.name));
@@ -103,7 +119,13 @@ export class McpSessionRuntime {
       return { ok: false, error: "MCP runtime disabled (HERMES_AGENT_RUNTIME off)" };
     }
     const transport = this.transportFor(serverName);
-    if (!transport) return { ok: false, error: `unknown mcp server: ${serverName}` };
+    if (!transport) {
+      const setupError = this.transportErrors.get(serverName);
+      return {
+        ok: false,
+        error: setupError ?? `unknown mcp server: ${serverName}`,
+      };
+    }
     if (!this.isAllowed(serverName, toolName)) {
       return { ok: false, error: `tool not allowed on server ${serverName}: ${toolName}` };
     }

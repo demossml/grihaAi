@@ -107,6 +107,12 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** Скоуп креда (default: name). Разные скоупы не пересекаются. */
   credentialScope?: string;
+  /**
+   * runsc-апгрейд MCP (L1, отдельный шаг): "none" (дефолт) или "runsc" —
+   * stdio-сервер запускается в gVisor-песочнице (--network=none).
+   * Действует только за флагом HERMES_AGENT_RUNTIME.
+   */
+  sandbox?: "none" | "runsc";
   /** Явный allowlist инструментов (пусто = все обнаруженные). */
   allowedTools?: string[];
 }
