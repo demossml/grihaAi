@@ -89,6 +89,7 @@
 | 2026-09-14 | O1 групповой profile-override (правило agent_profile) | **Нет изменений БД** | telegram-bot/group-profile.ts, group-runtime.ts, telegram-bot/index.ts | wiring-group-profile.test.ts | — |
 | 2026-09-14 | F7 slash-команды по скиллам | **Нет изменений БД** | packages/skills (parse/discover/types: commands), core-agent/skill-commands.ts, core-agent/index.ts | wiring-skill-commands.test.ts | — |
 | 2026-09-14 | §34 Golden tests (deterministic fixtures) | **Нет изменений БД** | tests/unit/golden-parity.test.ts | golden-parity.test.ts | — |
+| 2026-09-14 | lint (§42.9 DoD): eslint + babel-парсер | **Нет изменений БД** | eslint.config.mjs, package.json (devDeps), regex-экранирование (session-key, memory/pipeline, secret-filter) | eslint apps packages — 0 ошибок | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

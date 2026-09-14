@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: §34 golden tests (VERIFIED) — МАТРИЦА ЗАКРЫТА (MISSING 0)
+Current item: lint (§42.9) (VERIFIED) — DoD ЗАКРЫТ, матрица MISSING 0
 Status: готово к финальному включению (shadow mode → prod)
 
-Last completed items: §34 golden fixtures — детерминированное поведение без LLM
-Last commits: 0bccd8f (F7), §34 golden (этот коммит)
+Last completed items: lint — eslint.config.mjs (babel-парсер из-за TS7), 0 ошибок
+Last commits: b2e4ad6 (§34 golden), lint (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

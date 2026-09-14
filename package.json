@@ -10,10 +10,15 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "lint": "eslint apps packages"
   },
   "devDependencies": {
+    "@babel/core": "^8.0.5",
+    "@babel/eslint-parser": "^8.0.5",
+    "@babel/preset-typescript": "^8.0.1",
     "@types/node": "^26.4.1",
+    "eslint": "^10.10.0",
     "turbo": "^2.5.0",
     "typescript": "^7.0.2"
   }

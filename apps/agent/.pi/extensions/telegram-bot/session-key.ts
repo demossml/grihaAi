@@ -18,5 +18,5 @@ export function buildTelegramSessionKey(input: {
 
 /** Безопасное имя каталога (убираем path-traversal). */
 export function sanitizeDirSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_\-]/g, "_");
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }

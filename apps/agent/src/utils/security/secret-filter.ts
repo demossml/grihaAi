@@ -10,9 +10,9 @@ export interface SecretMatch {
 
 const SECRET_PATTERNS: Array<{ kind: string; re: RegExp }> = [
   { kind: "private key", re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ },
-  { kind: "api key", re: /\b(?:api[_-]?key|apikey)\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}/i },
+  { kind: "api key", re: /\b(?:api[_-]?key|apikey)\s*[:=]\s*['"]?[A-Za-z0-9_-]{12,}/i },
   { kind: "password", re: /\b(?:password|passwd|pwd)\s*[:=]\s*\S+/i },
-  { kind: "token", re: /\b(?:access[_-]?token|auth[_-]?token|session[_-]?token|bearer)\s*[:=]?\s*[A-Za-z0-9_\-\.]{16,}/i },
+  { kind: "token", re: /\b(?:access[_-]?token|auth[_-]?token|session[_-]?token|bearer)\s*[:=]?\s*[A-Za-z0-9_.-]{16,}/i },
   // Telegram bot token shape: <digits>:<alphanumerics with dash/underscore>
   { kind: "telegram bot token", re: /\b\d{8,10}:[A-Za-z0-9_-]{30,}\b/ },
   // Payment card numbers (13-19 digits, optional grouping by spaces/dashes).

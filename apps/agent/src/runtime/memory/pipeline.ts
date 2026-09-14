@@ -91,7 +91,7 @@ export function detectConflict(
   // Проверка ДО duplicate: "не" добавляет пару символов, similarity остаётся высокой.
   // JS \b не работает с кириллицей (\w = ASCII), поэтому явные границы.
   const hasNegation = (t: string) =>
-    /(^|[\s.,!?;:()\-])(не|no|not|никогда|never|запрещ)(?=$|[\s.,!?;:()\-])/i.test(t);
+    /(^|[\s.,!?;:()-])(не|no|not|никогда|never|запрещ)(?=$|[\s.,!?;:()-])/i.test(t);
   if (hasNegation(input.content) !== hasNegation(best.content)) {
     return { kind: "contradiction", against: best };
   }
