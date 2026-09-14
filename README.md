@@ -12,14 +12,16 @@
 - **Язык**: TypeScript (strict, NodeNext/ESM, target ES2022)
 - **Память**: `better-sqlite3` + FTS5 (гибридный поиск: FTS + вектора)
 - **Telegram**: `grammy` (long polling)
-- **Тесты**: `node:test` через `tsx`
+- **Тесты**: `node:test` через `tsx` (unit 1127 + golden fixtures §34)
+- **Lint**: ESLint 10 (flat config; TS-парсинг через `@babel/eslint-parser` — typescript-eslint не поддерживает TS 7)
 
 ## Быстрый старт
 
 ```bash
 npm install               # workspace-зависимости
 npm run typecheck         # turbo: typecheck всех пакетов (собирает @griha/*)
-npm test                  # turbo: тесты агента (208 unit)
+npm test                  # turbo: тесты агента (1127 unit)
+npm run lint              # eslint apps packages (0 ошибок)
 npm run build             # turbo: сборка пакетов в dist/
 
 # Запуск агента — из apps/agent (pi читает .pi/ и skills/ оттуда):
@@ -65,6 +67,24 @@ cd apps/agent
 
 Подробности: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) и [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
+## Hermes parity agent runtime (за флагом)
+
+Поверх pi.dev-расширений работает нативный TS-runtime по спецификации Hermes
+(см. `HERMES_PARITY_MASTER_SPEC.md` и `docs/HERMES_PARITY_MATRIX.md`):
+model runtime (роли main/vision/aux, fallback-цепочка), context engine
+(бюджет, 4-фазная компакция, prune), memory/session/skill/learning engines,
+delegation, security (risk/approval/injection), MCP, automation, profiles,
+observability. Включается одной переменной:
+
+```bash
+HERMES_AGENT_RUNTIME=1  # off (дефолт) = старое поведение 1:1
+```
+
+Статус: **матрица закрыта** — 44 COMPLETE / 24 PARTIAL / 0 MISSING,
+22 post-wiring подключения VERIFIED, DoD §42 закрыт (тесты 1127/1127 off+on,
+typecheck/build 12/12, lint 0/0). Подробности: `docs/HERMES_FINAL_EVALUATION.md`,
+`docs/HERMES_TASK_STATE.md`, `docs/HERMES_MIGRATION_CHANGELOG.md`.
+
 ## Структура (Turborepo + Hono)
 
 ```
@@ -88,7 +108,11 @@ grihaAi/
 │   ├── ARCHITECTURE.md       # общая картина, платформа, «мелочи»
 │   ├── EXTENSIONS.md         # пофайловый справочник
 │   ├── TELEGRAM-BOT.md       # глубокий разбор бота
-│   └── SECURITY.md           # периметр, модель доверия, gateway, sandbox
+│   ├── SECURITY.md           # периметр, модель доверия, gateway, sandbox
+│   ├── HERMES_PARITY_MATRIX.md      # матрица Hermes→Griha (62 строки)
+│   ├── HERMES_MIGRATION_CHANGELOG.md # журнал post-wiring подключений
+│   ├── HERMES_TASK_STATE.md         # текущее состояние фаз
+│   └── HERMES_FINAL_EVALUATION.md   # финальная оценка + план включения
 └── README.md / STATUS.md
 ```
 
@@ -100,7 +124,8 @@ grihaAi/
 npm install       # workspace-установка
 npm run build     # turbo run build
 npm run typecheck # turbo run typecheck
-npm test          # turbo run test
+npm run test      # turbo run test
+npm run lint      # eslint apps packages
 ```
 
 Внутри пакета (например, `apps/agent`):
