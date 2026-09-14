@@ -21,6 +21,9 @@ export interface AlbumItem {
 }
 
 export interface AlbumBatch {
+  /** PROMPT 10: чат альбома — lookup gate-контекста по composite-ключу. */
+  chatId: string;
+  /** Сырой media_group_id (для agent message `telegram_media_group_id`). */
   groupId: string;
   items: AlbumItem[];
   /** Общая подпись: обычно только у одного элемента альбома. */
@@ -29,10 +32,19 @@ export interface AlbumBatch {
 
 export type AlbumFlushFn = (batch: AlbumBatch) => void | Promise<void>;
 
+/**
+ * PROMPT 10: canonical scope-ключ альбома — chatId + mediaGroupId.
+ * media_group_id уникален только в контексте чата; без chatId альбомы
+ * РАЗНЫХ чатов с совпавшим id слились бы в один batch.
+ */
+export function mediaGroupScopeKey(chatId: string | number, groupId: string): string {
+  return `${String(chatId)}:${groupId}`;
+}
+
 export class MediaGroupBuffer {
   private readonly pending = new Map<
     string,
-    { items: AlbumItem[]; timer: ReturnType<typeof setTimeout> }
+    { chatId: string; groupId: string; items: AlbumItem[]; timer: ReturnType<typeof setTimeout> }
   >();
 
   constructor(
@@ -40,29 +52,38 @@ export class MediaGroupBuffer {
     private readonly onFlush: AlbumFlushFn,
   ) {}
 
-  add(groupId: string, item: AlbumItem): void {
-    const entry = this.pending.get(groupId);
+  /** PROMPT 10: item буферизуется под composite-ключом (chatId + groupId). */
+  add(chatId: string | number, groupId: string, item: AlbumItem): void {
+    const key = mediaGroupScopeKey(chatId, groupId);
+    const entry = this.pending.get(key);
     if (entry) {
       clearTimeout(entry.timer);
       entry.items.push(item);
     } else {
-      this.pending.set(groupId, { items: [item], timer: undefined as never });
+      this.pending.set(key, {
+        chatId: String(chatId),
+        groupId,
+        items: [item],
+        timer: undefined as never,
+      });
     }
-    const current = this.pending.get(groupId)!;
+    const current = this.pending.get(key)!;
     current.timer = setTimeout(() => {
-      void this.flush(groupId);
+      void this.flush(key);
     }, this.flushMs);
     current.timer.unref?.();
   }
 
-  private async flush(groupId: string): Promise<void> {
-    const entry = this.pending.get(groupId);
+  private async flush(key: string): Promise<void> {
+    const entry = this.pending.get(key);
     if (!entry) return;
-    this.pending.delete(groupId);
+    this.pending.delete(key);
     const items = entry.items;
     const caption = pickAlbumCaption(items);
     try {
-      await this.onFlush({ groupId, items, caption });
+      // groupId в batch остаётся СЫРЫМ (для agent message и логов);
+      // chatId — для lookup gate-контекста по composite-ключу.
+      await this.onFlush({ chatId: entry.chatId, groupId: entry.groupId, items, caption });
     } catch (err: unknown) {
       console.error(
         "[media-group] album flush failed:",

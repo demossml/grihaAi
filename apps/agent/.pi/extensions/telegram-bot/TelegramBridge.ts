@@ -10,6 +10,7 @@ import { logTelegramError } from "./telegram-diagnostics.js";
 import { startTypingHeartbeat } from "./typing-heartbeat.js";
 import {
   MediaGroupBuffer,
+  mediaGroupScopeKey,
   type AlbumBatch,
   type AlbumItem,
 } from "./media-group-buffer.js";
@@ -930,10 +931,13 @@ export class TelegramBridge {
           (batch) => this.flushAlbum(batch),
         );
       }
-      if (!this.albumGates.has(msg.mediaGroupId)) {
+      // PROMPT 10: gate-контекст и буфер — по composite-ключу (chatId + groupId);
+      // media_group_id уникален только в рамках чата.
+      const scopeKey = mediaGroupScopeKey(chatId, msg.mediaGroupId);
+      if (!this.albumGates.has(scopeKey)) {
         const placeholder = msg.caption ? `[альбом] ${msg.caption}` : "[альбом фото/файлов]";
         const gate = this.evaluateInput(placeholder, userId, chatId, msg, chatType);
-        this.albumGates.set(msg.mediaGroupId, {
+        this.albumGates.set(scopeKey, {
           gate,
           chatId,
           userId,
@@ -942,7 +946,7 @@ export class TelegramBridge {
           msg,
         });
       }
-      this.albumBuffer.add(msg.mediaGroupId, item);
+      this.albumBuffer.add(chatId, msg.mediaGroupId, item);
       return { handled: true, reason: "album-buffered" };
     }
 
@@ -1186,6 +1190,7 @@ export class TelegramBridge {
       // PROMPT 7: outcome альбома (элементы уже в трассе как album-buffered).
       console.log(
         `[telegram-bot] album outcome ${JSON.stringify({
+          chatId: batch.chatId,
           groupId: batch.groupId,
           updateIds: batch.items.map((i) => i.updateId),
           invoked: this.agentInvocationCount > invocationsBefore,
@@ -1206,8 +1211,10 @@ export class TelegramBridge {
   }
 
   private async flushAlbumInner(batch: AlbumBatch): Promise<ProcessMediaResult | null | undefined> {
-    const ctx = this.albumGates.get(batch.groupId);
-    this.albumGates.delete(batch.groupId);
+    // PROMPT 10: gate-контекст — по composite-ключу (chatId + groupId).
+    const scopeKey = mediaGroupScopeKey(batch.chatId, batch.groupId);
+    const ctx = this.albumGates.get(scopeKey);
+    this.albumGates.delete(scopeKey);
     if (!ctx) return undefined;
     const { gate, chatId, userId, chatType, send, msg } = ctx;
 

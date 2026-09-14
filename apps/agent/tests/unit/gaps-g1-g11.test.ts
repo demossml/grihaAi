@@ -51,9 +51,9 @@ describe("G1: MediaGroupBuffer", () => {
       fileUniqueId: u,
       kind: "photo" as const,
     });
-    buffer.add("g1", item("u1"));
-    buffer.add("g1", item("u2"));
-    buffer.add("g1", item("u3"));
+    buffer.add("-100", "g1", item("u1"));
+    buffer.add("-100", "g1", item("u2"));
+    buffer.add("-100", "g1", item("u3"));
     await new Promise((r) => setTimeout(r, 80));
     assert.equal(flushes.length, 1);
     assert.deepEqual(flushes[0], ["u1", "u2", "u3"]);
@@ -65,8 +65,8 @@ describe("G1: MediaGroupBuffer", () => {
     const buffer = new MediaGroupBuffer(20, async (batch) => {
       flushes.push(batch.groupId);
     });
-    buffer.add("g1", { updateId: 1, messageId: 1, fileId: "a", fileUniqueId: "a", kind: "photo" });
-    buffer.add("g2", { updateId: 2, messageId: 2, fileId: "b", fileUniqueId: "b", kind: "photo" });
+    buffer.add("-100", "g1", { updateId: 1, messageId: 1, fileId: "a", fileUniqueId: "a", kind: "photo" });
+    buffer.add("-100", "g2", { updateId: 2, messageId: 2, fileId: "b", fileUniqueId: "b", kind: "photo" });
     await new Promise((r) => setTimeout(r, 60));
     assert.deepEqual(flushes.sort(), ["g1", "g2"]);
     assert.equal(
@@ -476,6 +476,7 @@ describe("G1 helpers", () => {
     assert.equal(photo!.fileUniqueId, "pu");
     const msg = buildAlbumAgentMessage(
       {
+        chatId: "-100",
         groupId: "mg",
         caption: "чеки",
         items: [
