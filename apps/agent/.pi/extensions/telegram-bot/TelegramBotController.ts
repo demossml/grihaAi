@@ -9,6 +9,7 @@ import {
   type TelegramResetHandler,
   type TelegramRulesHandler,
   type TelegramSendExtra,
+  type TelegramUpdateGate,
   type TgMessage,
   type TgUpdate,
 } from "./TelegramBridge.js";
@@ -259,6 +260,8 @@ export interface TelegramBotControllerOptions {
   reconnectDelayMs?: number;
   /** Injectable sleep (tests). */
   sleep?: (ms: number) => Promise<void>;
+  /** PROMPT 6: idempotency gate по update_id (claim/lease + markDone). */
+  updateGate?: TelegramUpdateGate;
 }
 
 const DEFAULT_RECONNECT_DELAY_MS = 10_000;
@@ -446,6 +449,9 @@ export class TelegramBotController {
           botUsername: this.options?.botUsername,
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,
+          // PROMPT 6: idempotency gate + метрики (duplicates/reclaim/agent).
+          updateGate: this.options?.updateGate,
+          onMetric: (name) => incMetric(name),
           // Typing heartbeat: тот же thread, что у входящего сообщения.
           sendChatAction: (chatId, action, extra) => bot.api.sendChatAction(chatId, action, extra),
         },

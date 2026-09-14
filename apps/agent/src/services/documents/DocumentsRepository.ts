@@ -92,6 +92,18 @@ CREATE INDEX IF NOT EXISTS idx_media_chat_unique
   ON telegram_media(chat_id, file_unique_id);
 CREATE INDEX IF NOT EXISTS idx_media_status_updated
   ON telegram_media(processing_status, updated_at);
+
+-- PROMPT 6: claim-and-lease idempotency входящих Telegram updates по update_id.
+CREATE TABLE IF NOT EXISTS processed_updates (
+  update_id    INTEGER PRIMARY KEY,
+  state        TEXT NOT NULL DEFAULT 'processing'
+               CHECK (state IN ('processing','done')),
+  claimed_at   INTEGER NOT NULL,
+  completed_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_processed_updates_state_claimed
+  ON processed_updates(state, claimed_at);
 `;
 
 /** Миграция форумных тем (ADD COLUMN thread_id). */
@@ -289,6 +301,13 @@ function rowToDoc(row: DocRow): ExpenseDocument {
   };
 }
 
+/** PROMPT 6: результат claim'а входящего Telegram update (state machine §2). */
+export type UpdateClaimResult =
+  | "ok"
+  | "reclaimed"
+  | "duplicate_in_flight"
+  | "duplicate_done";
+
 export class DocumentsRepository {
   private db: Database.Database;
 
@@ -337,6 +356,56 @@ export class DocumentsRepository {
 
   close(): void {
     this.db.close();
+  }
+
+  /**
+   * PROMPT 6: first-wins claim входящего Telegram update по update_id.
+   * `processing` + свежий lease → duplicate_in_flight; истёкший lease →
+   * CAS-reclaim (ровно один победитель); `done` → duplicate_done.
+   */
+  claimProcessedUpdate(
+    updateId: number,
+    nowMs: number,
+    leaseMs: number,
+  ): UpdateClaimResult {
+    const inserted = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO processed_updates (update_id, state, claimed_at)
+         VALUES (?, 'processing', ?)`,
+      )
+      .run(updateId, nowMs);
+    if (inserted.changes === 1) return "ok";
+
+    const row = this.db
+      .prepare(`SELECT state, claimed_at FROM processed_updates WHERE update_id = ?`)
+      .get(updateId) as { state: string; claimed_at: number } | undefined;
+    if (!row) return "ok"; // гонка (строка удалена другим writer) — обрабатываем.
+    if (row.state === "done") return "duplicate_done";
+    if (nowMs - row.claimed_at < leaseMs) return "duplicate_in_flight";
+
+    const reclaimed = this.db
+      .prepare(
+        `UPDATE processed_updates SET claimed_at = ?
+         WHERE update_id = ? AND state = 'processing' AND claimed_at <= ?`,
+      )
+      .run(nowMs, updateId, nowMs - leaseMs);
+    return reclaimed.changes === 1 ? "reclaimed" : "duplicate_in_flight";
+  }
+
+  /** PROMPT 6: terminal state — ставится только после успешной обработки. */
+  markProcessedUpdateDone(updateId: number, nowMs: number): void {
+    this.db
+      .prepare(
+        `UPDATE processed_updates SET state = 'done', completed_at = ? WHERE update_id = ?`,
+      )
+      .run(nowMs, updateId);
+  }
+
+  /** PROMPT 6: TTL-очистка завершённых update'ов (таблица не растёт вечно). */
+  cleanupProcessedUpdates(beforeMs: number): void {
+    this.db
+      .prepare(`DELETE FROM processed_updates WHERE state = 'done' AND completed_at < ?`)
+      .run(beforeMs);
   }
 
   /**

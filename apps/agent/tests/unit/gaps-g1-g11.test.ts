@@ -471,7 +471,7 @@ describe("G1 helpers", () => {
     const photo = albumItemOf({
       photo: [{ file_id: "p", file_unique_id: "pu" }],
       messageId: 9,
-    });
+    }, 0);
     assert.equal(photo!.kind, "photo");
     assert.equal(photo!.fileUniqueId, "pu");
     const msg = buildAlbumAgentMessage(

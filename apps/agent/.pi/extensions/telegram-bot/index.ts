@@ -9,10 +9,12 @@ import {
 import {
   archiveFromTelegram,
   getChatArchiveService,
+  getDocumentsRepository,
   getListenerMediaPipeline,
   processMediaRetryJob,
   setExpenseBriefNotifier,
 } from "../../../src/services/documents/index.js";
+import { TelegramUpdateDedup } from "../../../src/services/documents/update-dedup.js";
 import { setCronDeliveryNotifier, notifierArgs } from "../cron/delivery-wiring.js";
 import {
   MediaRetryQueue,
@@ -220,6 +222,21 @@ const realBotFactory: TelegramBotFactory = (token) => {
 let controller: TelegramBotController | null = null;
 let pool: TelegramSessionPool | null = null;
 
+/**
+ * PROMPT 6: idempotency gate входящих updates.
+ *   TELEGRAM_UPDATE_LEASE_MS — lease (default 30 мин);
+ *   TELEGRAM_UPDATE_DEDUP=0  — полный bypass.
+ */
+function createUpdateDedup(): TelegramUpdateDedup {
+  const leaseRaw = Number(process.env.TELEGRAM_UPDATE_LEASE_MS);
+  const leaseMs =
+    Number.isFinite(leaseRaw) && leaseRaw > 0 ? leaseRaw : undefined;
+  return new TelegramUpdateDedup(getDocumentsRepository(), Date.now, {
+    leaseMs,
+    disabled: process.env.TELEGRAM_UPDATE_DEDUP === "0",
+  });
+}
+
 function grishaAgent(): GrishaAgent {
   return async (input) => {
     if (!pool) return { text: "Гриша временно недоступен." };
@@ -293,6 +310,8 @@ function getController(): TelegramBotController {
         resetHandler: (sessionKey) => pool?.reset(sessionKey),
         approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
         aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
+        // PROMPT 6: claim-and-lease idempotency (TELEGRAM_UPDATE_DEDUP=0 — bypass).
+        updateGate: createUpdateDedup(),
         usersCommandHandler: (args, ctx) => handleUsersCommand(users, args, ctx),
         // Chat-setup (онбординг групп): my_chat_member → DM, cs:-callbacks,
         // custom-текст в DM, /setup с keyboard'ами (D5).

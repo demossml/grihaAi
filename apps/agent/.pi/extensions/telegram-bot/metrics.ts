@@ -27,4 +27,7 @@ export const TELEGRAM_METRIC_NAMES = [
   "telegram_agent_denied",
   "telegram_ocr_failed",
   "telegram_stt_failed",
+  "telegram_update_duplicate_in_flight",
+  "telegram_update_duplicate_done",
+  "telegram_update_reclaim",
 ] as const;

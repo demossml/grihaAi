@@ -4,6 +4,7 @@
  */
 
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
+import type { UpdateClaimResult } from "../../../src/services/documents/DocumentsRepository.js";
 import { buildTelegramSessionKey } from "./session-key.js";
 import { logTelegramError } from "./telegram-diagnostics.js";
 import { startTypingHeartbeat } from "./typing-heartbeat.js";
@@ -163,6 +164,16 @@ export interface TelegramResetHandler {
   (sessionKey: string, userId: number, chatId: string): Promise<void> | void;
 }
 
+/**
+ * PROMPT 6: claim-and-lease gate входящих update'ов (дизайн PROMPT 5).
+ * claim — сразу после normalize, до тяжёлой работы; SKIP → без агента/outbound.
+ * markDone — только после успешной обработки (включая sendReply).
+ */
+export interface TelegramUpdateGate {
+  claim(updateId: number): UpdateClaimResult | Promise<UpdateClaimResult>;
+  markDone(updateId: number): void | Promise<void>;
+}
+
 /** Shared approval decision (approve/deny by id) — business logic lives in approval-gate. */
 export interface TelegramApprovalHandler {
   (action: "approve" | "deny", id: string): string;
@@ -269,9 +280,9 @@ function buildMediaAgentMessage(
 }
 
 /** G1: элемент альбома из TgMessage. */
-export function albumItemOf(msg: TgMessage): AlbumItem | null {
+export function albumItemOf(msg: TgMessage, updateId: number): AlbumItem | null {
   const item = (kind: AlbumItem["kind"], fileId: string, fileUniqueId: string, mimeType?: string, duration?: number): AlbumItem => ({
-    updateId: 0,
+    updateId,
     messageId: msg.messageId ?? 0,
     fileId,
     fileUniqueId,
@@ -466,6 +477,8 @@ export class TelegramBridge {
       typingIntervalMs?: number;
       /** PROMPT 10: метрики (agent invocations/denied). */
       onMetric?: (name: string, n?: number) => void;
+      /** PROMPT 6: idempotency gate по update_id (claim/lease + markDone). */
+      updateGate?: TelegramUpdateGate;
     },
   ) {
     const rawAgent = agent;
@@ -591,11 +604,61 @@ export class TelegramBridge {
     if (senderUserId === undefined && senderChatId === undefined) {
       return { handled: false, reason: "no-user" };
     }
-    const userId = senderUserId ?? senderChatId!;
+
+    // PROMPT 6: claim update_id сразу после normalize, до тяжёлой работы.
+    // SKIP → без агента и outbound; archive не дублируем намеренно
+    // (существующий dedup (chat_id, message_id)/(chat_id, file_unique_id)
+    //  защищает от дублей при reclaim-переигровке).
+    const gate = this.options?.updateGate;
+    if (gate) {
+      const claim = await gate.claim(update.updateId);
+      if (claim === "duplicate_in_flight" || claim === "duplicate_done") {
+        this.options?.onMetric?.(`telegram_update_${claim}`);
+        console.log(
+          `[telegram-bot] update dedup skip ${JSON.stringify({
+            updateId: update.updateId,
+            chatId: msg.chat.id,
+            result: claim,
+          })}`,
+        );
+        return { handled: true, reason: `duplicate-${claim}` };
+      }
+      if (claim === "reclaimed") {
+        this.options?.onMetric?.("telegram_update_reclaim");
+        console.log(
+          `[telegram-bot] update dedup reclaim ${JSON.stringify({
+            updateId: update.updateId,
+            chatId: msg.chat.id,
+          })}`,
+        );
+      }
+    }
+
+    try {
+      const result = await this.handleUpdateInner(update);
+      // done только после УСПЕШНОЙ обработки (включая sendReply). Сбой →
+      // processing до истечения lease → redelivery переиграет (reclaim).
+      // Album-элементы живут в буфере: их done ставится на flush всего альбома.
+      if (result.reason !== "album-buffered") {
+        await gate?.markDone(update.updateId);
+      }
+      return result;
+    } catch (err) {
+      // done НЕ ставится — ошибка пробрасывается как раньше (контроллер логирует).
+      throw err;
+    }
+  }
+
+  /** Тело обработки update (после claim'а). Routing/ACL/prefilter/archive/agent — прежние. */
+  private async handleUpdateInner(update: TgUpdate): Promise<{ handled: boolean; reason?: string }> {
+    const msg = update.message!;
+    const senderUserId = msg.from?.id;
+    const senderChatId = msg.senderChat?.id;
+    const userId = (senderUserId ?? senderChatId)!;
     const hasRealUser = senderUserId !== undefined;
 
-    const chatId = msg.chat.id;
-    const chatType = msg.chat.type ?? "private";
+    const chatId = msg.chat!.id;
+    const chatType = msg.chat!.type ?? "private";
     const isChannel = chatType === "channel";
     const text = msg.text ?? "";
     // Все ответы этого апдейта уходят в тему входящего сообщения.
@@ -759,7 +822,7 @@ export class TelegramBridge {
 
     // G1: альбом (media_group_id) — батчем, максимум один ход агента.
     if (msg.mediaGroupId && this.options?.processMediaAlbum) {
-      const item = albumItemOf(msg);
+      const item = albumItemOf(msg, update.updateId);
       if (!item) return { handled: true, reason: "album-buffered" };
       if (!this.albumBuffer) {
         this.albumBuffer = new MediaGroupBuffer(
@@ -1014,6 +1077,22 @@ export class TelegramBridge {
 
   /** G1: флаш альбома — pipeline по файлам, максимум один вызов агента. */
   private async flushAlbum(batch: AlbumBatch): Promise<void> {
+    try {
+      await this.flushAlbumInner(batch);
+      // PROMPT 6: элементы альбома буферизовались с reason "album-buffered" и
+      // НЕ получали done в handleUpdate. Успех альбома = успех всех его
+      // update'ов → done каждому. Сбой flush'а → processing до lease →
+      // redelivery переиграет альбом (reclaim).
+      for (const item of batch.items) {
+        await this.options?.updateGate?.markDone(item.updateId);
+      }
+    } catch (err) {
+      // done не ставится; ошибка, как и раньше, ловится MediaGroupBuffer.
+      throw err;
+    }
+  }
+
+  private async flushAlbumInner(batch: AlbumBatch): Promise<void> {
     const ctx = this.albumGates.get(batch.groupId);
     this.albumGates.delete(batch.groupId);
     if (!ctx) return;
