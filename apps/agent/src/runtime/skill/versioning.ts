@@ -1,7 +1,7 @@
 /**
  * Phase 6 (Item 6.3, матрица F3) — версионирование скиллов.
  *
- * §14 master spec + урок Hermes #55647:
+ * §14 master spec + урок Griha #55647:
  * - LLM НИКОГДА не перезаписывает production skill напрямую;
  * - pipeline: current → proposed → diff → validation → evaluation →
  *   approve → new version;

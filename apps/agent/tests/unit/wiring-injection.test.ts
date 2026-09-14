@@ -10,7 +10,7 @@ import type { McpServerConfig } from "@griha/shared-types";
  * block, полу-доверенные (mcp) — warn; MCP-результаты сканируются за флагом.
  */
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 describe("scanContent (K4/§26)", () => {
   it("flag off → null (проверка отключена)", () => {

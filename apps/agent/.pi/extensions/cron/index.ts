@@ -24,7 +24,7 @@ const emulatedRunner: CronRunner = async (job, prompt) => ({
 /**
  * W7 (J4): исполнение script-job через существующий sandbox-слой процесса
  * (тот же spawn-путь, что и LocalSandboxProvider). Выполняется только за
- * флагом HERMES_AGENT_RUNTIME внутри CronService.
+ * флагом GRIHA_AGENT_RUNTIME внутри CronService.
  */
 const scriptExecutor = async (spec: ScriptJobSpec): Promise<ScriptRunResult> => {
   const startedAt = Date.now();

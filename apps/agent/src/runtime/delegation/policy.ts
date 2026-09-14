@@ -1,7 +1,7 @@
 /**
  * Phase 8 (Item 8.3, матрица H5) — политика делегирования.
  *
- * Hermes: отдельная delegation-модель. Роль `"delegation"` уже входит в
+ * Griha: отдельная delegation-модель. Роль `"delegation"` уже входит в
  * `ModelRuntimeRole` (Phase 2, B1) и `resolveModelConfig` отдаст для неё
  * `models.delegation` → main. Здесь — дефолтная политика: роль, лимиты,
  * базовый toolset.

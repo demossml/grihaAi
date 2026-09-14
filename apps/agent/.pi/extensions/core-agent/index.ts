@@ -160,7 +160,7 @@ export default function coreAgent(pi: ExtensionAPI): void {
         pi.sendMessage({
           customType: "observability",
           content: [
-            { type: "text", text: "Observability dashboard отключён (HERMES_AGENT_RUNTIME=1 для включения)." },
+            { type: "text", text: "Observability dashboard отключён (GRIHA_AGENT_RUNTIME=1 для включения)." },
           ],
           display: true,
         });
@@ -181,7 +181,7 @@ export default function coreAgent(pi: ExtensionAPI): void {
     name: "execute_code",
     label: "Execute code",
     description:
-      "Выполнить TypeScript/JavaScript-код в sandbox (одна операция вместо серии tool-calls). Опасный код требует runsc. Python запрещён. Активно только при HERMES_AGENT_RUNTIME=1.",
+      "Выполнить TypeScript/JavaScript-код в sandbox (одна операция вместо серии tool-calls). Опасный код требует runsc. Python запрещён. Активно только при GRIHA_AGENT_RUNTIME=1.",
     parameters: Type.Object({
       language: Type.Union([Type.Literal("typescript"), Type.Literal("javascript"), Type.Literal("python")]),
       code: Type.String(),

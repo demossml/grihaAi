@@ -1,9 +1,9 @@
-# HERMES MIGRATION CHANGELOG
+# GRIHA MIGRATION CHANGELOG
 
-Журнал изменений схем/данных Griha DB в ходе переноса Hermes-механик.
+Журнал изменений схем/данных Griha DB в ходе переноса Griha-механик.
 
 Правила (instr.md §12):
-- Griha DB — единственная основная DB; никаких отдельных «Hermes DB».
+- Griha DB — единственная основная DB; никаких отдельных «Griha DB».
 - Миграции: forward-compatible, nullable где возможно, idempotent,
   non-destructive, тест на clean DB и на existing-DB fixture.
 - Никаких DROP/DELETE существующих данных.
@@ -90,6 +90,7 @@
 | 2026-09-14 | F7 slash-команды по скиллам | **Нет изменений БД** | packages/skills (parse/discover/types: commands), core-agent/skill-commands.ts, core-agent/index.ts | wiring-skill-commands.test.ts | — |
 | 2026-09-14 | §34 Golden tests (deterministic fixtures) | **Нет изменений БД** | tests/unit/golden-parity.test.ts | golden-parity.test.ts | — |
 | 2026-09-14 | lint (§42.9 DoD): eslint + babel-парсер | **Нет изменений БД** | eslint.config.mjs, package.json (devDeps), regex-экранирование (session-key, memory/pipeline, secret-filter) | eslint apps packages — 0 ошибок | — |
+| 2026-09-14 | Полное переименование: флаг GRIHA_AGENT_RUNTIME, имена файлов и текст (слово «Griha» вместо прежнего) | **Нет изменений БД** | весь код + тесты + docs (флаг читается из env.GRIHA_AGENT_RUNTIME) | 1127/1127 off + GRIHA_AGENT_RUNTIME=1 | — |
 
 ## Откаченные миграции (справочно, НЕ в main)
 

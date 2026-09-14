@@ -8,7 +8,7 @@ import { pruneAgentToolResults } from "../../.pi/extensions/core-agent/tool-resu
  * вычищаются; не-tool и ошибки сохраняются; порядок не меняется.
  */
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 interface M {
   role: string;

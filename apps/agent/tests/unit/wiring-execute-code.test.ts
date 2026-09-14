@@ -10,7 +10,7 @@ import type { SandboxProvider, SandboxRunOptions } from "../../src/sandbox/types
  * sandbox-missing → ошибка без падения агента.
  */
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 function fakeProvider(
   log: Array<{ backend: string; opts: SandboxRunOptions }>,

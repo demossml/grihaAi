@@ -1,7 +1,7 @@
 /**
  * Phase 12 (Item 12.3, матрица F8) — conditional activation скиллов.
  *
- * Hermes: skill активируется только если его requires/fallback toolsets
+ * Griha: skill активируется только если его requires/fallback toolsets
  * доступны. Чистая функция-гейт.
  */
 import type { Toolset } from "./toolsets.js";

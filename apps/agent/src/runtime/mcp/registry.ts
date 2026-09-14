@@ -5,7 +5,7 @@
  * credential isolation, execution, timeout, error handling.
  * Не давать агенту автоматически все MCP tools.
  *
- * In-memory контракт; реальный MCP-транспорт — за флагом `HERMES_AGENT_RUNTIME`.
+ * In-memory контракт; реальный MCP-транспорт — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 
 export type McpTransport = "stdio" | "http";

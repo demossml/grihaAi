@@ -1,9 +1,9 @@
 /**
  * Phase 4 (Item 4.1, матрица D2) — scroll/browse контракт для поиска сессий.
  *
- * Hermes: FTS5 session search + scroll. Сейчас `searchSessions` (SqliteRagMemory)
+ * Griha: FTS5 session search + scroll. Сейчас `searchSessions` (SqliteRagMemory)
  * отдаёт только LIMIT без offset. Этот модуль задаёт чистую семантику курсора
- * и нарезки; wiring в SQL — за флагом `HERMES_AGENT_RUNTIME`.
+ * и нарезки; wiring в SQL — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 
 export interface ScrollCursorData {

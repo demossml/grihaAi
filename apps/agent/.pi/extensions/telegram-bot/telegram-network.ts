@@ -8,7 +8,7 @@ import { TELEGRAM_API_HOST, discoverTelegramIps } from "./telegram-ips.js";
  * Мульти-IP подключение к Telegram: кастомная `fetch`-реализация поверх
  * node:https с keep-alive-агентом, у которого `createConnection` перебирает
  * несколько IP api.telegram.org по очереди и запоминает рабочий (sticky).
- * Аналог Hermes `telegram_network.py`.
+ * Аналог Griha `telegram_network.py`.
  *
  * - Порядок попыток: sticky → системный DNS → остальные обнаруженные IP.
  * - Ретраются только connect-ошибки (ECONNREFUSED/ETIMEDOUT/…); HTTP-ответы

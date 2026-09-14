@@ -12,7 +12,7 @@ import { DEFAULT_PROACTIVE_POLICY } from "../../src/runtime/proactive/decision.j
  * nudge: тишина + cooldown + часы.
  */
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 const OFF = {};
 
 const event = (context: string, action?: "send_message" | "financial", atMs = 1_000) => ({

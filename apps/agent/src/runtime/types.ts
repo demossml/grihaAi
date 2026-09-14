@@ -1,8 +1,8 @@
 /**
- * Phase 1 — Agent Runtime interfaces (Hermes parity).
+ * Phase 1 — Agent Runtime interfaces (Griha parity).
  *
  * Только контракты. Ни один production-путь не переключается на этот слой,
- * пока `HERMES_AGENT_RUNTIME` не включён явно (§19 instr.md: feature flag).
+ * пока `GRIHA_AGENT_RUNTIME` не включён явно (§19 instr.md: feature flag).
  * Имена engines соответствуют матрице A (docs/GRIHA_PARITY_MATRIX.md).
  */
 
@@ -48,6 +48,6 @@ export interface AgentKernel {
 }
 
 export interface AgentRuntimeOptions {
-  /** HERMES_AGENT_RUNTIME. По умолчанию выключен (production не меняется). */
+  /** GRIHA_AGENT_RUNTIME. По умолчанию выключен (production не меняется). */
   enabled?: boolean;
 }

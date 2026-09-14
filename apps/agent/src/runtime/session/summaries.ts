@@ -1,9 +1,9 @@
 /**
  * Phase 4 (Item 4.2, матрица D3) — session summaries store.
  *
- * Hermes: summaries сессий. Контракт + in-memory реализация; upsert мержит
+ * Griha: summaries сессий. Контракт + in-memory реализация; upsert мержит
  * с прошлым summary через `mergeSummaries` (итеративная ре-компрессия, C4).
- * SQLite-wiring — за флагом `HERMES_AGENT_RUNTIME`.
+ * SQLite-wiring — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 import { mergeSummaries, renderSummary, type SummarySections } from "../context/summary.js";
 

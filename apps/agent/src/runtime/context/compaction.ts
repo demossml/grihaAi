@@ -1,15 +1,15 @@
 /**
  * Phase 3 (Item 3.2, матрица C2) — решение о компакции.
  *
- * Контракт §8 master spec: `shouldCompress()`. Dual system (Hermes):
+ * Контракт §8 master spec: `shouldCompress()`. Dual system (Griha):
  * agent-порог 50% бюджета, gateway hygiene-порог 85%.
  * Чистая функция с инъекцией времени — детерминированно и тестируемо.
  */
 
 export interface CompactionPolicy {
-  /** Порог «agent»-компакции (доля бюджета). Hermes: 0.5. */
+  /** Порог «agent»-компакции (доля бюджета). Griha: 0.5. */
   agentRatioThreshold: number;
-  /** Порог «gateway»-гигиены (доля бюджета). Hermes: 0.85. */
+  /** Порог «gateway»-гигиены (доля бюджета). Griha: 0.85. */
   gatewayRatioThreshold: number;
   /** Пауза между компакциями, ms. */
   cooldownMs: number;

@@ -12,7 +12,7 @@ import {
 } from "../../.pi/extensions/telegram-bot/group-profile.js";
 import { prepareGroupTurn } from "../../.pi/extensions/telegram-bot/group-runtime.js";
 
-const ON: NodeJS.ProcessEnv = { HERMES_AGENT_RUNTIME: "1" };
+const ON: NodeJS.ProcessEnv = { GRIHA_AGENT_RUNTIME: "1" };
 const OFF: NodeJS.ProcessEnv = {};
 
 function rule(partial: Partial<UserRule>): UserRule {

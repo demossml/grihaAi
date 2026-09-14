@@ -1,6 +1,6 @@
 /**
  * Phase 10 — Automation публичный API (контракты + чистые функции).
- * Wiring к существующему CronService — за флагом `HERMES_AGENT_RUNTIME`.
+ * Wiring к существующему CronService — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 export {
   InMemoryAutomationEngine,

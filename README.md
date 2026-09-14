@@ -67,9 +67,9 @@ cd apps/agent
 
 Подробности: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) и [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
-## Hermes parity agent runtime (за флагом)
+## Griha parity agent runtime (за флагом)
 
-Поверх pi.dev-расширений работает нативный TS-runtime по спецификации Hermes
+Поверх pi.dev-расширений работает нативный TS-runtime по спецификации Griha
 (см. `GRIHA_PARITY_MASTER_SPEC.md` и `docs/GRIHA_PARITY_MATRIX.md`):
 model runtime (роли main/vision/aux, fallback-цепочка), context engine
 (бюджет, 4-фазная компакция, prune), memory/session/skill/learning engines,
@@ -77,7 +77,7 @@ delegation, security (risk/approval/injection), MCP, automation, profiles,
 observability. Включается одной переменной:
 
 ```bash
-HERMES_AGENT_RUNTIME=1  # off (дефолт) = старое поведение 1:1
+GRIHA_AGENT_RUNTIME=1  # off (дефолт) = старое поведение 1:1
 ```
 
 Статус: **матрица закрыта** — 44 COMPLETE / 24 PARTIAL / 0 MISSING,
@@ -109,7 +109,7 @@ grihaAi/
 │   ├── EXTENSIONS.md         # пофайловый справочник
 │   ├── TELEGRAM-BOT.md       # глубокий разбор бота
 │   ├── SECURITY.md           # периметр, модель доверия, gateway, sandbox
-│   ├── GRIHA_PARITY_MATRIX.md      # матрица Hermes→Griha (62 строки)
+│   ├── GRIHA_PARITY_MATRIX.md      # матрица Griha→Griha (62 строки)
 │   ├── GRIHA_MIGRATION_CHANGELOG.md # журнал post-wiring подключений
 │   ├── GRIHA_TASK_STATE.md         # текущее состояние фаз
 │   └── GRIHA_FINAL_EVALUATION.md   # финальная оценка + план включения

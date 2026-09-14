@@ -59,7 +59,7 @@ export interface RealSubAgentRunnerOptions {
   /** Injectable factory for tests. Defaults to the real SDK-backed factory. */
   sessionFactory?: (task: SubAgentRunTask) => Promise<AgentSession>;
   /**
-   * Env used to check the `HERMES_AGENT_RUNTIME` feature flag.
+   * Env used to check the `GRIHA_AGENT_RUNTIME` feature flag.
    * Defaults to process.env. When the flag is off the runner behaves exactly
    * as before (no delegation gating).
    */

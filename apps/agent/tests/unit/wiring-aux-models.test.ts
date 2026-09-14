@@ -14,7 +14,7 @@ import {
   resolveLearningModel,
 } from "../../src/utils/learning/http-learning.js";
 
-const ON: NodeJS.ProcessEnv = { HERMES_AGENT_RUNTIME: "1" };
+const ON: NodeJS.ProcessEnv = { GRIHA_AGENT_RUNTIME: "1" };
 const OFF: NodeJS.ProcessEnv = {};
 
 function cfg(partial: Partial<GrishAiConfig> = {}): GrishAiConfig {

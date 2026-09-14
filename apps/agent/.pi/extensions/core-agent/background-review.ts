@@ -1,9 +1,9 @@
 /**
  * G1 (post-wiring): фоновый review хода более дешёвой моделью за флагом.
  *
- * Hermes: после хода — background review cheaper model. Триггер —
+ * Griha: после хода — background review cheaper model. Триггер —
  * `shouldBackgroundReview` (Phase 7, Item 7.5). Здесь — сам LLM-вызов:
- * - только за флагом `HERMES_AGENT_RUNTIME` (off = ничего не происходит);
+ * - только за флагом `GRIHA_AGENT_RUNTIME` (off = ничего не происходит);
  * - модель — aux-слот `models.learning` (B5) через `createHttpLearningLlm`;
  * - бюджет: лимит уроков + политика everyNTurns/minTurns триггера;
  * - review НИКОГДА не ломает turn: любые ошибки глушатся → null.

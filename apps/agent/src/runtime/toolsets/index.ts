@@ -1,6 +1,6 @@
 /**
  * Phase 12 — MCP + Toolsets публичный API (чистые функции).
- * Транспорт/wiring — за флагом `HERMES_AGENT_RUNTIME`.
+ * Транспорт/wiring — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 export {
   DEFAULT_MCP_EXECUTION_POLICY,

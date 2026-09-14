@@ -1,7 +1,7 @@
 /**
  * Wiring W1 (матрица B2) — ModelRouter поверх runtime-слоя за флагом.
  *
- * Флаг `HERMES_AGENT_RUNTIME` off (дефолт): поведение 1:1 с прежним.
+ * Флаг `GRIHA_AGENT_RUNTIME` off (дефолт): поведение 1:1 с прежним.
  * Флаг on: getConfig идёт через runtime `resolveModelConfig` (семантика
  * main/vision идентична), aux-роли падают на main; selectForTask — через
  * `selectModelRole`.

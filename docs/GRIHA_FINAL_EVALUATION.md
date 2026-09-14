@@ -1,4 +1,4 @@
-# HERMES → GRIHA — FINAL PARITY EVALUATION (Phase 17)
+# GRIHA → GRIHA — FINAL PARITY EVALUATION (Phase 17)
 
 Дата: 2026-09-13. Основание: `GRIHA_PARITY_MASTER_SPEC.md`, `docs/GRIHA_PARITY_MATRIX.md`, `instr.md`.
 
@@ -15,7 +15,7 @@
 ## Выполненные фазы (0–16)
 
 - Phase 0: аудит репозитория + parity matrix (62 строки).
-- Phase 1: Agent Runtime interfaces (kernel + registry + флаг `HERMES_AGENT_RUNTIME`).
+- Phase 1: Agent Runtime interfaces (kernel + registry + флаг `GRIHA_AGENT_RUNTIME`).
 - Phase 2: Model Runtime (роли B1, TaskProfile-select B2, FallbackChain B3, context-window B4).
 - Phase 3: Context Engine (token accounting C1, compaction decision C2, prune C3, summary C4).
 - Phase 4: Session Engine (scroll D2, summaries D3, RRF).
@@ -35,20 +35,20 @@
 ## Стадия Wiring (W1–W13) — завершена 2026-09-13
 
 13/13 VERIFIED-отчётов; коммиты b3c4772…dc4f121 (W5–W13) и W1–W4 ранее;
-все запушены в origin/main. Флаг `HERMES_AGENT_RUNTIME` off по умолчанию.
+все запушены в origin/main. Флаг `GRIHA_AGENT_RUNTIME` off по умолчанию.
 
 ## Статистика
 
 - Коммитов в проекте: 60 item-коммитов (по одному на item, линейная история).
 - Новый код: `apps/agent/src/runtime/` — 17 подсистем, 63+ файла + 13 wiring-модулей.
 - Тесты: **1033/1033 unit pass** (baseline Phase 0 = 678).
-- Регрессия с флагом on (`HERMES_AGENT_RUNTIME=1`): **1033/1033 pass**.
+- Регрессия с флагом on (`GRIHA_AGENT_RUNTIME=1`): **1033/1033 pass**.
 - Typecheck/build: `npx turbo run typecheck build` → 12/12.
 - Lint: НЕ НАСТРОЕН в проекте (нет script) — остаётся как известный факт.
 - БД: миграции — J5 (nullable, idempotent) + W7 (`script`/`script_args`, nullable, idempotent); тесты clean/existing DB.
-- Production-поведение: НЕ изменено (флаг off = 1:1; все подключения за `HERMES_AGENT_RUNTIME`).
+- Production-поведение: НЕ изменено (флаг off = 1:1; все подключения за `GRIHA_AGENT_RUNTIME`).
 
-## Что осталось (осознанно, за флагом `HERMES_AGENT_RUNTIME`)
+## Что осталось (осознанно, за флагом `GRIHA_AGENT_RUNTIME`)
 
 Все 13 пунктов плана wiring — **VERIFIED и запушены**:
 1. ✅ W1 ModelRouter (resolveModelConfig + selectForTask).
@@ -84,7 +84,7 @@ slash-команды скиллов (F7) — подключены (post-wiring, 
 
 ## Рекомендации по включению в production
 
-1. Сначала — shadow mode: `HERMES_AGENT_RUNTIME=1` на dev/staging с наблюдением
+1. Сначала — shadow mode: `GRIHA_AGENT_RUNTIME=1` на dev/staging с наблюдением
    (все 22 post-wiring точки VERIFIED отдельно; обе регрессии 1127/1127;
    §34 golden fixtures — deterministic behavior без LLM).
 2. Последовательное включение на проде по риску: сперва наблюдение/безопасность
@@ -103,7 +103,7 @@ slash-команды скиллов (F7) — подключены (post-wiring, 
 
 ## Статус
 
-**Hermes→Griha parity: Phases 0–17 + Wiring W1–W13 завершены. MISSING: 0.
+**Griha parity: Phases 0–17 + Wiring W1–W13 завершены. MISSING: 0.
 DoD §42 закрыт полностью (включая lint — eslint 10 + babel-парсер из-за TS 7,
 0 ошибок/предупреждений). Все подключения за флагом, off = старое поведение
 1:1. Обе регрессии (off и on) — 1127/1127, typecheck/build 12/12, lint 0/0.**

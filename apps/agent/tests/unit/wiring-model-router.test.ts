@@ -30,29 +30,29 @@ describe("ModelRouter wiring (W1)", () => {
   });
 
   it("flag on: main/vision идентичны off (паритет)", () => {
-    const router = new ModelRouter(config, undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const router = new ModelRouter(config, undefined, { GRIHA_AGENT_RUNTIME: "1" });
     assert.equal(router.getConfig("main").model, "deepseek-v4-flash");
     assert.equal(router.getConfig("vision").model, "deepseek-v4-flash-vision-exp");
   });
 
   it("flag on: aux-роль падает на main", () => {
-    const router = new ModelRouter(config, undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const router = new ModelRouter(config, undefined, { GRIHA_AGENT_RUNTIME: "1" });
     const title = router.getConfig("title" as ModelRole);
     assert.equal(title.model, "deepseek-v4-flash");
   });
 
   it("flag on: legacy config без models → top-level (как и раньше)", () => {
-    const router = new ModelRouter(legacy, undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const router = new ModelRouter(legacy, undefined, { GRIHA_AGENT_RUNTIME: "1" });
     assert.equal(router.getConfig("main").model, "deepseek-v4-pro");
   });
 
   it("flag on: vision без конфига → ошибка (как и раньше)", () => {
-    const router = new ModelRouter(legacy, undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const router = new ModelRouter(legacy, undefined, { GRIHA_AGENT_RUNTIME: "1" });
     assert.throws(() => router.getConfig("vision"), /Vision model is not configured/);
   });
 
   it("selectForTask: flag on → детерминированный выбор (B2)", () => {
-    const router = new ModelRouter(config, undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const router = new ModelRouter(config, undefined, { GRIHA_AGENT_RUNTIME: "1" });
     assert.equal(router.selectForTask({ kind: "ocr", needsVision: true }), "vision");
     assert.equal(router.selectForTask({ kind: "chat" }), "main");
   });

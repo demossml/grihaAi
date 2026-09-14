@@ -195,7 +195,7 @@ const servers: McpServerConfig[] = [
   { name: "web", transport: "http", url: "http://mcp.local" },
 ];
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 describe("McpSessionRuntime (W9)", () => {
   it("flag off → неактивен, вызовы отклоняются", async () => {

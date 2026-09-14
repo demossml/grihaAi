@@ -1,4 +1,4 @@
-# HERMES IMPLEMENTATION STATUS
+# GRIHA IMPLEMENTATION STATUS
 
 Дата: 2026-09-13. Отражает статус каждой фазы. Обновляется после каждого item.
 

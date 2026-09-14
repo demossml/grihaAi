@@ -1,7 +1,7 @@
 /**
  * Phase 7 (Item 7.1, матрица G2) — маршрутизация уроков.
  *
- * Hermes: factual → memory, procedural → skill, preference → user model.
+ * Griha: factual → memory, procedural → skill, preference → user model.
  * Детерминированная классификация по маркерам; чистая функция.
  */
 

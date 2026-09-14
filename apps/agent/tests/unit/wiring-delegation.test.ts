@@ -6,7 +6,7 @@ import type { SubAgentRunTask } from "../../.pi/extensions/multi-agent/SubAgentM
 
 /**
  * W6 (матрица H4) — delegation gate в createRealSubAgentRunner за флагом
- * HERMES_AGENT_RUNTIME. Flag off = поведение 1:1 со старым (никакого
+ * GRIHA_AGENT_RUNTIME. Flag off = поведение 1:1 со старым (никакого
  * гейтинга). Flag on = DelegationGuard (depth/timeout/budget) до запуска +
  * проверка таймаута после.
  */
@@ -82,7 +82,7 @@ describe("wiring: delegation gate в createRealSubAgentRunner (W6/H4)", () => {
 
   it("flag on: обычный результат проходит", async () => {
     const fake = makeFakeSession();
-    const runner = makeRunner({ HERMES_AGENT_RUNTIME: "1" }, fake);
+    const runner = makeRunner({ GRIHA_AGENT_RUNTIME: "1" }, fake);
     const res = await runner(makeTask());
     assert.equal(res.result, "ok");
     assert.equal(fake.disposeCalls, 1);
@@ -90,7 +90,7 @@ describe("wiring: delegation gate в createRealSubAgentRunner (W6/H4)", () => {
 
   it("flag on + превышение бюджета токенов: блокировка до запуска", async () => {
     const fake = makeFakeSession();
-    const runner = makeRunner({ HERMES_AGENT_RUNTIME: "1" }, fake, {
+    const runner = makeRunner({ GRIHA_AGENT_RUNTIME: "1" }, fake, {
       delegationLimits: { budgetTokens: 4 },
     });
     await assert.rejects(
@@ -103,7 +103,7 @@ describe("wiring: delegation gate в createRealSubAgentRunner (W6/H4)", () => {
   it("flag on + превышение таймаута после выполнения", async () => {
     const fake = makeFakeSession();
     let t = 0;
-    const runner = makeRunner({ HERMES_AGENT_RUNTIME: "1" }, fake, {
+    const runner = makeRunner({ GRIHA_AGENT_RUNTIME: "1" }, fake, {
       now: () => t,
       delegationLimits: { timeoutMs: 1000 },
     });

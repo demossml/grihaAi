@@ -1,10 +1,10 @@
 /**
  * L1 (post-wiring, отдельный шаг) — runsc-песочница для MCP stdio-серверов.
  *
- * Hermes: внешние MCP-серверы изолируются. Здесь — обёртка спавна:
+ * Griha: внешние MCP-серверы изолируются. Здесь — обёртка спавна:
  * `runsc do --rootless --network=none -- <command> <args...>` (gVisor,
  * userspace-kernel, сеть выключена). Активируется только за флагом
- * `HERMES_AGENT_RUNTIME` и только для серверов с `sandbox: "runsc"`
+ * `GRIHA_AGENT_RUNTIME` и только для серверов с `sandbox: "runsc"`
  * (off / "none" = обычный spawn, 1:1).
  */
 import { spawn, spawnSync } from "node:child_process";

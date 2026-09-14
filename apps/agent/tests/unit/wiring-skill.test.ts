@@ -43,7 +43,7 @@ describe("Skill versioning wiring (W4)", () => {
   it("flag on: SKILL.md НЕ меняется, создаётся версия в .versions (F3)", async () => {
     const root = tmpRoot();
     try {
-      const versionFile = await applySkillProposal(proposal, root, { env: { HERMES_AGENT_RUNTIME: "1" } });
+      const versionFile = await applySkillProposal(proposal, root, { env: { GRIHA_AGENT_RUNTIME: "1" } });
       assert.ok(versionFile.includes(".versions"));
       assert.equal(fs.readFileSync(path.join(root, "core", "SKILL.md"), "utf8"), "# Core\n## Базовое\n");
       const versionContent = fs.readFileSync(versionFile, "utf8");
@@ -56,11 +56,11 @@ describe("Skill versioning wiring (W4)", () => {
   it("flag on: повторный propose создаёт следующую версию", async () => {
     const root = tmpRoot();
     try {
-      const v2 = await applySkillProposal(proposal, root, { env: { HERMES_AGENT_RUNTIME: "1" } });
+      const v2 = await applySkillProposal(proposal, root, { env: { GRIHA_AGENT_RUNTIME: "1" } });
       const v3 = await applySkillProposal(
         { ...proposal, id: "p2", title: "Ещё одна процедура" },
         root,
-        { env: { HERMES_AGENT_RUNTIME: "1" } },
+        { env: { GRIHA_AGENT_RUNTIME: "1" } },
       );
       assert.ok(v2.endsWith("v2.md"));
       assert.ok(v3.endsWith("v3.md"));
@@ -76,7 +76,7 @@ describe("Skill versioning wiring (W4)", () => {
       const created = await applySkillProposal(
         { ...proposal, kind: "new-skill", name: "reports", description: "Отчёты" },
         root,
-        { env: { HERMES_AGENT_RUNTIME: "1" } },
+        { env: { GRIHA_AGENT_RUNTIME: "1" } },
       );
       assert.ok(created.endsWith(path.join("reports", "SKILL.md")));
     } finally {

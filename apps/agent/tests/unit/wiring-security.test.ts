@@ -11,7 +11,7 @@ import {
  * Flag on → только ДОБАВЛЯЕТ требование одобрения, никогда не снимает.
  */
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 const OFF = {};
 
 describe("inferActionKind: маппинг действия → ActionKind", () => {

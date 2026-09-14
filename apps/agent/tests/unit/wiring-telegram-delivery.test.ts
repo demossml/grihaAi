@@ -19,7 +19,7 @@ import { cleanTestDb, getTestDbPath } from "../setup.js";
  */
 
 const DB = "wiring-tg-delivery.sqlite";
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 const runner: CronRunner = async () => ({ result: "готово", usedLlm: true });
 

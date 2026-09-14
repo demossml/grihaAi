@@ -26,7 +26,7 @@ const config: GrishAiConfig = {
   setupCompletedAt: "2026-09-13T00:00:00Z",
 };
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 function freshObservability(): RuntimeObservability {
   // Singleton используется ModelRouter — чистим через новый инстанс нельзя.

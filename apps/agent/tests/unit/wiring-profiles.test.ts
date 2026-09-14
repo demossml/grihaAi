@@ -8,7 +8,7 @@ import { buildProfileSection } from "../../.pi/extensions/core-agent/profile-sec
  * неизвестный профиль молча игнорируется (не ломает запуск).
  */
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 const OFF = {};
 
 describe("buildProfileSection (W12/O1)", () => {

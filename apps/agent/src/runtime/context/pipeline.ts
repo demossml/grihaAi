@@ -1,7 +1,7 @@
 /**
  * Phase 3 (матрица C2) — 4-фазный конвейер компакции (§8 master spec).
  *
- * Hermes Phase 1–4:
+ * Griha Phase 1–4:
  *  1) prune      — вычистить старые tool-результаты (политика C3);
  *  2) structural — head (system) | middle | tail (recent) (C4);
  *  3) summarize  — резюме середины: шаблон или LLM (aux B5, `models.compression`);

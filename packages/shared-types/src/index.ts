@@ -80,7 +80,7 @@ export interface GrishAiConfig {
     /** Путь documents.sqlite (default: ~/.grish-ai/documents.sqlite). */
     dbPath?: string;
   };
-  /** W9 (L1): MCP-серверы. Активируются только за флагом HERMES_AGENT_RUNTIME. */
+  /** W9 (L1): MCP-серверы. Активируются только за флагом GRIHA_AGENT_RUNTIME. */
   mcp?: {
     servers?: McpServerConfig[];
   };
@@ -110,7 +110,7 @@ export interface McpServerConfig {
   /**
    * runsc-апгрейд MCP (L1, отдельный шаг): "none" (дефолт) или "runsc" —
    * stdio-сервер запускается в gVisor-песочнице (--network=none).
-   * Действует только за флагом HERMES_AGENT_RUNTIME.
+   * Действует только за флагом GRIHA_AGENT_RUNTIME.
    */
   sandbox?: "none" | "runsc";
   /** Явный allowlist инструментов (пусто = все обнаруженные). */

@@ -16,7 +16,7 @@ import {
 import { McpSessionRuntime } from "../../.pi/extensions/mcp-runtime/mcp-session.js";
 import type { McpServerConfig } from "@griha/shared-types";
 
-const ON: NodeJS.ProcessEnv = { HERMES_AGENT_RUNTIME: "1" };
+const ON: NodeJS.ProcessEnv = { GRIHA_AGENT_RUNTIME: "1" };
 
 function fakeChild() {
   return {

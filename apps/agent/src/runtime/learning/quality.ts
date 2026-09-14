@@ -1,7 +1,7 @@
 /**
  * Phase 7 (Item 7.4, матрица F4) — quality score скиллов.
  *
- * Hermes: successRate/usage/regression. Чистый трекер без I/O.
+ * Griha: successRate/usage/regression. Чистый трекер без I/O.
  */
 
 export interface SkillOutcome {

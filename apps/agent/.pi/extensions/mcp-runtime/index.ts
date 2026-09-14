@@ -13,7 +13,7 @@ import { McpSessionRuntime } from "./mcp-session.js";
 /**
  * W9 (L1/§22) — MCP-runtime расширение.
  *
- * Транспорт (stdio/http) активируется только за флагом HERMES_AGENT_RUNTIME:
+ * Транспорт (stdio/http) активируется только за флагом GRIHA_AGENT_RUNTIME:
  * off = инструменты отвечают "disabled" без каких-либо действий (1:1 по
  * поведению — никаких MCP-соединений). Серверы читаются из config.json
  * (`mcp.servers`); K7 credential isolation — env каждого сервера изолирован.

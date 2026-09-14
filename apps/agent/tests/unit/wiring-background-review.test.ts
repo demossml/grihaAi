@@ -13,7 +13,7 @@ import {
 import { runtimeObservability } from "../../src/utils/routing/runtime-observability.js";
 import type { LearningLlm } from "../../src/utils/learning/learning-extractor.js";
 
-const ON: NodeJS.ProcessEnv = { HERMES_AGENT_RUNTIME: "1" };
+const ON: NodeJS.ProcessEnv = { GRIHA_AGENT_RUNTIME: "1" };
 const OFF: NodeJS.ProcessEnv = {};
 
 function cfg(): GrishAiConfig {

@@ -1,6 +1,6 @@
 /**
  * Phase 16 — Observability публичный API (чистые функции).
- * Wiring в runtime/telemetry-конвейер — за флагом `HERMES_AGENT_RUNTIME`.
+ * Wiring в runtime/telemetry-конвейер — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 export {
   DEFAULT_MODEL_COST_RATES,

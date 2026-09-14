@@ -91,11 +91,11 @@ describe("AgentKernel (Phase 1)", () => {
 
   it("feature flag: default off; '1'/'true' → on; '0'/мусор → off", () => {
     assert.equal(isAgentRuntimeEnabled({}), false);
-    assert.equal(isAgentRuntimeEnabled({ HERMES_AGENT_RUNTIME: undefined }), false);
-    assert.equal(isAgentRuntimeEnabled({ HERMES_AGENT_RUNTIME: "1" }), true);
-    assert.equal(isAgentRuntimeEnabled({ HERMES_AGENT_RUNTIME: "TRUE" }), true);
-    assert.equal(isAgentRuntimeEnabled({ HERMES_AGENT_RUNTIME: "true" }), true);
-    assert.equal(isAgentRuntimeEnabled({ HERMES_AGENT_RUNTIME: "0" }), false);
-    assert.equal(isAgentRuntimeEnabled({ HERMES_AGENT_RUNTIME: "yes" }), false);
+    assert.equal(isAgentRuntimeEnabled({ GRIHA_AGENT_RUNTIME: undefined }), false);
+    assert.equal(isAgentRuntimeEnabled({ GRIHA_AGENT_RUNTIME: "1" }), true);
+    assert.equal(isAgentRuntimeEnabled({ GRIHA_AGENT_RUNTIME: "TRUE" }), true);
+    assert.equal(isAgentRuntimeEnabled({ GRIHA_AGENT_RUNTIME: "true" }), true);
+    assert.equal(isAgentRuntimeEnabled({ GRIHA_AGENT_RUNTIME: "0" }), false);
+    assert.equal(isAgentRuntimeEnabled({ GRIHA_AGENT_RUNTIME: "yes" }), false);
   });
 });

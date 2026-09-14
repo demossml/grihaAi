@@ -1,11 +1,11 @@
-# Hermes → Griha Task State
+# Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: lint (§42.9) (VERIFIED) — DoD ЗАКРЫТ, матрица MISSING 0
+Current item: переименование флага → GRIHA_AGENT_RUNTIME (VERIFIED)
 Status: готово к финальному включению (shadow mode → prod)
 
-Last completed items: lint — eslint.config.mjs (babel-парсер из-за TS7), 0 ошибок
-Last commits: b2e4ad6 (§34 golden), lint (этот коммит)
+Last completed items: глобальное переименование (файлы/текст/флаг) + lint + golden
+Last commits: 41d69be (ссылки), переименование (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 
@@ -49,7 +49,7 @@ docs/GRIHA_FINAL_EVALUATION.md, ТОЛЬКО после явного подтв�
 
 - Griha: 26 extensions, services (Users/documents), 29 skills, sandbox
   (local+runsc), SQLite-RAG (FTS5+vector+RRF), cron, multi-agent, approval.
-- Hermes: docs + repo изучены (skills/memory/honcho/models/compression);
+- Griha: docs + repo изучены (skills/memory/honcho/models/compression);
   остальные подсистемы — на уровне docs-описаний, детальное per-item
   исследование — в соответствующей фазе.
 - Matrix: 62 строки, COMPLETE 17 / PARTIAL 20 / MISSING 21 / N/A 2.

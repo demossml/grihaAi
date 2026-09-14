@@ -28,14 +28,14 @@ describe("ContextBuilder wiring (W3)", () => {
   });
 
   it("flag on: превышение бюджета → приоритетное ужатие с маркером", async () => {
-    const builder = new ContextBuilder(readers, { HERMES_AGENT_RUNTIME: "1" }, 1000);
+    const builder = new ContextBuilder(readers, { GRIHA_AGENT_RUNTIME: "1" }, 1000);
     const result = await builder.getContactContext("u1", "Иван");
     assert.ok(result.text.includes("ужат"));
     assert.ok(result.items[0].includes("Контекст по контакту"));
   });
 
   it("flag on: малый контекст не трогается", async () => {
-    const builder = new ContextBuilder(readers, { HERMES_AGENT_RUNTIME: "1" }, 100_000);
+    const builder = new ContextBuilder(readers, { GRIHA_AGENT_RUNTIME: "1" }, 100_000);
     const result = await builder.getContactContext("u1", "Иван");
     assert.ok(!result.text.includes("ужат"));
   });

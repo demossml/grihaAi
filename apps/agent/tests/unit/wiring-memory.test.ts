@@ -31,7 +31,7 @@ describe("Memory write gate wiring (W2)", () => {
 
   it("flag on: zero-width контент → блокировка записи (E4)", async () => {
     cleanTestDb(DB);
-    const svc = new SqliteRagMemoryService(undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const svc = new SqliteRagMemoryService(undefined, { GRIHA_AGENT_RUNTIME: "1" });
     await svc.init(getTestDbPath(DB));
     try {
       await assert.rejects(svc.addFact(fact({ content: "email\u200b.com" })), /blocked/);
@@ -43,7 +43,7 @@ describe("Memory write gate wiring (W2)", () => {
 
   it("flag on: goal-категория → требуется approval (E6)", async () => {
     cleanTestDb(DB);
-    const svc = new SqliteRagMemoryService(undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const svc = new SqliteRagMemoryService(undefined, { GRIHA_AGENT_RUNTIME: "1" });
     await svc.init(getTestDbPath(DB));
     try {
       await assert.rejects(
@@ -58,7 +58,7 @@ describe("Memory write gate wiring (W2)", () => {
 
   it("flag on: обычный факт проходит (поведение без изменений)", async () => {
     cleanTestDb(DB);
-    const svc = new SqliteRagMemoryService(undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const svc = new SqliteRagMemoryService(undefined, { GRIHA_AGENT_RUNTIME: "1" });
     await svc.init(getTestDbPath(DB));
     try {
       const written = await svc.addFact(fact());
@@ -71,7 +71,7 @@ describe("Memory write gate wiring (W2)", () => {
 
   it("flag on: низкая confidence в metadata → approval (E6)", async () => {
     cleanTestDb(DB);
-    const svc = new SqliteRagMemoryService(undefined, { HERMES_AGENT_RUNTIME: "1" });
+    const svc = new SqliteRagMemoryService(undefined, { GRIHA_AGENT_RUNTIME: "1" });
     await svc.init(getTestDbPath(DB));
     try {
       await assert.rejects(

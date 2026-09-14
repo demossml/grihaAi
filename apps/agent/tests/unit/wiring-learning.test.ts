@@ -33,7 +33,7 @@ describe("Learning wiring (W5)", () => {
 
   it("flag on: routes возвращаются, persist не меняется", async () => {
     const result = await applyLearning(extraction, "u1", profiles, notes, {
-      env: { HERMES_AGENT_RUNTIME: "1" },
+      env: { GRIHA_AGENT_RUNTIME: "1" },
     });
     assert.equal(result.preferencesSaved, 1);
     assert.equal(result.notesSaved, 2);
@@ -43,7 +43,7 @@ describe("Learning wiring (W5)", () => {
 
   it("flag on: factual→memory, procedural→skill, preference→user-model", async () => {
     const result = await applyLearning(extraction, "u1", profiles, notes, {
-      env: { HERMES_AGENT_RUNTIME: "1" },
+      env: { GRIHA_AGENT_RUNTIME: "1" },
     });
     const targets = result.routes?.map((r) => r.target);
     assert.ok(targets?.includes("memory"));
@@ -57,7 +57,7 @@ describe("Learning wiring (W5)", () => {
       "u1",
       profiles,
       notes,
-      { env: { HERMES_AGENT_RUNTIME: "1" } },
+      { env: { GRIHA_AGENT_RUNTIME: "1" } },
     );
     assert.equal(result.routes?.[0].target, "drop");
   });

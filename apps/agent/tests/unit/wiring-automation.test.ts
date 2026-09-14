@@ -15,7 +15,7 @@ import { cleanTestDb, getTestDbPath } from "../setup.js";
 
 const DB = "wiring-automation.sqlite";
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 function makeRunner(): CronRunner & { calls: string[] } {
   const calls: string[] = [];

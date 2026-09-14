@@ -1,7 +1,7 @@
 /**
  * Phase 10 (Item 10.3, матрица J4) — no-agent (script) jobs.
  *
- * Hermes: automation без LLM — script job. Валидация и компактный отчёт;
+ * Griha: automation без LLM — script job. Валидация и компактный отчёт;
  * фактическое исполнение — существующий sandbox-слой, wiring за флагом.
  */
 

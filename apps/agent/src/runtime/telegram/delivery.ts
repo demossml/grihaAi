@@ -4,7 +4,7 @@
  * P02-семантика (архив e611cca), БЕЗ изменения telegram-bot слоя:
  * - execution ≠ delivery: результат доставки не влияет на status задачи;
  * - временные ошибки → retry, permanent → без повторов.
- * Реальный транспорт подключается за флагом `HERMES_AGENT_RUNTIME`.
+ * Реальный транспорт подключается за флагом `GRIHA_AGENT_RUNTIME`.
  */
 
 /** Парно J5-схеме (cron_jobs.chat_id/thread_id). */

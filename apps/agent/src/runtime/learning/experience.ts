@@ -1,7 +1,7 @@
 /**
  * Phase 7 (Item 7.2, матрица G3/G4) — experience store.
  *
- * Hermes: experience = task/context/tools/errors/result/eval/lesson.
+ * Griha: experience = task/context/tools/errors/result/eval/lesson.
  * In-memory реализация; SQLite (nullable) — на этапе wiring за флагом.
  * G4: contradiction check → deprecate старого опыта.
  */

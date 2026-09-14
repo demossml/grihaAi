@@ -5,7 +5,7 @@
  * - duplicate  → reinforce (confidence+1, capped 1.0, evidenceCount растёт);
  * - contradict → новая запись persist + старая помечается "contradicted";
  * - reject     → не пишется (возвращается причина).
- * Чистая реализация; SQLite-wiring — за флагом `HERMES_AGENT_RUNTIME`.
+ * Чистая реализация; SQLite-wiring — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 import {
   decidePersist,

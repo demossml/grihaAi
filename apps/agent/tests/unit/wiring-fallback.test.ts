@@ -41,7 +41,7 @@ function config(): GrishAiConfig {
   };
 }
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 const messages = [{ role: "user", content: "hello" }];
 

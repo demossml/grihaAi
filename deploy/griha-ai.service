@@ -17,7 +17,7 @@ Type=simple
 User=admingimolost
 WorkingDirectory=/home/admingimolost/grihaAi/apps/agent
 ExecStart=/home/admingimolost/grihaAi/node_modules/.bin/tsx /home/admingimolost/grihaAi/apps/agent/src/bot.ts
-# Telegram из РФ доступен только через локальный прокси (hermes-proxy, порт 8089).
+# Telegram из РФ доступен только через локальный прокси (griha-proxy, порт 8089).
 Environment=HTTPS_PROXY=http://127.0.0.1:8089
 Environment=HTTP_PROXY=http://127.0.0.1:8089
 Restart=on-failure

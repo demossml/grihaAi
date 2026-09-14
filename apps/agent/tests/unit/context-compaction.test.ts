@@ -20,7 +20,7 @@ describe("shouldCompress (Item 3.2)", () => {
     assert.equal(shouldCompress(state(300), 10_000, undefined).level, "none");
   });
 
-  it("50% → agent, 85% → gateway (dual thresholds Hermes)", () => {
+  it("50% → agent, 85% → gateway (dual thresholds Griha)", () => {
     assert.equal(shouldCompress(state(500), 10_000, undefined).level, "agent");
     assert.equal(shouldCompress(state(850), 10_000, undefined).level, "gateway");
   });

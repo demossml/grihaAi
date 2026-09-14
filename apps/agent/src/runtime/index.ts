@@ -2,7 +2,7 @@
  * Phase 1 — Agent Runtime: публичный API + feature flag.
  *
  * Пока этот слой НЕ подключён к production-путям. Включается поэтапно в
- * следующих фазах через `HERMES_AGENT_RUNTIME` (по умолчанию off).
+ * следующих фазах через `GRIHA_AGENT_RUNTIME` (по умолчанию off).
  */
 import type { AgentKernel, RuntimeEngine } from "./types.js";
 import { AgentKernelImpl } from "./kernel.js";
@@ -22,7 +22,7 @@ export { AgentKernelImpl, type KernelInitOptions } from "./kernel.js";
  * По умолчанию ВЫКЛЮЧЕН: существующее поведение Griha не меняется.
  */
 export function isAgentRuntimeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env.HERMES_AGENT_RUNTIME;
+  const raw = env.GRIHA_AGENT_RUNTIME;
   if (raw === undefined) return false;
   return raw === "1" || raw.toLowerCase() === "true";
 }

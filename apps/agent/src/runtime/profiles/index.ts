@@ -1,6 +1,6 @@
 /**
  * Phase 15 — Profiles публичный API (чистые функции).
- * Wiring в boot/config — за флагом `HERMES_AGENT_RUNTIME`.
+ * Wiring в boot/config — за флагом `GRIHA_AGENT_RUNTIME`.
  */
 export {
   DEFAULT_PROFILES,

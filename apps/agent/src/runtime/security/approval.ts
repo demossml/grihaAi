@@ -1,7 +1,7 @@
 /**
  * Phase 11 (Item 11.4, матрица E6) — approval gate для записи в память.
  *
- * Hermes: memory write_approval gate. Конфигурируемая политика; чистая
+ * Griha: memory write_approval gate. Конфигурируемая политика; чистая
  * функция (реальный запрос одобрения — wiring за флагом).
  */
 import type { MemoryInput } from "../memory/types.js";

@@ -3,7 +3,7 @@
  *
  * Контракт вызова одного скрипта вместо N tool calls. Реализация исполнения
  * — существующие sandbox-классы (`src/sandbox`), подключаются за флагом
- * `HERMES_AGENT_RUNTIME`.
+ * `GRIHA_AGENT_RUNTIME`.
  */
 import { classifyCodeRisk, sandboxDecision, type SandboxKind } from "./safety.js";
 

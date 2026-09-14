@@ -16,7 +16,7 @@ import {
  * через quality-gate (хуже-версия не активируется), rollback к предыдущей.
  */
 
-const ON = { HERMES_AGENT_RUNTIME: "1" };
+const ON = { GRIHA_AGENT_RUNTIME: "1" };
 
 function makeRoot(): { root: string; coreFile: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skills-f3-"));

@@ -1,8 +1,8 @@
-# HERMES → GRIHA PARITY MATRIX
+# GRIHA PARITY MATRIX
 
 Phase 0, дата: 2026-09-13. Источник истины: runtime-код Griha (`main` = `cf5b6c0`,
-откаченное рабочее состояние `44834f1`) + docs Hermes (nousresearch.com) и
-`NousResearch/hermes-agent` (MIT, reference behavior).
+откаченное рабочее состояние `44834f1`) + docs Griha (nousresearch.com) и
+`NousResearch/griha-agent` (MIT, reference behavior).
 
 Статусы: **COMPLETE** (поведение эквивалентно и покрыто тестами),
 **PARTIAL** (часть механики есть), **DIFFERENT** (намеренно иная, но корректная
@@ -13,26 +13,26 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## A. Agent Runtime / core loop
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | A1 | Agent loop (tool calling, multi-turn) | `agent/` tool loop | pi.dev `AgentSession` (`core-agent`), tool-цикл SDK | **COMPLETE** (др. движок) | — | — | — |
 | A2 | Sub-session isolation | delegation docs | `TelegramSessionPool` (изолированные `AgentSession`, `SUB_SESSION_EXTENSIONS`) | **COMPLETE** | — | — | — |
-| A3 | Единый Agent Runtime поверх движка | `agent/` модули | **Item 1.1**: `src/runtime/` — интерфейсы, `AgentKernelImpl` (registry+lifecycle), feature flag `HERMES_AGENT_RUNTIME` (off). Не подключено к prod-путям | **PARTIAL** (интерфейсы готовы) | Phase 2+: подключение движков по фазам | средний | — |
+| A3 | Единый Agent Runtime поверх движка | `agent/` модули | **Item 1.1**: `src/runtime/` — интерфейсы, `AgentKernelImpl` (registry+lifecycle), feature flag `GRIHA_AGENT_RUNTIME` (off). Не подключено к prod-путям | **PARTIAL** (интерфейсы готовы) | Phase 2+: подключение движков по фазам | средний | — |
 | A4 | Extensions = domain capabilities | plugins | extensions содержат фундаментальную логику (routing, memory, cron) | **PARTIAL** | поэтапный перенос фундамента в runtime | средний | A3 |
 
 ## B. Model Runtime / Router / Fallback
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | B1 | Роли моделей (main + aux slots) | docs configuring-models: main + 11 aux tasks | prod: `ModelRole = "main" \| "vision"`; **Item 2.1**: `ModelRuntimeRole` (9 ролей) + `ModelPolicy` + `TaskProfile` в `src/runtime/model/types.ts`, не подключено | **PARTIAL** (типы готовы) | Phase 3/8/11/12: подключение aux-слотов | средний | A3 |
-| B2 | Машинный выбор модели (TaskProfile → router) | router семантика | **W1**: `ModelRouter` подключён к runtime (`getConfig`→`resolveModelConfig`, `selectForTask`→`selectModelRole`) за флагом `HERMES_AGENT_RUNTIME`; flag off = старое поведение 1:1 | **PARTIAL** (wiring за флагом готов) | включение флага в prod | высокий (production defaults!) | B1 |
+| B2 | Машинный выбор модели (TaskProfile → router) | router семантика | **W1**: `ModelRouter` подключён к runtime (`getConfig`→`resolveModelConfig`, `selectForTask`→`selectModelRole`) за флагом `GRIHA_AGENT_RUNTIME`; flag off = старое поведение 1:1 | **PARTIAL** (wiring за флагом готов) | включение флага в prod | высокий (production defaults!) | B1 |
 | B3 | Fallback chain (credential pool → primary → auxiliary) | docs providers: `fallback_providers`, credential pools | **Item 2.3**: `classifyError` + `FallbackChain` (`src/runtime/model/fallback-chain.ts`): 429/5xx/сеть/timeout→next, 401/403/context-overflow/unknown→стоп, без циклов; **B3-wiring**: `ModelRouter.call` за флагом — цепочка [primary + `models.fallbackModels`] по политике роли (vision без fallback), событие `fallback` в телеметрии; off = один вызов | **COMPLETE** (credential pools — отдельный шаг) | — | — | — |
 | B4 | Контекст-детект окна модели | docs: multi-source resolution | **Item 2.4**: `resolveContextWindow` (config.contextWindow→каталог→провайдер→128000) в `src/runtime/model/context-window.ts`; bootstrap пока хардкодит | **PARTIAL** (цепочка готова) | wiring в bootstrap | низкий | B1 |
 | B5 | Aux: title/compression/approval/MCP-route | docs auxiliary slots | нет (vision/learning/embedding есть) | **COMPLETE** (B5-wiring: слоты `models.title/compression/summarization/approval/delegation/learning`; `resolveModelConfig` слот→main→legacy; learning-вызов за флагом) | LLM-вызовы остальных ролей — по мере подсистем (title/approval LLM-вызовов нет; compression/summarization — шаблон C2, отдельный шаг) | — | — |
 
 ## C. Context Engine / compression
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | C1 | Token accounting (usage anchor, provider usage) | docs context-compression, `usage_anchor.py` | **Item 3.1**: `estimateTokens`/`estimateMessageTokens`/`getActualUsage`/`ContextBudget` в `src/runtime/context/usage.ts`, не подключено | **PARTIAL** (чистые функции) | wiring + реальные usage-анкоры | средний | A3 |
 | C2 | Dual compaction (50% agent / 85% gateway hygiene) | docs dual system | **Item 3.2**: `shouldCompress` (агент 0.5 / gateway 0.85, cooldown, minTurns) в `src/runtime/context/compaction.ts`; **C2-wiring**: `compactContext` (4-фазный конвейер: prune → structural → summarize → merge, §8) в `src/runtime/context/pipeline.ts`, подключён в `ContextBuilder.finalize` за флагом (head + rendered summary + recent tail); LLM-фаза 3 — `compactContextAsync` (колбэк, aux B5) | **COMPLETE** | — | — | — |
@@ -42,7 +42,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## D. Sessions / Session Search
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | D1 | Persistent sessions (SQLite, переживают рестарт) | docs sessions | `SessionManager` pi.dev (файловые сессии), Telegram-сессии `tg:{user}:{chat}` | **COMPLETE** | — | — | — |
 | D2 | FTS5 session search + scroll | docs memory: `state.db` FTS5 | `searchSessions()`: FTS5 + LIKE-fallback, только LIMIT; **Item 4.1**: scroll-контракт (`src/runtime/session/scroll.ts`); **Item 4.3**: generic-RRF (`src/runtime/session/rrf.ts`) для FTS5+vector fusion (§9) | **COMPLETE** (scroll+RRF контракты готовы) | wiring в searchSessions | низкий | — |
@@ -51,7 +51,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## E. Memory
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | E1 | Persistent facts (MEMORY.md, char limits) | docs memory | `SqliteRagMemoryService` (remember/recall/search), FTS5+vector+RRF | **COMPLETE** (DIFFERENT storage — наша SQLite, лучше) | — | — | — |
 | E2 | User profile (USER.md) | docs memory | `UserProfileService`, `formatPersonalContext` | **COMPLETE** | — | — | — |
@@ -64,11 +64,11 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## F. Skills
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | F1 | Discovery + progressive disclosure (levels 0/1/2) | docs skills | **Item 6.1**: `discloseSkill` (уровни 0/1/2) в `src/runtime/skill/disclosure.ts`; существующий discovery не менялся | **PARTIAL** (дисклозер готов) | wiring в формат промпта за флагом | низкий | — |
 | F2 | `skill_manage` create/patch/edit/delete/write_file/remove_file | docs skills | **Item 6.2**: построчный LCS-`diffLines` + `diffChangeCount`/`applyDiff` в `src/runtime/skill/diff.ts` (основа patch/validation) | **PARTIAL** (diff готов) | tool-операции поверх diff | средний | — |
-| F3 | Версионирование: read-before-write, diff, validation, rollback | Hermes issue #55647 урок | **Item 6.3**: `SkillVersionStore` (propose/evaluate/approveAndActivate/rollback; поля §14: version/parentVersion/diff/author/evaluation/rollbackVersion/active) в `src/runtime/skill/versioning.ts`; **W4**: propose на core-edit; **F3-wiring**: `activateSkillProposal` (quality-gate + переключение SKILL.md + active.txt) в `/skills-approve`, команда `/skills-rollback` (v1-база — точка отката), всё за флагом | **COMPLETE** | — | — | — |
+| F3 | Версионирование: read-before-write, diff, validation, rollback | Griha issue #55647 урок | **Item 6.3**: `SkillVersionStore` (propose/evaluate/approveAndActivate/rollback; поля §14: version/parentVersion/diff/author/evaluation/rollbackVersion/active) в `src/runtime/skill/versioning.ts`; **W4**: propose на core-edit; **F3-wiring**: `activateSkillProposal` (quality-gate + переключение SKILL.md + active.txt) в `/skills-approve`, команда `/skills-rollback` (v1-база — точка отката), всё за флагом | **COMPLETE** | — | — | — |
 | F4 | Skill quality score (successRate/usage/regression) | spec | **Item 7.4**: `SkillQualityTracker` (decay-взвешенный score, regression-окно) в `src/runtime/learning/quality.ts` | **PARTIAL** (трекер готов) | wiring: исходы из вызовов скиллов | низкий | F3 |
 | F5 | `/learn` из источников | docs skills | `learning-extractor` (частично) | **PARTIAL** | Phase 7 | средний | F2 |
 | F6 | Hub/регистры/сканы при установке | docs skills hub | нет | **NOT_APPLICABLE** (offline-ассистент) | — | — | — |
@@ -77,7 +77,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## G. Learning / Experience / User model
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | G1 | Background review после хода (cheaper model) | docs memory background_review | **Item 7.5**: `shouldBackgroundReview` (ошибка/tool-вызов/плановый N-turn) в `src/runtime/learning/background.ts`; **G1-wiring**: `maybeBackgroundReview` в core-agent — после `turn_end` вызов дешёвой модели (`models.learning`, B5) за флагом, бюджет maxLessons + политика, ошибки глушатся, событие `learning` в telemetry | **COMPLETE** | — | — | — |
 | G2 | Lesson routing: factual→memory, procedural→skill, preference→user model | spec | **Item 7.1**: `classifyLesson`/`routeLesson` (маркеры, приоритет preference→procedural→factual, unknown→drop) в `src/runtime/learning/routing.ts` | **PARTIAL** (классификатор готов) | wiring в G1-review конвейер | средний | G1 |
@@ -86,7 +86,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## H. Delegation
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | H1 | Subagents с изолированным контекстом | docs delegation | `multi-agent` + `createRealSubAgentRunner` (изолированные сессии) | **COMPLETE** | — | — | — |
 | H2 | Только summary в parent | docs delegation | SubAgentRunner возвращает результат | **COMPLETE** | — | — | — |
@@ -96,14 +96,14 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## I. Programmatic execution
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | I1 | execute_code (один скрипт вместо N tool calls) | spec | **Items 9.1–9.3**: `shouldUseExecuteCode`/`compactExecutionResult`, `classifyCodeRisk`/`sandboxForRisk` (опасный → runsc обязателен), `preflight`/`CodeExecutor` контракт в `src/runtime/programmatic/`; **I1-wiring**: инструмент `execute_code` в core-agent — за флагом: preflight → node `-e` в sandbox (local/runsc по риску), compact-результат, python запрещён, sandbox-missing → ошибка; off = disabled | **COMPLETE** | — | — | — |
 | I2 | Sandbox исполнения команд | docs security | `src/sandbox` (local + gVisor runsc) | **COMPLETE** | — | — | — |
 
 ## J. Automation / Cron
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | J1 | Cron: recurring + continuity + monitorMode | docs cron | `CronService` (runner, changeDetector, continuity, notepad, state_snapshot) | **COMPLETE** | — | — | — |
 | J2 | One-shot / pause-resume / update / remove | docs cron | **Item 10.2**: §21 `AutomationEngine` контракт + `InMemoryAutomationEngine` (create/run/pause/resume/remove, one-shot→done) в `src/runtime/automation/engine.ts`; **W7**: `updateJob`/`removeJob`/`pauseJob`/`resumeJob` в `CronService` (аддитивные, поверх существующего `setEnabled`) | **COMPLETE** (one-shot — вне текущего schema, документировано) | — | — | — |
@@ -113,7 +113,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## K. Security / Approval
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | K1 | Command approval | docs security | `approval-gate`, `approval-thresholds` skill | **COMPLETE** | — | — | — |
 | K2 | Action risk levels + requiresApproval | docs security | **Item 11.1**: `RiskLevel` (§24) + `classifyAction` (§25: read→safe … system→critical) + `requiresApproval` (конфигурируемый порог, alwaysAllow/alwaysRequire) в `src/runtime/security/risk.ts`; **W8**: `inferActionKind` + `evaluateRuntimeRisk` в approval-gate (`runtime-risk.ts`) — runtime-риск ДОБАВЛЯЕТ требование одобрения в `approval_required` за флагом, off = старый finance-гейт 1:1 | **COMPLETE** | — | — | — |
@@ -125,7 +125,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## L. MCP / Toolsets
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | L1 | MCP registry/discovery/execution | docs MCP | **Item 12.1**: `McpRegistry` (register/discovery, credentialScope — K7-фундамент, явное resolveTools — не все tools сразу, §22) в `src/runtime/mcp/registry.ts`; **W9**: транспорт stdio/http JSON-RPC (`transport.ts`, таймауты, errors-as-result, K7 env-isolation), сессионный `McpSessionRuntime` + расширение `mcp-runtime` (`mcp_list_tools`/`mcp_call_tool`) за флагом; off = инструменты отвечают disabled, соединений нет; **runsc-апгрейд**: `sandbox: "runsc"` в `McpServerConfig` → stdio-сервер в gVisor (`runsc do --rootless --network=none`, `runsc-spawn.ts`) за флагом; недоступный runsc → ошибка как результат | **COMPLETE** | — | — | — |
 | L2 | Toolsets + запрет самодобавления | docs toolsets | **Item 12.2**: `Toolset` union (§23) + `ToolsetPolicy`/`canUseToolset`/`canModifyPolicy` (запрет самодобавления) в `src/runtime/toolsets/toolsets.ts` | **PARTIAL** (контракт готов) | wiring в subagent-конфиг | низкий | H4 |
@@ -133,7 +133,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## M. Telegram integration
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | M1 | Gateway → agent transport | gateway docs | **Сверено (Phase 13)**: `telegram-bot` (Bridge/Controller/Pool, retry, heartbeat, topics) — код НЕ менялся | **COMPLETE** (DIFFERENT, наш) | не трогать без необходимости | — | — |
 | M2 | Пер-групповые правила/mention/archive | gateway docs | group-runtime, prefilter, chat-setup, archive | **COMPLETE** | — | — | — |
@@ -142,20 +142,20 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 ## N. Proactive
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | N1 | Briefing/anomaly/calendar proactive | proactive docs | `proactive-assistant` (briefing, anomaly, calendar) | **COMPLETE** | — | — | — |
 | N2 | Background nudge/self-improvement | memory docs | **Items 14.1–14.2**: `decideProactive` (§28 pipeline, security выше proactive) + `scheduleNudge` (тишина+cooldown+часы, на базе G1) в `src/runtime/proactive/`; **W11**: `ProactiveGate` (evaluate + nudge + pendingNudge) в proactive-assistant — briefing_generate гейтится §28-пайплайном за флагом (порог 0.35, контекст — фактическое содержимое), фоновый nudge-тикер (15 мин) накапливает подсказку для брифинга; off = pass 1:1 | **COMPLETE** | — | — | — |
 
 ## O. Profiles / Bot Mode
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | O1 | Именованные боты (model/memory/skills/persona) | docs bot mode | **Items 15.1–15.2**: `AgentProfile` (§29: id/persona/modelRole/toolsets/policies) + дефолтные профили (accountant/developer/secretary/researcher/travel) + `ProfileRegistry` + `validateProfile` в `src/runtime/profiles/`; **W12**: `config.profile` → `buildProfileSection` в core-agent (persona-секция system prompt за флагом, case-insensitive, невалидный молча игнорируется); **групповой override**: правило чата `agent_profile` → `buildGroupProfileSection` в rulesContext (group-runtime + telegram-bot) за флагом | **COMPLETE** | — | — | — |
 
 ## P. Observability / Cost
 
-| # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
+| # | Capability | Reference evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
 | P1 | Метрики ходов/медиа | gateway metrics | `metrics.ts` (telegram_updates, media…) | **COMPLETE** | — | — | — |
 | P2 | Cost tracking по моделям | dashboard usage | **Item 16.2**: `TelemetryBuffer` (§31-события) + correlation ID (генерация/валидация) в `src/runtime/observability/telemetry.ts`; **W13**: `runtimeObservability` (события agent-run/model-selected/tokens/latency/error на каждый model-call за флагом); **O2**: `snapshot()` + `renderTelemetryDashboard` (markdown: runs, события по kind, токены/стоимость по ролям, ошибки) + команда `/observability` в core-agent за флагом | **COMPLETE** | — | — | — |
@@ -177,5 +177,5 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 Оставшийся риск — в PARTIAL: F3 skill rollback
 (данные).
 Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
-за флагом `HERMES_AGENT_RUNTIME`; off = полный паритет со старым поведением.
+за флагом `GRIHA_AGENT_RUNTIME`; off = полный паритет со старым поведением.
 Регрессия с флагом on: 1033/1033 (off: 1033/1033).

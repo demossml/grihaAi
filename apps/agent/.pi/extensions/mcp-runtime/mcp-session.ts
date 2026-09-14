@@ -15,7 +15,7 @@ import { scanContent } from "../../../src/utils/security/injection-gate.js";
  * §22: агент не получает все tools сразу — только через явный resolve
  * (`mcp_call_tool` называет конкретный tool). K7: каждый сервер имеет
  * собственный credentialScope и transport (env не смешиваются).
- * Активация только за флагом HERMES_AGENT_RUNTIME.
+ * Активация только за флагом GRIHA_AGENT_RUNTIME.
  */
 
 export type McpTransportFactory = (server: McpServerConfig) => JsonRpcTransport;
@@ -83,7 +83,7 @@ export class McpSessionRuntime {
   /** Discovery одного сервера; регистрирует tools в registry. */
   async listTools(serverName: string): Promise<McpToolListResult> {
     if (!this.active) {
-      return { ok: false, error: "MCP runtime disabled (HERMES_AGENT_RUNTIME off)" };
+      return { ok: false, error: "MCP runtime disabled (GRIHA_AGENT_RUNTIME off)" };
     }
     const transport = this.transportFor(serverName);
     if (!transport) {
@@ -116,7 +116,7 @@ export class McpSessionRuntime {
     args?: unknown,
   ): Promise<McpToolCallResult> {
     if (!this.active) {
-      return { ok: false, error: "MCP runtime disabled (HERMES_AGENT_RUNTIME off)" };
+      return { ok: false, error: "MCP runtime disabled (GRIHA_AGENT_RUNTIME off)" };
     }
     const transport = this.transportFor(serverName);
     if (!transport) {

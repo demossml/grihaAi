@@ -47,7 +47,7 @@ export async function runExecuteCode(
   if (!isAgentRuntimeEnabled(env)) {
     return {
       ok: false,
-      text: "execute_code disabled (HERMES_AGENT_RUNTIME off).",
+      text: "execute_code disabled (GRIHA_AGENT_RUNTIME off).",
       error: "disabled",
     };
   }

@@ -3,7 +3,7 @@
  *
  * Скилл объявляет команды во фронтматтере (`commands: [a, b]`). Здесь —
  * чистая коллекция валидных уникальных команд; регистрация в core-agent —
- * только за флагом `HERMES_AGENT_RUNTIME` (off = команд нет, 1:1).
+ * только за флагом `GRIHA_AGENT_RUNTIME` (off = команд нет, 1:1).
  */
 import type { SkillMeta } from "@griha/skills";
 

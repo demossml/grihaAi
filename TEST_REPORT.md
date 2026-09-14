@@ -23,7 +23,7 @@
 
 ## 2. Environment
 
-- cwd: `/Users/dmitrijsuvalov/hermes-pi` (monorepo root)
+- cwd: `/Users/dmitrijsuvalov/griha-pi` (monorepo root)
 - workspaces detected:
   - apps: `agent`, `api`, `skills`
   - packages: `config`, `shared-types`, `stt`, `tsconfig`

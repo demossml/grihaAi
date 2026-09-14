@@ -67,7 +67,7 @@ describe("ContextBuilder compaction (C2)", () => {
         notes:
           "decision: отправить отчёт\nНужно ли звонить клиенту?\n" + "y".repeat(3000),
       }),
-      { HERMES_AGENT_RUNTIME: "1" },
+      { GRIHA_AGENT_RUNTIME: "1" },
       1000,
       "session-1",
     );
@@ -82,7 +82,7 @@ describe("ContextBuilder compaction (C2)", () => {
   it("итеративная ре-компрессия: решения из обоих прогонов сохраняются", async () => {
     const builder = new ContextBuilder(
       makeReaders(),
-      { HERMES_AGENT_RUNTIME: "1" },
+      { GRIHA_AGENT_RUNTIME: "1" },
       1000,
       "session-iter",
     );
@@ -98,7 +98,7 @@ describe("ContextBuilder compaction (C2)", () => {
   it("middle пуст (мало items) → fallback W3-ужатие", async () => {
     const builder = new ContextBuilder(
       makeReaders({ commitments: 2 }),
-      { HERMES_AGENT_RUNTIME: "1" },
+      { GRIHA_AGENT_RUNTIME: "1" },
       1000,
     );
     const result = await builder.getContactContext("u1", "Иван");
