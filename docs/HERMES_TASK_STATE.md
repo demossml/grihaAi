@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: M4 thread_id (VERIFIED)
+Current item: O1 group profile (VERIFIED)
 Status: IN_PROGRESS (следующий — после подтверждения)
 
-Last completed items: M4 thread_id — cron-доставка в форум-топики
-Last commits: 900f1a9 (L1 runsc-MCP), M4 thread_id (этот коммит)
+Last completed items: O1 group profile — правило чата agent_profile за флагом
+Last commits: e8f68bf (M4 thread_id), O1 group profile (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

@@ -49,6 +49,11 @@ export interface PrepareTurnDeps {
   /** Полная форма prefilter (process + suppressReply + archive). */
   evaluate: typeof evaluatePreFilter;
   formatRules: (hard: UserRule[], soft: UserRule[]) => string;
+  /**
+   * O1: групповой profile-override (§29) — секция профиля чата для
+   * rulesContext. Не задана → без секции (1:1).
+   */
+  profileSection?: (hard: UserRule[], soft: UserRule[]) => string;
 }
 
 function blocked(
@@ -73,7 +78,11 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
   // 3) R-GR-3: правила чата загружаются ДО вызова агента.
   const hard = deps.getHardRules(input.chatId);
   const soft = deps.getSoftRules(input.chatId);
-  const rulesContext = deps.formatRules(hard, soft);
+  const baseContext = deps.formatRules(hard, soft);
+  // O1: групповой profile-override — persona-секция профиля чата (за флагом).
+  const profileSection = deps.profileSection ? deps.profileSection(hard, soft) : "";
+  const rulesContext =
+    profileSection.length > 0 ? `${baseContext}\n${profileSection}` : baseContext;
 
   // 4) R-GR-4: hard-правила — в коде (prefilter), не через LLM.
   const prefilterInput: RulePreFilterInput = {

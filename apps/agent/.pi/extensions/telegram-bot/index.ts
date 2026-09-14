@@ -34,6 +34,7 @@ import { loadConfig, saveConfig } from "@griha/config";
 import { evaluatePreFilter } from "../user-rules/prefilter.js";
 import { formatRulesContext } from "../user-rules/format-rules-context.js";
 import { prepareGroupTurn, shouldNotifyPoorOcr } from "./group-runtime.js";
+import { buildGroupProfileSection } from "./group-profile.js";
 import { makeGuardedRulesHandler } from "./rules-auth.js";
 import { incMetric, getTelegramMetrics } from "./metrics.js";
 import { getTelegramPinApi } from "./pin-bridge.js";
@@ -281,6 +282,9 @@ function getController(): TelegramBotController {
             getSoftRules: (chatId) => getUserRulesService().getSoftRules(chatId),
             evaluate: (rules, prefilterInput) => evaluatePreFilter(rules, prefilterInput),
             formatRules: (hard, soft) => formatRulesContext(hard, soft),
+            // O1 (§29): групповой profile-override за флагом (правило agent_profile).
+            profileSection: (hard, soft) =>
+              buildGroupProfileSection(process.env, [...hard, ...soft]),
           }),
         rulesHandler: makeGuardedRulesHandler({
           run: (args, ctx) => telegramRulesHandler(args, ctx),

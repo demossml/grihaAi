@@ -71,15 +71,16 @@
 18. ✅ O2 Дашборд observability: snapshot + renderTelemetryDashboard + команда /observability за флагом.
 19. ✅ L1 runsc-MCP: sandbox "runsc" для stdio-серверов (gVisor --network=none) за флагом, ошибка как результат.
 20. ✅ M4 thread_id: notifierArgs + sendNotify(messageThreadId) — cron в форум-топики.
+21. ✅ O1 Групповой profile-override: правило чата agent_profile → persona-секция в rulesContext за флагом.
 
-Осознанно отложено (документировано в матрице): групповой
-profile-override, F7 slash-команды по скиллам (MISSING, низкий
-приоритет).
+Осознанно отложено (документировано в матрице): F7 slash-команды по
+скиллам (MISSING, низкий приоритет).
 B3 fallback, I1 execute_code, структурная компакция (C2/C4),
 injection-stage (K4), версии скиллов (F3), tool-result pruning (C3),
 aux-слоты моделей (B5), background review (G1), 4-фазный конвейер
-компакции (C2), дашборд observability (O2), runsc-MCP (L1) и
-thread_id-доставка (M4) — подключены (post-wiring, за флагом).
+компакции (C2), дашборд observability (O2), runsc-MCP (L1),
+thread_id-доставка (M4) и групповой profile-override (O1) —
+подключены (post-wiring, за флагом).
 
 ## Рекомендации по включению в production
 

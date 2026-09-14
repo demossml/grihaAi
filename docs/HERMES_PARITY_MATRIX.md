@@ -151,7 +151,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 
 | # | Hermes capability | Hermes evidence | Griha evidence | Status | Required work | Risk | Deps |
 |---|---|---|---|---|---|---|---|
-| O1 | Именованные боты (model/memory/skills/persona) | docs bot mode | **Items 15.1–15.2**: `AgentProfile` (§29: id/persona/modelRole/toolsets/policies) + дефолтные профили (accountant/developer/secretary/researcher/travel) + `ProfileRegistry` + `validateProfile` в `src/runtime/profiles/`; **W12**: `config.profile` → `buildProfileSection` в core-agent (persona-секция system prompt за флагом, case-insensitive, невалидный молча игнорируется) | **COMPLETE** (групповой override через rulesContext — документированный отдельный шаг) | — | — | — |
+| O1 | Именованные боты (model/memory/skills/persona) | docs bot mode | **Items 15.1–15.2**: `AgentProfile` (§29: id/persona/modelRole/toolsets/policies) + дефолтные профили (accountant/developer/secretary/researcher/travel) + `ProfileRegistry` + `validateProfile` в `src/runtime/profiles/`; **W12**: `config.profile` → `buildProfileSection` в core-agent (persona-секция system prompt за флагом, case-insensitive, невалидный молча игнорируется); **групповой override**: правило чата `agent_profile` → `buildGroupProfileSection` в rulesContext (group-runtime + telegram-bot) за флагом | **COMPLETE** | — | — | — |
 
 ## P. Observability / Cost
 
@@ -175,7 +175,7 @@ Phase 0, дата: 2026-09-13. Источник истины: runtime-код Gri
 | UNKNOWN | 0 (непроверяемое вынесено в PARTIAL/риски) |
 
 MISSING: только F7 (slash-команды по скиллам, низкий приоритет). Оставшийся риск — в PARTIAL: F3 skill rollback
-(данные),
-отдельный шаг (групповой profile-override). Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
+(данные).
+Все 13 wiring-пунктов (W1–W13) VERIFIED и запушены
 за флагом `HERMES_AGENT_RUNTIME`; off = полный паритет со старым поведением.
 Регрессия с флагом on: 1033/1033 (off: 1033/1033).
