@@ -23,3 +23,12 @@ tags: [documents, finance]
 - Default: current topic only when the question is asked inside a topic.
 - If user says «по всей группе» / «во всех темах» → scope=chat.
 - Never invent cross-topic totals without tool scope=chat.
+
+## Expense reports (PDF)
+- For a PDF expense report call ONLY `generate_report(reportType: "expense-report")`.
+  It pulls data from the DB (the same source as `expenses_sum`) — do NOT invent data for it.
+- Do NOT also call `generate_report` with empty data.
+- Do NOT call `send_file` on the generated PDF path: delivery is automatic
+  (session-file), and duplicate sends are suppressed.
+- If the tool returns EMPTY/NO_DATA («Нет данных для PDF-отчёта»): tell the user
+  briefly — do NOT invent tables or numbers.

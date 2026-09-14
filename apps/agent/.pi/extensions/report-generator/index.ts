@@ -125,7 +125,11 @@ export default function reportGenerator(
         const filePath = await renderPdfReport(params.reportType, renderData);
         // Register the file for the session so the Telegram layer can attach it
         // to the reply as a document (same per-session form as file_id handling).
-        setSessionFile(ctx.sessionManager.getSessionId(), filePath, buildReportCaption(params.reportType, renderData));
+        // E4: dedupeKey подавляет повторную отправку того же отчёта (send_file
+        // и второй generate_report за ход).
+        setSessionFile(ctx.sessionManager.getSessionId(), filePath, buildReportCaption(params.reportType, renderData), {
+          dedupeKey: `report:${params.reportType}`,
+        });
         return {
           content: [{ type: "text", text: `Report generated: ${filePath}` }],
           details: { path: filePath },

@@ -21,6 +21,12 @@ import {
   getTelegramFileSender,
 } from "../telegram-bot/file-send-bridge.js";
 import { validateSendFile, resolveOutboundFile, defaultFileRoots } from "../telegram-bot/file-send.js";
+import {
+  hasPendingDedupeKey,
+  hasPendingSessionFile,
+  wasRecentlySentDedupeKey,
+  wasRecentlySentFile,
+} from "../../../src/utils/telegram/session-files.js";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import { LocalMediaStorage } from "../../../src/services/documents/media-storage.js";
 
@@ -33,6 +39,8 @@ const SendFileSchema = Type.Object({
   caption: Type.Optional(Type.String({ maxLength: 1024 })),
   /** B3: явный целевой чат (по умолчанию — текущий; чужой — только canManage). */
   chatId: Type.Optional(Type.String({ minLength: 1 })),
+  /** E4: ключ дедупа (тот же, что у session-file инструмента-источника). */
+  dedupeKey: Type.Optional(Type.String({ minLength: 1 })),
 });
 type SendFileParams = Static<typeof SendFileSchema>;
 
@@ -69,7 +77,7 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
       _signal: unknown,
       _onUpdate: unknown,
       ctx: ExtensionContext,
-    ): Promise<AgentToolResult<{ fileId?: string; messageId?: number; error?: string }>> {
+    ): Promise<AgentToolResult<{ fileId?: string; messageId?: number; error?: string; suppressed?: boolean }>> {
       // Целевой чат — из контекста сессии, установленного пулом перед prompt.
       const sessionCtx = getSessionContext(ctx.sessionManager.getSessionId());
       if (!sessionCtx?.chatId) {
@@ -118,6 +126,31 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
         allowedRoots: defaultFileRoots(),
       });
       if (!valid.ok) return fail(valid.error);
+
+      // E4: тот же файл/ключ уже стоит в очереди session-file (автодоставка)
+      // или был недавно отправлен → повторная отправка подавляется.
+      const sessionId = ctx.sessionManager.getSessionId();
+      const duplicate =
+        hasPendingSessionFile(sessionId, valid.resolvedPath) ||
+        wasRecentlySentFile(sessionId, valid.resolvedPath) ||
+        (params.dedupeKey !== undefined &&
+          (hasPendingDedupeKey(sessionId, params.dedupeKey) ||
+            wasRecentlySentDedupeKey(sessionId, params.dedupeKey)));
+      if (duplicate) {
+        console.log(
+          `[telegram-file-send] duplicate send suppressed session=${sessionId} ` +
+            `file=${valid.resolvedPath} dedupeKey=${params.dedupeKey ?? "-"}`,
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Файл уже был отправлен в этом чате (повторная отправка подавлена).",
+            },
+          ],
+          details: { suppressed: true },
+        };
+      }
 
       const sender = getTelegramFileSender();
       if (!sender) {

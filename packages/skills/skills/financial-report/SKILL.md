@@ -18,3 +18,8 @@ Build financial reports from deterministic aggregation.
 - Never compute totals by hand when the aggregation service can do it
   deterministically.
 - Include anomalies and outstanding invoices when relevant.
+- For a fixed-format PDF document, call `generate_report(reportType: "expense-report")`
+  with the aggregated data. If your data is empty the tool fills it from the DB
+  or returns «Нет данных для PDF-отчёта» — do NOT invent tables.
+- Do NOT call `send_file` after the PDF tool: delivery is automatic and
+  duplicate sends are suppressed.
