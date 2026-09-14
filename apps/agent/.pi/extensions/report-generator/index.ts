@@ -4,6 +4,8 @@ import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-
 import {
   ReportTypeSchema,
   REPORT_SCHEMAS,
+  hasExpenseReportData,
+  type ExpenseReportData,
 } from "../../../src/utils/reports/report-schemas.js";
 import { renderPdfReport, renderPresentation } from "../../../src/utils/reports/report-renderer.js";
 import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
@@ -73,6 +75,19 @@ export default function reportGenerator(pi: ExtensionAPI): void {
         return {
           content: [{ type: "text", text: `Invalid report data: ${errors}` }],
           details: { error: errors },
+        };
+      }
+
+      // E2: пустые данные (без строк и без ненулевого итога) → явная ошибка.
+      // Файл не рендерится и НЕ регистрируется в session-files — пользователь
+      // не получает «успешный» пустой PDF.
+      if (
+        params.reportType === "expense-report" &&
+        !hasExpenseReportData(params.data as ExpenseReportData)
+      ) {
+        return {
+          content: [{ type: "text", text: "Нет данных для PDF-отчёта." }],
+          details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
         };
       }
 

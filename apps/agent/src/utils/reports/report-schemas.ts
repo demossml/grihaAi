@@ -43,6 +43,23 @@ export const ExpenseReportSchema = Type.Object({
 });
 export type ExpenseReportData = Static<typeof ExpenseReportSchema>;
 
+/**
+ * E2: guard от «успешного» пустого PDF. Рендер и setSessionFile разрешены
+ * только при наличии хотя бы одной строки (items/categories) ИЛИ ненулевого
+ * конечного итога. Пустые массивы + 0 → false (tool вернёт ошибку, файл не
+ * создаётся).
+ */
+export function hasExpenseReportData(data: ExpenseReportData): boolean {
+  const hasRows =
+    (Array.isArray(data.items) && data.items.length > 0) ||
+    (Array.isArray(data.categories) && data.categories.length > 0);
+  const hasTotal =
+    typeof data.totalAmount === "number" &&
+    Number.isFinite(data.totalAmount) &&
+    data.totalAmount !== 0;
+  return hasRows || hasTotal;
+}
+
 export const MeetingMinutesSchema = Type.Object({
   title: Type.String({ minLength: 1 }),
   date: Type.String({ minLength: 1 }),
