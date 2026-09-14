@@ -429,6 +429,8 @@ function getController(): TelegramBotController {
             confidence: results.length ? Math.max(...results.map((r) => r.confidence ?? 0)) : 0,
             expenseId: lastExpense,
             ingestedExpense: results.some((r) => r.ingestedExpense),
+            // PROMPT 7: факт архивации для outcome-трассы альбома.
+            archived: results.some((r) => r.archived),
           };
         },
         // G6: /pin — canManage + права бота (can_pin_messages) проверяются здесь.
@@ -811,6 +813,8 @@ async function runMediaPipelineFor(
       confidence: result.confidence,
       expenseId: result.expenseId,
       ingestedExpense: result.ingestedExpense,
+      // PROMPT 7: факт архивации для outcome-трассы.
+      archived: result.archived,
       notify,
     };
   } catch (err: unknown) {

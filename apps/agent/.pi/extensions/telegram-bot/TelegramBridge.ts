@@ -99,6 +99,8 @@ export interface ProcessMediaResult {
   skipped?: boolean;
   /** Download/OCR упали (retry уже поставлен контроллером в media-retry). */
   failed?: boolean;
+  /** PROMPT 7: медиа записано в chat_archive (observability outcome-трассы). */
+  archived?: boolean;
   rawText?: string;
   confidence?: number;
   expenseId?: string;
@@ -279,6 +281,19 @@ function buildMediaAgentMessage(
     .join("\n");
 }
 
+/** PROMPT 7: kind контента update для outcome-трассы (без текста). */
+export function updateContentKind(msg: TgMessage): string {
+  if (msg.photo?.length) return "photo";
+  if (msg.document?.file_id) return "document";
+  if (msg.voice?.file_id) return "voice";
+  if (msg.video?.file_id) return "video";
+  if (msg.videoNote?.file_id) return "video_note";
+  if (msg.audio?.file_id) return "audio";
+  if (msg.contact) return "contact";
+  if (msg.location) return "location";
+  return "text";
+}
+
 /** G1: элемент альбома из TgMessage. */
 export function albumItemOf(msg: TgMessage, updateId: number): AlbumItem | null {
   const item = (kind: AlbumItem["kind"], fileId: string, fileUniqueId: string, mimeType?: string, duration?: number): AlbumItem => ({
@@ -354,6 +369,8 @@ export function withReplyContext(message: string, msg: TgMessage): string {
 
 export class TelegramBridge {
   private readonly agent: GrishaAgent;
+  /** PROMPT 7: сколько раз вызван агент (для outcome-трассы invoked=true/false). */
+  private agentInvocationCount = 0;
 
   /** G1: буфер альбомов + контекст gate на группу. */
   private albumBuffer: MediaGroupBuffer | null = null;
@@ -484,6 +501,7 @@ export class TelegramBridge {
     const rawAgent = agent;
     this.agent = async (input) => {
       this.options?.onMetric?.("telegram_agent_invocations");
+      this.agentInvocationCount++;
       return rawAgent(input);
     };
   }
@@ -529,7 +547,14 @@ export class TelegramBridge {
     chatId: number,
     msg: TgMessage,
     chatType: string,
-  ): { process: boolean; suppressReply: boolean; archive: boolean; rulesContext: string } {
+  ): {
+    process: boolean;
+    suppressReply: boolean;
+    archive: boolean;
+    rulesContext: string;
+    /** PROMPT 7: точная причина блокировки (prepareTurn), для outcome-трассы. */
+    blockReason?: string;
+  } {
     const isGroup = chatType === "group" || chatType === "supergroup";
     const isChannel = chatType === "channel";
     const isManaged = isGroup || isChannel;
@@ -558,6 +583,7 @@ export class TelegramBridge {
         suppressReply: result.suppressReply,
         archive: result.archive,
         rulesContext: result.process ? result.rulesContext : "",
+        blockReason: result.blockReason,
       };
     }
 
@@ -596,12 +622,24 @@ export class TelegramBridge {
 
   async handleUpdate(update: TgUpdate): Promise<{ handled: boolean; reason?: string }> {
     const msg = update.message;
-    if (!msg?.chat) return { handled: false, reason: "no-message" };
+    if (!msg?.chat) {
+      this.emitUpdateOutcome(update, {
+        kind: "unknown",
+        reason: "no-message",
+        invoked: false,
+      });
+      return { handled: false, reason: "no-message" };
+    }
     // Безопасный sender (PROMPT 02): from может отсутствовать (channel_post),
     // тогда отправитель — sender_chat (не приравнивается к user-авторизации).
     const senderUserId = msg.from?.id;
     const senderChatId = msg.senderChat?.id;
     if (senderUserId === undefined && senderChatId === undefined) {
+      this.emitUpdateOutcome(update, {
+        kind: updateContentKind(msg),
+        reason: "no-user",
+        invoked: false,
+      });
       return { handled: false, reason: "no-user" };
     }
 
@@ -621,6 +659,11 @@ export class TelegramBridge {
             result: claim,
           })}`,
         );
+        this.emitUpdateOutcome(update, {
+          kind: updateContentKind(msg),
+          reason: `duplicate-${claim}`,
+          invoked: false,
+        });
         return { handled: true, reason: `duplicate-${claim}` };
       }
       if (claim === "reclaimed") {
@@ -634,6 +677,7 @@ export class TelegramBridge {
       }
     }
 
+    const invocationsBefore = this.agentInvocationCount;
     try {
       const result = await this.handleUpdateInner(update);
       // done только после УСПЕШНОЙ обработки (включая sendReply). Сбой →
@@ -642,15 +686,71 @@ export class TelegramBridge {
       if (result.reason !== "album-buffered") {
         await gate?.markDone(update.updateId);
       }
-      return result;
+      // PROMPT 7: судьба апдейта — одна JSON-строка (RECEIVED логируется
+      // контроллером; INVOKED/ARCHIVED/BLOCK_REASON — здесь).
+      this.emitUpdateOutcome(update, {
+        kind: updateContentKind(msg),
+        reason: result.reason ?? "handled",
+        invoked: this.agentInvocationCount > invocationsBefore,
+        archived: result.archived === true,
+        blockReason: result.blockReason,
+        mediaStatus: result.mediaStatus,
+      });
+      return { handled: result.handled, reason: result.reason };
     } catch (err) {
       // done НЕ ставится — ошибка пробрасывается как раньше (контроллер логирует).
+      // Детали — в diag-строке PROMPT 4; в трассу — только факт сбоя.
+      this.emitUpdateOutcome(update, {
+        kind: updateContentKind(msg),
+        reason: "error",
+        invoked: this.agentInvocationCount > invocationsBefore,
+      });
       throw err;
     }
   }
 
-  /** Тело обработки update (после claim'а). Routing/ACL/prefilter/archive/agent — прежние. */
-  private async handleUpdateInner(update: TgUpdate): Promise<{ handled: boolean; reason?: string }> {
+  /** PROMPT 7: outcome-трасса апдейта — JSON без пользовательского текста. */
+  private emitUpdateOutcome(
+    update: TgUpdate,
+    outcome: {
+      kind: string;
+      reason: string;
+      invoked: boolean;
+      archived?: boolean;
+      blockReason?: string;
+      mediaStatus?: string;
+    },
+  ): void {
+    const msg = update.message;
+    const entry: Record<string, unknown> = {
+      updateId: update.updateId,
+      kind: outcome.kind,
+      invoked: outcome.invoked,
+      archived: outcome.archived === true,
+      reason: outcome.reason,
+    };
+    if (msg?.chat) entry.chatId = msg.chat.id;
+    if (msg?.threadId !== undefined) entry.threadId = msg.threadId;
+    if (msg?.from?.id !== undefined) entry.userId = msg.from.id;
+    else if (msg?.senderChat?.id !== undefined) entry.senderChatId = msg.senderChat.id;
+    if (outcome.blockReason !== undefined) entry.blockReason = outcome.blockReason;
+    if (outcome.mediaStatus !== undefined) entry.mediaStatus = outcome.mediaStatus;
+    console.log(`[telegram-bot] update outcome ${JSON.stringify(entry)}`);
+  }
+
+  /**
+   * Тело обработки update (после claim'а). Routing/ACL/prefilter/archive/agent —
+   * прежние. Возвращает факты для outcome-трассы (archived/mediaStatus/blockReason).
+   */
+  private async handleUpdateInner(
+    update: TgUpdate,
+  ): Promise<{
+    handled: boolean;
+    reason?: string;
+    archived?: boolean;
+    mediaStatus?: "processed" | "failed" | "skipped";
+    blockReason?: string;
+  }> {
     const msg = update.message!;
     const senderUserId = msg.from?.id;
     const senderChatId = msg.senderChat?.id;
@@ -949,7 +1049,7 @@ export class TelegramBridge {
       // сообщении (содержательный ответ всё равно приходит текстом от агента).
       const message = `Пользователь поделился контактом.\nИмя: ${msg.contact.first_name ?? ""} ${msg.contact.last_name ?? ""}\nТелефон: ${msg.contact.phone_number ?? "не указан"}`;
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
-      if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
+      if (!gate.process) return { handled: true, reason: "blocked-by-rules", blockReason: gate.blockReason };
       const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
       if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
       if (msg.messageId !== undefined) this.options?.react?.(chatId, msg.messageId, "👍");
@@ -977,7 +1077,7 @@ export class TelegramBridge {
       // travel_item_add (travel) или ответить контекстно.
       const message = `Пользователь поделился геолокацией: ${msg.location.latitude ?? "?"}, ${msg.location.longitude ?? "?"}`;
       const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
-      if (!gate.process) return { handled: true, reason: "blocked-by-rules" };
+      if (!gate.process) return { handled: true, reason: "blocked-by-rules", blockReason: gate.blockReason };
       const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
       if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
       this.options?.beforeAgent?.(chatId);
@@ -1006,16 +1106,19 @@ export class TelegramBridge {
     // L1: listen_only без обращения — агент заблокирован; текст всё равно тихо
     // архивируется (если archive=true), индикатор «печатает» не включается.
     // Архив решается ПО policy ДО agent ACL (PROMPT 03).
+    let archived = false;
     if (gate.archive) {
-      await this.archiveQuietly(msg, chatId, userId, "text", send);
-      if (!gate.process) return { handled: true, reason: "archived-silent" };
+      archived = await this.archiveQuietly(msg, chatId, userId, "text", send);
+      if (!gate.process) {
+        return { handled: true, reason: "archived-silent", archived, blockReason: gate.blockReason };
+      }
     } else if (!gate.process) {
-      return { handled: true, reason: "blocked-by-rules" };
+      return { handled: true, reason: "blocked-by-rules", blockReason: gate.blockReason };
     }
 
     // Agent path — только после archive-решения и только для реальных users.
     const acl = await this.checkAgentAcl({ userId, chatId, chatType, hasRealUser, send });
-    if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
+    if (!acl.allowed) return { handled: acl.handled, reason: acl.reason, archived };
 
     this.options?.beforeAgent?.(chatId);
     // Heartbeat только когда пользователь получит ответ (не silent-archive).
@@ -1030,9 +1133,9 @@ export class TelegramBridge {
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
       });
-      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+      if (gate.suppressReply) return { handled: true, reason: "archived-silent", archived };
       await this.sendReply(chatId, response, msg.threadId);
-      return { handled: true };
+      return { handled: true, archived };
     } finally {
       await hb?.stop();
     }
@@ -1077,8 +1180,18 @@ export class TelegramBridge {
 
   /** G1: флаш альбома — pipeline по файлам, максимум один вызов агента. */
   private async flushAlbum(batch: AlbumBatch): Promise<void> {
+    const invocationsBefore = this.agentInvocationCount;
     try {
-      await this.flushAlbumInner(batch);
+      const media = await this.flushAlbumInner(batch);
+      // PROMPT 7: outcome альбома (элементы уже в трассе как album-buffered).
+      console.log(
+        `[telegram-bot] album outcome ${JSON.stringify({
+          groupId: batch.groupId,
+          updateIds: batch.items.map((i) => i.updateId),
+          invoked: this.agentInvocationCount > invocationsBefore,
+          archived: media?.archived === true,
+        })}`,
+      );
       // PROMPT 6: элементы альбома буферизовались с reason "album-buffered" и
       // НЕ получали done в handleUpdate. Успех альбома = успех всех его
       // update'ов → done каждому. Сбой flush'а → processing до lease →
@@ -1092,10 +1205,10 @@ export class TelegramBridge {
     }
   }
 
-  private async flushAlbumInner(batch: AlbumBatch): Promise<void> {
+  private async flushAlbumInner(batch: AlbumBatch): Promise<ProcessMediaResult | null | undefined> {
     const ctx = this.albumGates.get(batch.groupId);
     this.albumGates.delete(batch.groupId);
-    if (!ctx) return;
+    if (!ctx) return undefined;
     const { gate, chatId, userId, chatType, send, msg } = ctx;
 
     const media = await this.options?.processMediaAlbum?.(batch, {
@@ -1107,7 +1220,7 @@ export class TelegramBridge {
       suppressReply: gate.suppressReply,
       rulesContext: gate.rulesContext,
     });
-    if (!gate.process) return; // слушатель: обработано фоном, агента нет
+    if (!gate.process) return media ?? null; // слушатель: обработано фоном, агента нет
 
     const acl = await this.checkAgentAcl({
       userId,
@@ -1116,7 +1229,7 @@ export class TelegramBridge {
       hasRealUser: msg.from?.id !== undefined,
       send,
     });
-    if (!acl.allowed) return;
+    if (!acl.allowed) return media ?? null;
 
     this.options?.beforeAgent?.(chatId);
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
@@ -1131,8 +1244,9 @@ export class TelegramBridge {
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
       });
-      if (gate.suppressReply) return;
+      if (gate.suppressReply) return media ?? null;
       await this.sendReply(chatId, response, msg.threadId);
+      return media ?? null;
     } finally {
       await hb?.stop();
     }
@@ -1154,7 +1268,13 @@ export class TelegramBridge {
     chatType: string,
     send: TelegramReplySender,
     kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio",
-  ): Promise<{ handled: boolean; reason?: string }> {
+  ): Promise<{
+    handled: boolean;
+    reason?: string;
+    archived?: boolean;
+    mediaStatus?: "processed" | "failed" | "skipped";
+    blockReason?: string;
+  }> {
     const fileId =
       kind === "photo"
         ? lastPhotoFileId(msg.photo ?? [])
@@ -1182,6 +1302,7 @@ export class TelegramBridge {
     const hb = gate.process && !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {
       let media: ProcessMediaResult | null = null;
+      let archived = false;
       if (processMedia) {
         media = await processMedia(msg, {
           chatId: String(chatId),
@@ -1190,6 +1311,7 @@ export class TelegramBridge {
           allowed: gate.process,
           archive: gate.archive,
         });
+        archived = media?.archived === true;
         if (media?.notify) {
           await send(chatId, media.notify, undefined, { threadId: msg.threadId });
         }
@@ -1197,7 +1319,7 @@ export class TelegramBridge {
         // Legacy (без processMedia — старые тесты/контроллеры): тихий архив
         // через archiveHandler; инжест с ack — как раньше.
         if (gate.archive) {
-          await this.archiveQuietly(msg, chatId, userId, kind, send);
+          archived = await this.archiveQuietly(msg, chatId, userId, kind, send);
         } else {
           const ingest = pendingManaged ? undefined : this.options?.documentIngest;
           if (ingest) {
@@ -1210,9 +1332,23 @@ export class TelegramBridge {
         }
       }
 
+      const mediaStatus: "processed" | "failed" | "skipped" | undefined = media
+        ? media.failed
+          ? "failed"
+          : media.skipped
+            ? "skipped"
+            : "processed"
+        : undefined;
+
       if (!gate.process) {
         // listen_only без @mention: OCR/архив уже сделан, ответа нет.
-        return { handled: true, reason: gate.archive ? "archived-silent" : "blocked-by-rules" };
+        return {
+          handled: true,
+          reason: gate.archive ? "archived-silent" : "blocked-by-rules",
+          archived,
+          mediaStatus,
+          blockReason: gate.blockReason,
+        };
       }
 
       // Agent path — только после media-решения; канал/sender_chat — denied.
@@ -1223,7 +1359,7 @@ export class TelegramBridge {
         hasRealUser: msg.from?.id !== undefined,
         send,
       });
-      if (!acl.allowed) return { handled: acl.handled, reason: acl.reason };
+      if (!acl.allowed) return { handled: acl.handled, reason: acl.reason, archived, mediaStatus };
 
       this.options?.beforeAgent?.(chatId);
       const agentMessage = processMedia
@@ -1238,9 +1374,11 @@ export class TelegramBridge {
         threadId: msg.threadId,
         rulesContext: gate.rulesContext || undefined,
       });
-      if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
+      if (gate.suppressReply) {
+        return { handled: true, reason: "archived-silent", archived, mediaStatus };
+      }
       await this.sendReply(chatId, response, msg.threadId);
-      return { handled: true };
+      return { handled: true, archived, mediaStatus };
     } finally {
       await hb?.stop();
     }
@@ -1250,6 +1388,7 @@ export class TelegramBridge {
    * Тихое сохранение в архив: ошибки архива не роняют обработку.
    * R-GR-8: notify от handler'а (плохой OCR) отправляется только если
    * policy-флаг чата это разрешил — решение принимает сам handler.
+   * PROMPT 7: возвращает, была ли фактическая запись (для outcome-трассы).
    */
   private async archiveQuietly(
     msg: TgMessage,
@@ -1257,7 +1396,7 @@ export class TelegramBridge {
     userId: number,
     kind: "text" | "photo" | "document" | "voice" | "video" | "video_note" | "audio",
     send: TelegramReplySender,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const result = await this.options?.archiveHandler?.(msg, {
         chatId: String(chatId),
@@ -1267,11 +1406,13 @@ export class TelegramBridge {
       if (result?.notify) {
         await send(chatId, result.notify, undefined, { threadId: msg.threadId });
       }
+      return result?.stored === true;
     } catch (err: unknown) {
       console.error(
         "[telegram-bot] archive failed:",
         err instanceof Error ? err.message : err,
       );
+      return false;
     }
   }
 }

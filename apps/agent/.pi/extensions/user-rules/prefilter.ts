@@ -85,24 +85,36 @@ function truthy(v: unknown): boolean {
  * Structured keys §9 (chat onboarding). Порядок важен; применяется только
  * при наличии structured-правил. Далее — legacy-эвристики по text.
  */
-function evaluateStructuredRules(rules: UserRule[], input: RulePreFilterInput): boolean | null {
+/**
+ * Structured keys §9 (chat onboarding). Порядок важен; применяется только
+ * при наличии structured-правил. Далее — legacy-эвристики по text.
+ * PROMPT 7: вместе с решением возвращается точная причина блокировки.
+ */
+function evaluateStructuredRules(
+  rules: UserRule[],
+  input: RulePreFilterInput,
+): { pass: true } | { pass: false; reason: string } | null {
   const keys = new Set(rules.map((r) => r.key));
   if (keys.size === 0) return null; // structured-правил нет
 
   const has = (key: string) => keys.has(key);
 
-  if (has("listen_only") && truthy(hardValue(rules, "listen_only"))) return false;
+  if (has("listen_only") && truthy(hardValue(rules, "listen_only"))) {
+    return { pass: false, reason: "listen_only" };
+  }
 
   if (has("ignore_bots") && hardValue(rules, "ignore_bots") !== false && input.fromIsBot) {
-    return false;
+    return { pass: false, reason: "bot-ignored" };
   }
   if (has("ignore_service") && hardValue(rules, "ignore_service") !== false && input.isService) {
-    return false;
+    return { pass: false, reason: "service-ignored" };
   }
 
   if (has("only_my_messages") && truthy(hardValue(rules, "only_my_messages"))) {
     const onlyId = String(hardValue(rules, "only_my_messages_user_id") ?? "");
-    if (!onlyId || String(input.fromUserId) !== onlyId) return false;
+    if (!onlyId || String(input.fromUserId) !== onlyId) {
+      return { pass: false, reason: "only-from" };
+    }
   }
 
   const requireMention = has("require_mention") && truthy(hardValue(rules, "require_mention"));
@@ -110,14 +122,16 @@ function evaluateStructuredRules(rules: UserRule[], input: RulePreFilterInput): 
   if (input.isGroup && requireMention) {
     const mentioned = input.botMentioned === true;
     const isReply = replyToBot && input.repliedToBot === true;
-    if (!mentioned && !isReply) return false;
+    if (!mentioned && !isReply) return { pass: false, reason: "require_mention" };
   }
 
   if (input.isGroup && has("ignore_if_other_mention") && truthy(hardValue(rules, "ignore_if_other_mention"))) {
-    if (input.startsWithOtherMention === true) return false;
+    if (input.startsWithOtherMention === true) {
+      return { pass: false, reason: "other-mention" };
+    }
   }
 
-  return true;
+  return { pass: true };
 }
 
 /**
@@ -143,16 +157,26 @@ export interface PreFilterOutcome {
   suppressReply: boolean;
   /** Архивный режим (listen_only): сохранять текст/медиа в chat_archive. */
   archive: boolean;
+  /**
+   * PROMPT 7: точная причина блокировки (observability) — НЕ влияет на
+   * решение: listen_only / require_mention / group-not-configured /
+   * bot-ignored / service-ignored / only-from / other-mention.
+   */
+  reason?: string;
 }
 
-const BLOCKED: PreFilterOutcome = { process: false, suppressReply: false, archive: false };
+function blockedWithReason(reason: string): PreFilterOutcome {
+  return { process: false, suppressReply: false, archive: false, reason };
+}
 
 export function evaluatePreFilter(
   hardRules: UserRule[],
   input: RulePreFilterInput,
 ): PreFilterOutcome {
   // R1 / R6: pending (group/supergroup/channel) молчит (0 токенов LLM), даже на @mention.
-  if ((input.isGroup || input.isChannel) && input.groupConfigured === false) return BLOCKED;
+  if ((input.isGroup || input.isChannel) && input.groupConfigured === false) {
+    return blockedWithReason("group-not-configured");
+  }
   const isArchiveScope = input.isGroup === true || input.isChannel === true;
 
   // Structured keys (пресеты) — в первую очередь.
@@ -165,14 +189,14 @@ export function evaluatePreFilter(
   if (has("listen_only") && truthy(hardValue(hardRules, "listen_only"))) {
     // Прочие фильтры сохраняются: игнор ботов и сервисных сообщений.
     if (has("ignore_bots") && hardValue(hardRules, "ignore_bots") !== false && input.fromIsBot) {
-      return BLOCKED;
+      return blockedWithReason("bot-ignored");
     }
     if (has("ignore_service") && hardValue(hardRules, "ignore_service") !== false && input.isService) {
-      return BLOCKED;
+      return blockedWithReason("service-ignored");
     }
     if (has("only_my_messages") && truthy(hardValue(hardRules, "only_my_messages"))) {
       const onlyId = String(hardValue(hardRules, "only_my_messages_user_id") ?? "");
-      if (!onlyId || String(input.fromUserId) !== onlyId) return BLOCKED;
+      if (!onlyId || String(input.fromUserId) !== onlyId) return blockedWithReason("only-from");
     }
     const mentioned = input.botMentioned === true || input.repliedToBot === true;
     if (!mentioned) {
@@ -181,6 +205,7 @@ export function evaluatePreFilter(
         process: false,
         suppressReply: true,
         archive: isArchiveScope,
+        reason: "listen_only",
       };
     }
     return {
@@ -191,11 +216,11 @@ export function evaluatePreFilter(
   }
 
   const structured = evaluateStructuredRules(hardRules, input);
-  if (structured === false) return BLOCKED;
+  if (structured?.pass === false) return blockedWithReason(structured.reason);
 
   for (const rule of hardRules) {
     if (isOnlyOwnerRule(rule) && rule.ownerUserId) {
-      if (input.fromUserId !== rule.ownerUserId) return BLOCKED;
+      if (input.fromUserId !== rule.ownerUserId) return blockedWithReason("only-from");
     }
   }
   return { process: true, suppressReply: false, archive: false };

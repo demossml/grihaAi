@@ -35,6 +35,12 @@ export interface PrepareTurnInput {
 export interface PrepareTurnResult {
   process: boolean;
   reason?: string;
+  /**
+   * PROMPT 7: точная причина блокировки для observability (listen_only /
+   * require_mention / group-not-configured / bot-ignored / service-ignored /
+   * only-from / other-mention / prefilter). Не меняет `reason` (совместимость).
+   */
+  blockReason?: string;
   /** Архивариус (listen_only): обработать, но не отвечать без @mention. */
   suppressReply: boolean;
   /** Архивариус: сохранить сообщение/медиа в chat_archive. */
@@ -59,11 +65,12 @@ export interface PrepareTurnDeps {
 
 function blocked(
   reason: string,
-  extra?: { archive?: boolean; suppressReply?: boolean },
+  extra?: { archive?: boolean; suppressReply?: boolean; blockReason?: string },
 ): PrepareTurnResult {
   return {
     process: false,
     reason,
+    blockReason: extra?.blockReason ?? reason,
     suppressReply: extra?.suppressReply ?? false,
     archive: extra?.archive ?? false,
     rulesContext: "",
@@ -106,6 +113,8 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
     return blocked("prefilter", {
       archive: gate.archive === true,
       suppressReply: gate.suppressReply === true,
+      // PROMPT 7: точная причина из prefilter (для outcome-трассы).
+      blockReason: gate.reason ?? "prefilter",
     });
   }
 
