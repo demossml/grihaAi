@@ -1,11 +1,11 @@
 # Hermes → Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: F7 (VERIFIED) — МАТРИЦА ЗАКРЫТА (MISSING 0)
+Current item: §34 golden tests (VERIFIED) — МАТРИЦА ЗАКРЫТА (MISSING 0)
 Status: готово к финальному включению (shadow mode → prod)
 
-Last completed items: F7 — slash-команды по скиллам за флагом
-Last commits: 22601df (O1 group profile), F7 (этот коммит)
+Last completed items: §34 golden fixtures — детерминированное поведение без LLM
+Last commits: 0bccd8f (F7), §34 golden (этот коммит)
 
 ## Baseline (зафиксирован 2026-09-13)
 

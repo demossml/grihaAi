@@ -85,7 +85,8 @@ slash-команды скиллов (F7) — подключены (post-wiring, 
 ## Рекомендации по включению в production
 
 1. Сначала — shadow mode: `HERMES_AGENT_RUNTIME=1` на dev/staging с наблюдением
-   (все 13 точек уже VERIFIED отдельно; обе регрессии 1033/1033).
+   (все 22 post-wiring точки VERIFIED отдельно; обе регрессии 1127/1127;
+   §34 golden fixtures — deterministic behavior без LLM).
 2. Последовательное включение на проде по риску: сперва наблюдение/безопасность
    (W8 risk-gate, W13 telemetry), затем memory/learning (W2/W5), context (W3),
    automation (W7), delegation (W6), MCP (W9), proactive (W11), profiles (W12),
@@ -96,6 +97,9 @@ slash-команды скиллов (F7) — подключены (post-wiring, 
 4. B3 fallback в prod-вызовах — отдельный item с тестом provider-failure.
 5. §33 regression suite: расширять integration-тесты на подключённые подсистемы
    по мере включения.
+6. §34 golden tests: `tests/unit/golden-parity.test.ts` (модель → toolsets →
+   компрессия → approval, детерминированные фиксчуры) — расширять на новые
+   подсистемы.
 
 ## Статус
 
