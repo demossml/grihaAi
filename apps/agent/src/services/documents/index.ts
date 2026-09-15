@@ -53,6 +53,15 @@ function buildVisionOcr(): VisionOcrFn | undefined {
   if (!vision?.apiKey) return undefined;
   const caller = createHttpVisionCaller();
   return async (filePath: string, mimeType?: string) => {
+    // PDF: извлекаем текст через pdfjs (vision не читает PDF).
+    if (mimeType && /pdf/i.test(mimeType)) {
+      const { extractPdfText } = await import("./extractors/pdfText.js");
+      const text = await extractPdfText(filePath);
+      if (!text) {
+        throw new Error("PDF пуст или текст не извлекается (скан?) — нужна проверка");
+      }
+      return text;
+    }
     // PDF/non-image: не притворяться JPEG — честный needsReview у VisionExtractor.
     if (mimeType && mimeType.trim() !== "" && !mimeType.startsWith("image/")) {
       throw new Error(`OCR не поддерживает ${mimeType} (нужна ручная проверка)`);

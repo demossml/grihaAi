@@ -30,6 +30,113 @@ function parseNumber(raw: string): number | undefined {
   return n;
 }
 
+export interface ParsedItem {
+  name: string;
+  qty?: number;
+  sum?: number;
+}
+
+/**
+ * Построчный разбор позиций чека/накладной.
+ * Паттерны:
+ *   - «Наименование — 96», «Наименование ... 3225» (имя слева, цена в конце строки)
+ *   - «96 Наименование» (цена слева) — реже
+ *   - «Наименование 2 шт × 129» — количество + цена
+ *   - «Наименование 217,90×25 — 5447,50» — цена за шт × кол-во = сумма
+ * Возвращает массив позиций; строки без уверенной цены сохраняются с name-only.
+ * Не выдумывает: сумма позиции ставится только при явном числе в строке.
+ */
+export function parseItemsFromText(text: string): ParsedItem[] {
+  if (!text) return [];
+
+  const result: ParsedItem[] = [];
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  const stopLines = /^(итого|сумма|оплачено|всего|сдача|итог|total|sum)/i;
+
+  // Сначала найдём строки с ценами, чтобы отсечь name-only заголовки.
+  const hasPricedLine = lines.some((l) => /[—–:-]\s*\d[\d\s]*(?:[.,]\d{1,2})?/.test(l) || /\d[\d\s]*(?:[.,]\d{1,2})?\s*(?:₽|руб|rub|р\.)/.test(l));
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    if (stopLines.test(line)) continue;
+
+    // пропускаем чисто служебные строки (заголовки и валюта без товара)
+    if (/^[\d\s.,]+(?::[\d]+)?$/.test(line)) continue;
+
+    // «имя × qty — сумма» / «имя qty × цена»
+    const nameThenQtySum =
+      /^(.+?)\s*(?:×|x|\*)\s*(\d{1,4})\s*[—–:-]\s*(\d[\d\s]*(?:[.,]\d{1,2})?)\b/.exec(
+        line,
+      );
+    if (nameThenQtySum) {
+      const name = cleanItemName(nameThenQtySum[1]);
+      if (!name) continue;
+      result.push({
+        name,
+        qty: Number(nameThenQtySum[2]) || undefined,
+        sum: parseNumberLocal(nameThenQtySum[3]),
+      });
+      continue;
+    }
+
+    // «имя ... число(с валютой?)» — цена в конце строки
+    const trailingPrice =
+      /^(.{2,60}?)\s+[—–:-]?\s*(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:₽|руб|rub|р\.)?\s*$/.exec(
+        line,
+      );
+    if (trailingPrice) {
+      const name = cleanItemName(trailingPrice[1]);
+      const sum = parseNumberLocal(trailingPrice[2]);
+      if (name && sum !== undefined) {
+        result.push({ name, sum });
+        continue;
+      }
+      // возможно цена слева «96 Наименование»
+    }
+
+    // «цена Наименование» — число в начале строки
+    const leadingPrice =
+      /^(\d[\d\s]*(?:[.,]\d{1,2})?)\s+(?:₽|руб|rub)?\s*[—–:-]?\s+(.{2,60}?)\s*$/.exec(
+        line,
+      );
+    if (leadingPrice) {
+      const sum = parseNumberLocal(leadingPrice[1]);
+      const name = cleanItemName(leadingPrice[2]);
+      if (name && sum !== undefined) {
+        result.push({ name, sum });
+        continue;
+      }
+    }
+
+    // строка без цены — имя, если похоже на товар (содержит буквы и достаточно длинное).
+    // Отсекаем name-only заголовок (первая строка, если в чеке есть строки с ценами).
+    if (/[А-Яа-яЁёA-Za-z]{3,}/.test(line) && line.length >= 4) {
+      if (hasPricedLine && i === 0) continue; // вероятный заголовок поставщика
+      const name = cleanItemName(line);
+      if (name) result.push({ name });
+    }
+  }
+
+  return result;
+}
+
+function cleanItemName(name: string): string {
+  return name
+    .replace(/[«»"'.,!?;:]+$/g, "")
+    .replace(/^[\s—–:-]+/, "")
+    .trim();
+}
+
+/** Локальная нормализация числа (руб-формат: «1 000,02», «217,90»). */
+function parseNumberLocal(raw: string): number | undefined {
+  const cleaned = raw.replace(/\s/g, "").replace(/,/g, ".");
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return n;
+}
+
 /** Сумма из текста: «15400 ₽», «итого 1 500,50 руб», «сумма: 15400». */
 export function parseTotalFromText(text: string): number | undefined {
   if (!text) return undefined;

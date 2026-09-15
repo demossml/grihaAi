@@ -85,8 +85,14 @@ export class VisionExtractor implements DocumentExtractor {
   constructor(private readonly ocr: VisionOcrFn) {}
 
   async extract(input: ExtractorInput): Promise<ExtractorResult> {
-    const { parseDateFromText, parseSupplierFromText, parseTotalFromText, todayYmd, detectKind } =
-      await import("./parsers.js");
+    const {
+      parseDateFromText,
+      parseSupplierFromText,
+      parseTotalFromText,
+      parseItemsFromText,
+      todayYmd,
+      detectKind,
+    } = await import("./parsers.js");
 
     // PDF / non-image: attempt only if caller supports; else needsReview
     let rawText = "";
@@ -109,6 +115,7 @@ export class VisionExtractor implements DocumentExtractor {
     const docDate = parseDateFromText(combined) ?? todayYmd();
     const supplier = parseSupplierFromText(combined);
     const kind = detectKind(combined);
+    const items = parseItemsFromText(rawText || caption);
 
     return {
       kind,
@@ -117,6 +124,7 @@ export class VisionExtractor implements DocumentExtractor {
       total,
       currency: "RUB",
       rawText: rawText || caption || undefined,
+      items: items.length ? items : undefined,
       confidence: total != null ? 0.85 : rawText ? 0.55 : 0.1,
       needsReview: total == null || !rawText,
     };

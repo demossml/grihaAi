@@ -23,6 +23,7 @@
     "better-sqlite3": "^13.0.3",
     "grammy": "^1.46.0",
     "https-proxy-agent": "^7.0.6",
+    "pdfjs-dist": "^6.3.289",
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.8",
     "sqlite-vec": "^0.1.9",

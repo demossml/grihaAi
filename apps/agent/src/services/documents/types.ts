@@ -62,6 +62,7 @@ export interface ExpensesQueryResult {
     currency: string;
     needsReview: boolean;
     fileName?: string;
+    items?: Array<{ name: string; qty?: number; sum?: number }>;
   }>;
   note?: string;
 }

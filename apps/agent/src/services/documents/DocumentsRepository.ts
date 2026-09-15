@@ -789,15 +789,27 @@ export class DocumentsRepository {
       totalSum,
       currency,
       fullHistory: !q.fromDate && !q.toDate,
-      documents: docs.map((d) => ({
-        id: d.id,
-        docDate: d.docDate,
-        supplier: d.supplier,
-        total: d.total,
-        currency: d.currency,
-        needsReview: d.needsReview,
-        fileName: d.fileName,
-      })),
+      documents: docs.map((d) => {
+        let items: Array<{ name: string; qty?: number; sum?: number }> | undefined;
+        if (d.itemsJson) {
+          try {
+            const parsed = JSON.parse(d.itemsJson);
+            if (Array.isArray(parsed)) items = parsed;
+          } catch {
+            items = undefined;
+          }
+        }
+        return {
+          id: d.id,
+          docDate: d.docDate,
+          supplier: d.supplier,
+          total: d.total,
+          currency: d.currency,
+          needsReview: d.needsReview,
+          fileName: d.fileName,
+          items,
+        };
+      }),
       note,
     };
   }
