@@ -160,6 +160,55 @@ describe("report spec builders (json-render tree, no rendering)", () => {
       "T",
     );
   });
+
+  it("all content nodes are attached to the page (no orphans)", () => {
+    const specs: ReportSpec[] = [
+      buildSalesReportSpec({
+        period: "Q1 2026",
+        totalRevenue: 150000,
+        categories: [{ name: "Консалтинг", revenue: 150000 }],
+        topDeals: [{ title: "Корпорация А", amount: 150000 }],
+      }),
+      buildExpenseReportSpec({
+        period: "Сентябрь 2026",
+        totalAmount: 1234,
+        categories: [{ name: "Офис", amount: 1234 }],
+        items: [{ date: "2026-09-01", category: "Офис", description: "Аренда", amount: 1234 }],
+      }),
+      buildMeetingMinutesSpec({
+        title: "Планёрка",
+        date: "2026-09-08",
+        attendees: ["Иван"],
+        agenda: ["Бюджет"],
+        decisions: [{ text: "Утвердить", owner: "Иван" }],
+      }),
+    ];
+
+    for (const spec of specs) {
+      // Обход от корня по children.
+      const seen = new Set<string>();
+      const stack = [spec.root];
+      while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const el = spec.elements[id];
+        assert.ok(el, `spec references unknown element ${id}`);
+        stack.push(...el.children);
+      }
+
+      // Каждый элемент должен быть достижим из Document-корня.
+      const orphans = Object.keys(spec.elements).filter((id) => !seen.has(id));
+      assert.deepEqual(orphans, [], "spec must not contain orphan elements");
+
+      // Page — прямой ребёнок Document и сам содержит контент.
+      const doc = spec.elements[spec.root];
+      assert.equal(doc.type, "Document");
+      const pageIds = doc.children.filter((id) => spec.elements[id].type === "Page");
+      assert.equal(pageIds.length, 1, "Document must have exactly one Page child");
+      assert.ok(spec.elements[pageIds[0]].children.length > 0, "Page must contain content");
+    }
+  });
 });
 
 describe("report renderer — pdf/pptx DI", () => {

@@ -45,11 +45,20 @@ const PAGE_MARGINS = { marginTop: 32, marginBottom: 32, marginLeft: 40, marginRi
 class SpecBuilder {
   private elements: Record<string, ReportSpecElement> = {};
   private n = 0;
+  private parentId: string | null = null;
 
   add(type: string, props?: Record<string, unknown>, children: string[] = []): string {
     const id = `el-${++this.n}`;
     this.elements[id] = props ? { type, props, children } : { type, children };
+    if (this.parentId !== null) {
+      this.elements[this.parentId].children.push(id);
+    }
     return id;
+  }
+
+  /** Subsequent add() calls are appended as children of this node. */
+  setParent(id: string | null): void {
+    this.parentId = id;
   }
 
   build(root: string): ReportSpec {
@@ -66,6 +75,7 @@ function section(b: SpecBuilder, title: string): void {
 export function buildSalesReportSpec(data: SalesReportData): ReportSpec {
   const b = new SpecBuilder();
   const page = b.add("Page", { size: "A4", ...PAGE_MARGINS });
+  b.setParent(page);
 
   b.add("Heading", { text: "Отчёт о продажах", level: "h1", color: REPORT_COLORS.accent }, []);
   b.add("Text", { text: `Период: ${data.period}`, color: REPORT_COLORS.muted, fontSize: 13 });
@@ -102,6 +112,7 @@ export function buildSalesReportSpec(data: SalesReportData): ReportSpec {
     color: REPORT_COLORS.ink,
   });
 
+  b.setParent(null);
   const doc = b.add("Document", { title: "Отчёт о продажах" }, [page]);
   return b.build(doc);
 }
@@ -109,6 +120,7 @@ export function buildSalesReportSpec(data: SalesReportData): ReportSpec {
 export function buildExpenseReportSpec(data: ExpenseReportData): ReportSpec {
   const b = new SpecBuilder();
   const page = b.add("Page", { size: "A4", ...PAGE_MARGINS });
+  b.setParent(page);
 
   b.add("Heading", { text: "Отчёт о расходах", level: "h1", color: REPORT_COLORS.accent });
   b.add("Text", { text: `Период: ${data.period}`, color: REPORT_COLORS.muted, fontSize: 13 });
@@ -150,6 +162,7 @@ export function buildExpenseReportSpec(data: ExpenseReportData): ReportSpec {
     fontSize: 13,
   });
 
+  b.setParent(null);
   const doc = b.add("Document", { title: "Отчёт о расходах" }, [page]);
   return b.build(doc);
 }
@@ -157,6 +170,7 @@ export function buildExpenseReportSpec(data: ExpenseReportData): ReportSpec {
 export function buildMeetingMinutesSpec(data: MeetingMinutesData): ReportSpec {
   const b = new SpecBuilder();
   const page = b.add("Page", { size: "A4", ...PAGE_MARGINS });
+  b.setParent(page);
 
   b.add("Heading", { text: data.title, level: "h1", color: REPORT_COLORS.accent });
   b.add("Text", { text: `Дата: ${data.date}`, color: REPORT_COLORS.muted, fontSize: 13 });
@@ -193,6 +207,7 @@ export function buildMeetingMinutesSpec(data: MeetingMinutesData): ReportSpec {
     b.add("Spacer", { height: 8 });
   }
 
+  b.setParent(null);
   const doc = b.add("Document", { title: data.title }, [page]);
   return b.build(doc);
 }

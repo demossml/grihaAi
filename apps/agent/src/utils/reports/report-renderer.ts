@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
@@ -69,9 +70,89 @@ export async function renderPresentation(
  * @react-pdf/renderer. Pure Node rendering (no browser), safe for plain CI.
  */
 async function defaultPdfRender(spec: ReportSpec, outputPath: string): Promise<void> {
-  const { renderToFile } = await import("@json-render/react-pdf");
+  const [{ renderToFile }, { Font }] = await Promise.all([
+    import("@json-render/react-pdf"),
+    import("@react-pdf/renderer"),
+  ]);
+  ensureReportFonts(Font);
   // The spec is structural; the library types are catalog-generic.
   await renderToFile(spec as unknown as Parameters<typeof renderToFile>[0], outputPath);
+}
+
+/** Font registry subset used by ensureReportFonts (FontStore.clear/register). */
+interface FontRegistryLike {
+  clear(): void;
+  register(data: {
+    family: string;
+    fonts: Array<{ src: string; fontStyle?: "normal" | "italic" | "oblique"; fontWeight?: number }>;
+  }): void;
+}
+
+/** System TTF candidates with Cyrillic coverage (regular + bold). */
+const CYRILLIC_FONT_CANDIDATES: ReadonlyArray<{ regular: string; bold: string }> = [
+  // macOS — Arial covers Cyrillic.
+  { regular: "/System/Library/Fonts/Supplemental/Arial.ttf", bold: "/System/Library/Fonts/Supplemental/Arial Bold.ttf" },
+  // Linux (Debian/Ubuntu/Fedora) — DejaVu Sans covers Cyrillic.
+  { regular: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", bold: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" },
+  { regular: "/usr/share/fonts/dejavu/DejaVuSans.ttf", bold: "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf" },
+  // Windows — Arial covers Cyrillic.
+  { regular: "C:\\Windows\\Fonts\\arial.ttf", bold: "C:\\Windows\\Fonts\\arialbd.ttf" },
+];
+
+export function resolveCyrillicFontPaths(): { regular: string; bold: string } {
+  const envRegular = process.env.GRIHA_PDF_FONT_PATH;
+  if (envRegular) {
+    if (!existsSync(envRegular)) {
+      throw new Error(
+        `GRIHA_PDF_FONT_PATH указывает на несуществующий файл: ${envRegular}. ` +
+          "Уберите переменную или укажите существующий TTF с поддержкой кириллицы.",
+      );
+    }
+    const envBold = process.env.GRIHA_PDF_FONT_BOLD_PATH;
+    const bold = envBold && existsSync(envBold) ? envBold : envRegular;
+    return { regular: envRegular, bold };
+  }
+
+  for (const candidate of CYRILLIC_FONT_CANDIDATES) {
+    if (existsSync(candidate.regular)) {
+      return { regular: candidate.regular, bold: existsSync(candidate.bold) ? candidate.bold : candidate.regular };
+    }
+  }
+
+  throw new Error(
+    "Не найден шрифт с поддержкой кириллицы для PDF-отчётов. " +
+      "Установите Arial (Windows/macOS) или DejaVu Sans (Linux) либо задайте GRIHA_PDF_FONT_PATH с путём к TTF.",
+  );
+}
+
+let reportFontsReady = false;
+
+/**
+ * Регистрирует шрифт с кириллицей вместо стандартных Helvetica-семейств.
+ *
+ * @json-render/react-pdf жёстко задаёт fontFamily "Helvetica"/"Helvetica-Bold",
+ * а FontStore отдаёт стандартную Helvetica первой (exactFit по весу) — поэтому
+ * обычный Font.register(...) её не переопределяет. Сбрасываем store и
+ * регистрируем Helvetica-семейства на нашем TTF, чтобы все Text/Heading/Table
+ * узлы получили шрифт с глифами кириллицы.
+ */
+function ensureReportFonts(font: FontRegistryLike): void {
+  if (reportFontsReady) return;
+  const { regular, bold } = resolveCyrillicFontPaths();
+  font.clear();
+  font.register({
+    family: "Helvetica",
+    fonts: [
+      { src: regular, fontStyle: "normal", fontWeight: 400 },
+      { src: bold, fontStyle: "normal", fontWeight: 700 },
+      { src: regular, fontStyle: "italic", fontWeight: 400 },
+      { src: bold, fontStyle: "italic", fontWeight: 700 },
+    ],
+  });
+  font.register({ family: "Helvetica-Bold", fonts: [{ src: bold, fontStyle: "normal", fontWeight: 700 }] });
+  font.register({ family: "Helvetica-Oblique", fonts: [{ src: regular, fontStyle: "italic", fontWeight: 400 }] });
+  font.register({ family: "Helvetica-BoldOblique", fonts: [{ src: bold, fontStyle: "italic", fontWeight: 700 }] });
+  reportFontsReady = true;
 }
 
 /**
