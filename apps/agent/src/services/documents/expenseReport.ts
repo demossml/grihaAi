@@ -48,6 +48,12 @@ function isService(supplier?: string): boolean {
   return /доставк|грузчик|разгрузк|услуг|монтаж|работа|погруз/i.test(supplier);
 }
 
+/** Является ли поставщик закупкой оборудования. */
+function isEquipment(supplier?: string): boolean {
+  if (!supplier) return false;
+  return /оборудован|кондиционер|кофемашин|кофемолк|техник|станок|аппарат|холодильник|стиральн|посудомо/i.test(supplier);
+}
+
 function fmt(n: number): string {
   return n
     .toFixed(2)
@@ -81,6 +87,7 @@ export function buildExpenseReport(
 
   const materials: ExpenseReportInputDoc[] = [];
   const services: ExpenseReportInputDoc[] = [];
+  const equipment: ExpenseReportInputDoc[] = [];
   const unresolved: ExpenseReportInputDoc[] = [];
 
   for (const doc of docs) {
@@ -90,6 +97,7 @@ export function buildExpenseReport(
       continue;
     }
     if (isService(doc.supplier)) services.push(doc);
+    else if (isEquipment(doc.supplier)) equipment.push(doc);
     else materials.push(doc);
   }
 
@@ -139,8 +147,29 @@ export function buildExpenseReport(
     lines.push("");
   }
 
-  const grand = materialsTotal + servicesTotal;
-  const currency = materials[0]?.currency ?? services[0]?.currency ?? "RUB";
+  let equipmentTotal = 0;
+  if (equipment.length > 0) {
+    lines.push("ЗАКУПКА ОБОРУДОВАНИЯ");
+    lines.push("");
+    for (const doc of equipment) {
+      const sum = docSum(doc)!;
+      equipmentTotal += sum;
+      const name = doc.supplier ?? "?";
+      lines.push(`${name} — ${money(sum, doc.currency)}`);
+      const items = doc.items ?? [];
+      for (const it of items) {
+        const qty = it.qty !== undefined ? `${it.qty}×` : "";
+        const price = it.sum !== undefined ? ` — ${fmt(it.sum)}` : "";
+        lines.push(`• ${it.name}${qty ? ` ${qty}` : ""}${price}`);
+      }
+      lines.push("");
+    }
+    lines.push(`Итого — закупка оборудования ${money(equipmentTotal, equipment[0].currency)}`);
+    lines.push("");
+  }
+
+  const grand = materialsTotal + servicesTotal + equipmentTotal;
+  const currency = materials[0]?.currency ?? services[0]?.currency ?? equipment[0]?.currency ?? "RUB";
   lines.push(`ИТОГО ЗА ПЕРИОД ${money(grand, currency)}`);
 
   if (unresolved.length > 0) {
