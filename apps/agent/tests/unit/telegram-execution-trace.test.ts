@@ -56,6 +56,7 @@ class FakeAgentSession {
   sessionId = Math.random().toString(36).slice(2);
   firstPromptHangs = false;
   firstPromptFails = false;
+  toolsToRun: string[] = [];
   private promptCalls = 0;
   subscribe(l: Listener): () => void {
     this.listeners.push(l);
@@ -69,6 +70,11 @@ class FakeAgentSession {
     if (this.firstPromptFails && this.promptCalls === 1) throw new Error("model down");
     if (this.firstPromptHangs && this.promptCalls === 1) return new Promise<never>(() => {});
     this.lastText = `ответ: ${message}`;
+    for (const name of this.toolsToRun) {
+      const toolCallId = `tc-${name}`;
+      for (const l of [...this.listeners]) l({ type: "tool_execution_start", toolCallId, toolName: name, args: {} });
+      for (const l of [...this.listeners]) l({ type: "tool_execution_end", toolCallId, toolName: name, result: {}, isError: false });
+    }
     for (const l of [...this.listeners]) l({ type: "agent_end", messages: [], willRetry: false });
   }
   getLastAssistantText(): string {
@@ -198,6 +204,34 @@ describe("telegram execution trace (P4)", () => {
       assert.equal(timeout.correlationId, "tg.1.9");
       assert.equal(timeout.status, "timeout");
       assert.ok(typeof timeout.durationMs === "number");
+    } finally {
+      restore();
+    }
+  });
+
+  it("pool: tool.execution.completed с duration_ms и toolName", async () => {
+    const { lines, restore } = captureConsoleLog();
+    try {
+      const pool = makePool(() => {
+        const s = new FakeAgentSession();
+        s.toolsToRun = ["generate_report", "send_file"];
+        return s;
+      });
+      await pool.handleMessage("tg:1:1", 1, "отчёт", { chatId: "1", updateId: 7 });
+      const entries = eventEntries(lines);
+      const tools = entries.filter((e) => e.event === "tool.execution.completed");
+      assert.equal(tools.length, 2);
+      assert.deepEqual(
+        tools.map((t) => t.toolName).sort(),
+        ["generate_report", "send_file"],
+      );
+      for (const t of tools) {
+        assert.equal(t.correlationId, "tg.1.7");
+        assert.equal(t.status, "ok");
+        assert.ok(typeof t.durationMs === "number");
+      }
+      // args/result не логируются (нет текста «отчёт» и нет содержимого tool).
+      assert.ok(!lines.some((l) => l.includes("отчёт")), "содержимое tool/сообщения не логируется");
     } finally {
       restore();
     }

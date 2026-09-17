@@ -68,6 +68,7 @@ export function logTelegramError(diag: TelegramErrorDiag): void {
  */
 export interface TelegramEvent {
   event: string;
+  toolName?: string;
   correlationId?: string;
   chatId?: string | number;
   threadId?: string | number;
@@ -87,6 +88,7 @@ export interface TelegramEvent {
 export function logTelegramEvent(event: TelegramEvent): void {
   try {
     const entry: Record<string, string | number> = { event: event.event };
+    if (event.toolName !== undefined) entry.toolName = event.toolName;
     if (event.correlationId !== undefined) entry.correlationId = event.correlationId;
     if (event.chatId !== undefined) entry.chatId = event.chatId;
     if (event.threadId !== undefined) entry.threadId = event.threadId;

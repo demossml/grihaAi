@@ -313,6 +313,8 @@ export class TelegramSessionPool {
     );
     const startedAt = Date.now();
     const baseEvent = { correlationId, chatId, threadId, updateId, userId, sessionId } as const;
+    // P5: per-tool duration_ms (toolCallId → время старта).
+    const toolStartedAt = new Map<string, number>();
 
     const finish = (value: TelegramReply): void => {
       if (settled) return;
@@ -331,6 +333,23 @@ export class TelegramSessionPool {
     logTelegramEvent({ event: "session.prompt.started", ...baseEvent });
 
     unsubscribe = session.subscribe((event) => {
+      // P5: per-tool duration_ms. args/result НЕ логируются (содержимое).
+      if (event.type === "tool_execution_start") {
+        toolStartedAt.set(event.toolCallId, Date.now());
+        return;
+      }
+      if (event.type === "tool_execution_end") {
+        const toolStart = toolStartedAt.get(event.toolCallId);
+        toolStartedAt.delete(event.toolCallId);
+        logTelegramEvent({
+          event: "tool.execution.completed",
+          ...baseEvent,
+          toolName: event.toolName,
+          durationMs: toolStart !== undefined ? Date.now() - toolStart : undefined,
+          status: event.isError ? "failed" : "ok",
+        });
+        return;
+      }
       if (event.type !== "agent_end") return;
       const text = session.getLastAssistantText();
       // Pick up any file a tool registered for this session (report-generator)
