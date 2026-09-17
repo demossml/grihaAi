@@ -22,8 +22,13 @@ import {
 } from "../telegram-bot/file-send-bridge.js";
 import { validateSendFile, resolveOutboundFile, defaultFileRoots } from "../telegram-bot/file-send.js";
 import {
+  beginFileSend,
+  endFileSend,
+  hasPendingContentSha256,
   hasPendingDedupeKey,
   hasPendingSessionFile,
+  sha256OfFileSync,
+  wasRecentlySentContentSha256,
   wasRecentlySentDedupeKey,
   wasRecentlySentFile,
 } from "../../../src/utils/telegram/session-files.js";
@@ -129,10 +134,25 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
 
       // E4: тот же файл/ключ уже стоит в очереди session-file (автодоставка)
       // или был недавно отправлен → повторная отправка подавляется.
+      // P3: content SHA256 — дополнительный сигнал: копия сгенерированного
+      // отчёта в другом пути (bash cp → /tmp) тоже подавляется.
       const sessionId = ctx.sessionManager.getSessionId();
+      const contentSha256 = sha256OfFileSync(valid.resolvedPath);
+      if (contentSha256 === undefined) {
+        console.log(
+          `[telegram-file-send] content hash unavailable file=${valid.resolvedPath} ` +
+            `size=${valid.sizeBytes} — content-dedupe skipped`,
+        );
+      }
       const duplicate =
         hasPendingSessionFile(sessionId, valid.resolvedPath) ||
         wasRecentlySentFile(sessionId, valid.resolvedPath) ||
+        // P3: content-дедуп только для «анонимной» копии (без dedupeKey) —
+        // если LLM явно назвал ключ, это другой логический artifact, и
+        // одинаковый SHA256 не должен подавлять его отправку.
+        (params.dedupeKey === undefined &&
+          (hasPendingContentSha256(sessionId, contentSha256) ||
+            wasRecentlySentContentSha256(sessionId, contentSha256))) ||
         (params.dedupeKey !== undefined &&
           (hasPendingDedupeKey(sessionId, params.dedupeKey) ||
             wasRecentlySentDedupeKey(sessionId, params.dedupeKey)));
@@ -157,19 +177,42 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
         return fail("Telegram-бот не запущен — файл отправить некуда.");
       }
 
+      // P3: concurrent duplicate send — тот же артефакт уже отправляется
+      // (синхронная атомарная пометка, без окна между check и set).
+      if (!beginFileSend(sessionId, valid.resolvedPath, contentSha256)) {
+        console.log(
+          `[telegram-file-send] concurrent duplicate suppressed session=${sessionId} ` +
+            `file=${valid.resolvedPath}`,
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Файл уже отправляется в этом чате (повторная отправка подавлена).",
+            },
+          ],
+          details: { suppressed: true },
+        };
+      }
+
       // Лог side-effect: кто, что, куда (минимальное требование безопасности).
       console.log(
         `[telegram-file-send] userId=${userId} chatId=${targetChatId} ` +
           `source=${resolved.source} file=${valid.resolvedPath} size=${valid.sizeBytes}`,
       );
 
-      const result = await sender({
-        chatId: Number(targetChatId),
-        filePath: valid.resolvedPath,
-        caption: params.caption,
-        threadId: targetChatId === chatId && threadId !== undefined ? Number(threadId) : undefined,
-        kind: params.kind,
-      });
+      let result: Awaited<ReturnType<typeof sender>> = { ok: false };
+      try {
+        result = await sender({
+          chatId: Number(targetChatId),
+          filePath: valid.resolvedPath,
+          caption: params.caption,
+          threadId: targetChatId === chatId && threadId !== undefined ? Number(threadId) : undefined,
+          kind: params.kind,
+        });
+      } finally {
+        endFileSend(sessionId, valid.resolvedPath, contentSha256);
+      }
 
       if (!result.ok) {
         const error = result.error ?? "Не удалось отправить файл.";
