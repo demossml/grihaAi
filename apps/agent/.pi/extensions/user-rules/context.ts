@@ -12,6 +12,10 @@ export interface SessionChatContext {
   userId: string;
   /** Тема форума (message_thread_id); отсутствует в обычных группах/DM. */
   threadId?: string;
+  /** P4: update_id входящего сообщения (для correlation id). */
+  updateId?: number;
+  /** P4: correlation id текущего хода (tg.{chatId}.{updateId}). */
+  correlationId?: string;
 }
 
 const registry = new Map<string, SessionChatContext>();

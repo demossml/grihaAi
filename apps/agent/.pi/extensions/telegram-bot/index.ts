@@ -245,6 +245,7 @@ function grishaAgent(): GrishaAgent {
     return pool.handleMessage(input.sessionKey, input.userId, input.message, {
       chatId: input.chatId,
       threadId: input.threadId,
+      updateId: input.updateId,
       rulesContext: input.rulesContext,
     });
   };

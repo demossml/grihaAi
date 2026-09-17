@@ -6,7 +6,7 @@
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import type { UpdateClaimResult } from "../../../src/services/documents/DocumentsRepository.js";
 import { buildTelegramSessionKey } from "./session-key.js";
-import { logTelegramError } from "./telegram-diagnostics.js";
+import { buildTelegramCorrelationId, logTelegramError } from "./telegram-diagnostics.js";
 import { startTypingHeartbeat } from "./typing-heartbeat.js";
 import {
   MediaGroupBuffer,
@@ -119,6 +119,8 @@ export interface GrishaAgent {
     chatId?: string;
     /** Тема форума, в которой пришло сообщение (для контекста/scope). */
     threadId?: string;
+    /** P4: update_id входящего сообщения (для correlation id). */
+    updateId?: number;
     /** Контекст правил чата для агента (R-GR-3), передаётся каждый ход. */
     rulesContext?: string;
   }): Promise<GrishaAgentReply>;
@@ -725,6 +727,7 @@ export class TelegramBridge {
     const msg = update.message;
     const entry: Record<string, unknown> = {
       updateId: update.updateId,
+      correlationId: buildTelegramCorrelationId(msg?.chat?.id ?? "unknown", update.updateId),
       kind: outcome.kind,
       invoked: outcome.invoked,
       archived: outcome.archived === true,
@@ -951,13 +954,13 @@ export class TelegramBridge {
     }
 
     if (msg.video?.file_id) {
-      return this.handleMedia(msg, chatId, userId, chatType, send, "video");
+      return this.handleMedia(msg, chatId, userId, chatType, send, update.updateId, "video");
     }
     if (msg.videoNote?.file_id) {
-      return this.handleMedia(msg, chatId, userId, chatType, send, "video_note");
+      return this.handleMedia(msg, chatId, userId, chatType, send, update.updateId, "video_note");
     }
     if (msg.audio?.file_id) {
-      return this.handleMedia(msg, chatId, userId, chatType, send, "audio");
+      return this.handleMedia(msg, chatId, userId, chatType, send, update.updateId, "audio");
     }
 
     if (msg.voice) {
@@ -969,7 +972,7 @@ export class TelegramBridge {
       const isManagedChat = chatType === "group" || chatType === "supergroup" || chatType === "channel";
       const pending = isManagedChat && msg.groupConfigured === false;
       if (this.options?.processMedia && !pending) {
-        return this.handleMedia(msg, chatId, userId, chatType, send, "voice");
+        return this.handleMedia(msg, chatId, userId, chatType, send, update.updateId, "voice");
       }
 
       // Legacy (без processMedia): STT → агент с транскриптом.
@@ -1031,6 +1034,7 @@ export class TelegramBridge {
           }),
           chatId: String(chatId),
           threadId: msg.threadId,
+          updateId: update.updateId,
           rulesContext: gate2.rulesContext || undefined,
         });
         if (gate2.suppressReply) return { handled: true, reason: "archived-silent" };
@@ -1041,10 +1045,10 @@ export class TelegramBridge {
       }
     }
     if (msg.photo && msg.photo.length > 0) {
-      return this.handleMedia(msg, chatId, userId, chatType, send, "photo");
+      return this.handleMedia(msg, chatId, userId, chatType, send, update.updateId, "photo");
     }
     if (msg.document?.file_id) {
-      return this.handleMedia(msg, chatId, userId, chatType, send, "document");
+      return this.handleMedia(msg, chatId, userId, chatType, send, update.updateId, "document");
     }
     if (msg.contact) {
       // Контакт уходит агенту как текст: агент сам решит, вызвать ли
@@ -1067,6 +1071,7 @@ export class TelegramBridge {
           sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
           chatId: String(chatId),
           threadId: msg.threadId,
+          updateId: update.updateId,
           rulesContext: gate.rulesContext || undefined,
         });
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
@@ -1094,6 +1099,7 @@ export class TelegramBridge {
           sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
           chatId: String(chatId),
           threadId: msg.threadId,
+          updateId: update.updateId,
           rulesContext: gate.rulesContext || undefined,
         });
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
@@ -1135,6 +1141,7 @@ export class TelegramBridge {
         sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
+        updateId: update.updateId,
         rulesContext: gate.rulesContext || undefined,
       });
       if (gate.suppressReply) return { handled: true, reason: "archived-silent", archived };
@@ -1249,6 +1256,7 @@ export class TelegramBridge {
         sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
+        updateId: batch.items[0]?.updateId,
         rulesContext: gate.rulesContext || undefined,
       });
       if (gate.suppressReply) return media ?? null;
@@ -1274,6 +1282,7 @@ export class TelegramBridge {
     userId: number,
     chatType: string,
     send: TelegramReplySender,
+    updateId: number,
     kind: "photo" | "document" | "voice" | "video" | "video_note" | "audio",
   ): Promise<{
     handled: boolean;
@@ -1379,6 +1388,7 @@ export class TelegramBridge {
         sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),
         chatId: String(chatId),
         threadId: msg.threadId,
+        updateId,
         rulesContext: gate.rulesContext || undefined,
       });
       if (gate.suppressReply) {

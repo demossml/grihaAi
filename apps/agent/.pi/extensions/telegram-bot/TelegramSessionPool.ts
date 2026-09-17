@@ -29,7 +29,7 @@ import telegramFileSend from "../telegram-file-send/index.js";
 import documents from "../documents/index.js";
 import groupMemory from "../group-memory/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
-import { logTelegramError } from "./telegram-diagnostics.js";
+import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
 
 /**
@@ -90,6 +90,8 @@ export type TelegramSessionFactory = (
 export interface TelegramSessionMeta {
   chatId?: string;
   threadId?: string;
+  /** P4: update_id входящего сообщения (для correlation id). */
+  updateId?: number;
   /** R-GR-3: контекст правил чата, передаётся в prompt на КАЖДЫЙ ход. */
   rulesContext?: string;
 }
@@ -138,6 +140,8 @@ export class TelegramSessionPool {
   private readonly sessionFactory: TelegramSessionFactory;
   private readonly cwd: string;
   private readonly promptTimeoutMs: number;
+  /** P4: fallback-последовательность correlation id (когда нет update_id). */
+  private turnCounter = 0;
 
   constructor(options: TelegramSessionPoolOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
@@ -264,7 +268,7 @@ export class TelegramSessionPool {
     const entry = this.getOrCreate(sessionKey, userId, meta);
     const run = async (): Promise<TelegramReply> => {
       const session = await entry.sessionPromise;
-      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId, meta.rulesContext);
+      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId, meta.updateId, meta.rulesContext);
     };
     entry.queue = entry.queue.then(run, run);
     return entry.queue;
@@ -288,6 +292,7 @@ export class TelegramSessionPool {
     userId: string,
     message: string,
     threadId?: string,
+    updateId?: number,
     rulesContext?: string,
   ): Promise<TelegramReply> {
     let settled = false;
@@ -300,6 +305,14 @@ export class TelegramSessionPool {
     let unsubscribe: () => void = () => {};
     let timer: ReturnType<typeof setTimeout> | null = null;
     const sessionId = session.sessionId;
+    // P4: correlation id хода (та же формула, что в outcome-трассе бриджа).
+    const correlationId = buildTelegramCorrelationId(
+      chatId ?? "unknown",
+      updateId,
+      ++this.turnCounter,
+    );
+    const startedAt = Date.now();
+    const baseEvent = { correlationId, chatId, threadId, updateId, userId, sessionId } as const;
 
     const finish = (value: TelegramReply): void => {
       if (settled) return;
@@ -313,7 +326,9 @@ export class TelegramSessionPool {
       resolveReply(value);
     };
 
-    setSessionContext(sessionId, chatId ? { chatId, userId, threadId } : undefined);
+    setSessionContext(sessionId, chatId ? { chatId, userId, threadId, updateId, correlationId } : undefined);
+
+    logTelegramEvent({ event: "session.prompt.started", ...baseEvent });
 
     unsubscribe = session.subscribe((event) => {
       if (event.type !== "agent_end") return;
@@ -322,6 +337,13 @@ export class TelegramSessionPool {
       // plus inline buttons (approval-gate) queued during the turn.
       const file = takeSessionFileRecord(sessionId);
       const inlineButtons = takeSessionInlineButtons(sessionId);
+      logTelegramEvent({
+        event: "session.prompt.completed",
+        ...baseEvent,
+        durationMs: Date.now() - startedAt,
+        status: "ok",
+        artifactId: file?.dedupeKey,
+      });
       finish({
         text: text && text.trim() ? text : "Гриша не ответил.",
         filePath: file?.filePath,
@@ -340,6 +362,12 @@ export class TelegramSessionPool {
         chatId,
         userId,
         threadId,
+      });
+      logTelegramEvent({
+        event: "session.prompt.timeout",
+        ...baseEvent,
+        durationMs: Date.now() - startedAt,
+        status: "timeout",
       });
       finish({ text: PROMPT_TIMEOUT_MESSAGE });
     }, this.promptTimeoutMs);
@@ -366,6 +394,13 @@ export class TelegramSessionPool {
           threadId,
           error: err,
         });
+        logTelegramEvent({
+          event: "session.prompt.failed",
+          ...baseEvent,
+          durationMs: Date.now() - startedAt,
+          status: "failed",
+          reason: "prompt-error",
+        });
         finish({ text: "Не удалось получить ответ от Гриши." });
       });
     } catch (err) {
@@ -378,6 +413,13 @@ export class TelegramSessionPool {
         userId,
         threadId,
         error: err,
+      });
+      logTelegramEvent({
+        event: "session.prompt.failed",
+        ...baseEvent,
+        durationMs: Date.now() - startedAt,
+        status: "failed",
+        reason: "prompt-sync-error",
       });
       finish({ text: "Не удалось получить ответ от Гриши." });
     }

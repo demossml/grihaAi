@@ -32,6 +32,7 @@ import {
   wasRecentlySentDedupeKey,
   wasRecentlySentFile,
 } from "../../../src/utils/telegram/session-files.js";
+import { logTelegramEvent } from "../telegram-bot/telegram-diagnostics.js";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import { LocalMediaStorage } from "../../../src/services/documents/media-storage.js";
 
@@ -137,6 +138,7 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
       // P3: content SHA256 — дополнительный сигнал: копия сгенерированного
       // отчёта в другом пути (bash cp → /tmp) тоже подавляется.
       const sessionId = ctx.sessionManager.getSessionId();
+      const correlationId = sessionCtx?.correlationId;
       const contentSha256 = sha256OfFileSync(valid.resolvedPath);
       if (contentSha256 === undefined) {
         console.log(
@@ -157,6 +159,16 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
           (hasPendingDedupeKey(sessionId, params.dedupeKey) ||
             wasRecentlySentDedupeKey(sessionId, params.dedupeKey)));
       if (duplicate) {
+        logTelegramEvent({
+          event: "file.send.deduplicated",
+          correlationId,
+          chatId: targetChatId,
+          sessionId,
+          status: "deduplicated",
+          fileSize: valid.sizeBytes,
+          sha256: contentSha256,
+          artifactId: params.dedupeKey,
+        });
         console.log(
           `[telegram-file-send] duplicate send suppressed session=${sessionId} ` +
             `file=${valid.resolvedPath} dedupeKey=${params.dedupeKey ?? "-"}`,
@@ -180,6 +192,16 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
       // P3: concurrent duplicate send — тот же артефакт уже отправляется
       // (синхронная атомарная пометка, без окна между check и set).
       if (!beginFileSend(sessionId, valid.resolvedPath, contentSha256)) {
+        logTelegramEvent({
+          event: "file.send.deduplicated",
+          correlationId,
+          chatId: targetChatId,
+          sessionId,
+          status: "concurrent",
+          fileSize: valid.sizeBytes,
+          sha256: contentSha256,
+          artifactId: params.dedupeKey,
+        });
         console.log(
           `[telegram-file-send] concurrent duplicate suppressed session=${sessionId} ` +
             `file=${valid.resolvedPath}`,
@@ -201,6 +223,17 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
           `source=${resolved.source} file=${valid.resolvedPath} size=${valid.sizeBytes}`,
       );
 
+      const sendStartedAt = Date.now();
+      logTelegramEvent({
+        event: "file.send.started",
+        correlationId,
+        chatId: targetChatId,
+        sessionId,
+        fileSize: valid.sizeBytes,
+        sha256: contentSha256,
+        artifactId: params.dedupeKey,
+      });
+
       let result: Awaited<ReturnType<typeof sender>> = { ok: false };
       try {
         result = await sender({
@@ -216,10 +249,32 @@ export default function telegramFileSend(pi: ExtensionAPI): void {
 
       if (!result.ok) {
         const error = result.error ?? "Не удалось отправить файл.";
+        logTelegramEvent({
+          event: "file.send.failed",
+          correlationId,
+          chatId: targetChatId,
+          sessionId,
+          durationMs: Date.now() - sendStartedAt,
+          status: "failed",
+          fileSize: valid.sizeBytes,
+          sha256: contentSha256,
+          artifactId: params.dedupeKey,
+        });
         console.error(`[telegram-file-send] failed: ${error}`);
         return fail(error);
       }
 
+      logTelegramEvent({
+        event: "file.send.completed",
+        correlationId,
+        chatId: targetChatId,
+        sessionId,
+        durationMs: Date.now() - sendStartedAt,
+        status: "ok",
+        fileSize: valid.sizeBytes,
+        sha256: contentSha256,
+        artifactId: params.dedupeKey,
+      });
       console.log(
         `[telegram-file-send] sent file_id=${result.fileId ?? "?"} message_id=${result.messageId ?? "?"}`,
       );

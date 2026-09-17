@@ -59,3 +59,59 @@ export function logTelegramError(diag: TelegramErrorDiag): void {
     /* никогда не бросаем из логирования */
   }
 }
+
+/**
+ * P4: структурированная трасса жизненного цикла Telegram (успешный путь).
+ * Одна JSON-строка в console.log — тот же механизм, что у PROMPT 7
+ * outcome-трассы. НЕ логируются: текст сообщений, токены, secrets, OCR,
+ * содержимое файлов — только идентификаторы/размеры/тайминги.
+ */
+export interface TelegramEvent {
+  event: string;
+  correlationId?: string;
+  chatId?: string | number;
+  threadId?: string | number;
+  updateId?: number;
+  userId?: string | number;
+  sessionId?: string;
+  durationMs?: number;
+  status?: string;
+  reason?: string;
+  fileSize?: number;
+  sha256?: string;
+  mimeType?: string;
+  artifactId?: string;
+}
+
+/** Записать структурированное событие lifecycle. Не бросает никогда. */
+export function logTelegramEvent(event: TelegramEvent): void {
+  try {
+    const entry: Record<string, string | number> = { event: event.event };
+    if (event.correlationId !== undefined) entry.correlationId = event.correlationId;
+    if (event.chatId !== undefined) entry.chatId = event.chatId;
+    if (event.threadId !== undefined) entry.threadId = event.threadId;
+    if (event.updateId !== undefined) entry.updateId = event.updateId;
+    if (event.userId !== undefined) entry.userId = event.userId;
+    if (event.sessionId !== undefined) entry.sessionId = event.sessionId;
+    if (event.durationMs !== undefined) entry.durationMs = event.durationMs;
+    if (event.status !== undefined) entry.status = event.status;
+    if (event.reason !== undefined) entry.reason = event.reason;
+    if (event.fileSize !== undefined) entry.fileSize = event.fileSize;
+    if (event.sha256 !== undefined) entry.sha256 = event.sha256;
+    if (event.mimeType !== undefined) entry.mimeType = event.mimeType;
+    if (event.artifactId !== undefined) entry.artifactId = event.artifactId;
+    console.log(`[telegram-bot] event ${JSON.stringify(entry)}`);
+  } catch {
+    /* никогда не бросаем из логирования */
+  }
+}
+
+/** P4: correlation id = tg.{chatId}.{updateId}; без update_id — fallback-последовательность. */
+export function buildTelegramCorrelationId(
+  chatId: string | number,
+  updateId?: number,
+  fallbackSeq?: number,
+): string {
+  if (updateId !== undefined) return `tg.${chatId}.${updateId}`;
+  return `tg.${chatId}.${fallbackSeq ?? "x"}`;
+}

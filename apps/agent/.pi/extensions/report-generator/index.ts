@@ -1,5 +1,6 @@
 import { Type, type Static } from "typebox";
 import { Check, Errors } from "typebox/value";
+import { statSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   ReportTypeSchema,
@@ -10,6 +11,7 @@ import {
 import { renderPdfReport, renderPresentation } from "../../../src/utils/reports/report-renderer.js";
 import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
 import { getSessionContext } from "../user-rules/context.js";
+import { logTelegramEvent } from "../telegram-bot/telegram-diagnostics.js";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import {
   buildExpenseReportData,
@@ -121,8 +123,28 @@ export default function reportGenerator(
         }
       }
 
+      const sessionCtx = getSessionContext(ctx.sessionManager.getSessionId());
+      const correlationId = sessionCtx?.correlationId;
+      logTelegramEvent({
+        event: "document.validated",
+        correlationId,
+        chatId: sessionCtx?.chatId,
+        sessionId: ctx.sessionManager.getSessionId(),
+        status: "ok",
+        artifactId: `report:${params.reportType}`,
+      });
+
       try {
         const filePath = await renderPdfReport(params.reportType, renderData);
+        logTelegramEvent({
+          event: "document.created",
+          correlationId,
+          chatId: sessionCtx?.chatId,
+          sessionId: ctx.sessionManager.getSessionId(),
+          status: "ok",
+          fileSize: statSync(filePath).size,
+          artifactId: `report:${params.reportType}`,
+        });
         // Register the file for the session so the Telegram layer can attach it
         // to the reply as a document (same per-session form as file_id handling).
         // E4: dedupeKey подавляет повторную отправку того же отчёта (send_file
