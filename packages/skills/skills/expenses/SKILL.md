@@ -32,3 +32,10 @@ tags: [documents, finance]
   (session-file), and duplicate sends are suppressed.
 - If the tool returns EMPTY/NO_DATA («Нет данных для PDF-отчёта»): tell the user
   briefly — do NOT invent tables or numbers.
+
+## Group data and reports
+- For "what happened in group X" / reports / counts use tools:
+  `group_report`, `group_history`, `group_recent`, `groups_compare`, `expenses_*`.
+- Never invent archive contents or totals without tool output.
+- Always keep sourceChatId provenance when comparing groups.
+- Preset «Ассистент (@)» ≠ scenario «Тихий секретарь».
