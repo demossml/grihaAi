@@ -384,3 +384,13 @@
 - [x] `GroupReminderService` (additive `group_reminders`; low-confidence → needs_confirmation; archived-чат не шлёт)
 - [ ] Wire `fireDue` в cron-tick (follow-up)
 - [x] Tests green (turbo 31/31), docs/TELEGRAM-BOT.md обновлён
+
+## Phase 38 — Secretary P0 follow-up (UX + reminders wire + skills)
+
+- [x] P0-1 UX: preset → «Ассистент (отвечает по @)», scenario → «Секретарь — тихий архив» (выше); без путаницы «два секретаря»
+- [x] P0-2 `touchLastSeen` (throttle 60с) + `updateChatMeta` (title по изменению)
+- [x] P0-3 wire `fireDue` → tick 30с → `sendNotify` (active-чат; fail → не fired)
+- [x] P0-4 tools `group_reminder_add`/`list`/`confirm` + skill «## Group reminders»
+- [x] P0-5 skill «## Group data and reports» (отчёты только через tools)
+- [x] Tests green (turbo 31/31)
+- [ ] follow-up: sendNotify в DM при needs_confirmation; reply_to source message в напоминании
