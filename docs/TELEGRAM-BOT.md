@@ -296,6 +296,37 @@ OS-процесса/субагента на группу нет — изоляц
 **Poor OCR notify (R-GR-8):** только при `notify_poor_ocr=true` в правилах чата
 (default off; порог `poor_ocr_confidence_below`, default 0.4) — listen_only/mention-only не ломается.
 
+### Secretary scenario (режим «Секретарь», S2–S13)
+
+**Preset ≠ scenario.** Preset `secretary` (`RulePresets.ts`) — отвечает по `@`/reply
+(`require_mention`), его семантика **не меняется**. Scenario `secretary`
+(`scenarios/registry.ts`) — новый namespace: **тихий архив** ≈ listener
+(`defaultPresetId: "listener"`) + capabilities (archive/tasks/reminders/reports).
+
+**Lifecycle** (`SetupStatus`): `pending` → `active` → `archived` → `active`. Legacy
+`completed`/`skipped` при чтении нормализуются в `active`. `archived` = не слушает;
+данные **не удаляются** (только JSON-статус `~/.grish-ai/chat-setup.json`). Kick/left →
+`markArchived` (zero DELETE). Additive-поля записи: `scenario`, `activatedAt`,
+`deactivatedAt`, `lastSeenAt`.
+
+**Silent = listen_only** (`group-runtime.ts`): `scenario==="secretary"` → belt
+`listenOnly=true` в prefilter → обычные сообщения без ответа + архив; ответ только на
+`@mention`/reply (как listener). Voice/STT → `chat_archive` (kind `voice`,
+`raw_text=транскрипт`, дедуп `chat_id+file_unique_id`).
+
+**DM-оркестратор** (`chat-setup/groups.ts`): `/groups` (список) и `/group <chatId>`
+(карточка) — только DM + `canManage`; кнопки «Сценарий Секретарь» / «В архив» /
+«Активировать» (`g:{chatId}:{action}`). Клавиатуры в группы НЕ постятся (R-GR-2).
+
+**Tools (group-memory):** `group_history` / `group_recent` (ACL `assertCanReadChat` =
+configured И (canManage ИЛИ isAllowed)), `groups_compare` (fail-closed по всем chatId),
+`group_report` (counts + расходы, без сырых путей).
+
+**Напоминания** (`GroupReminderService`, `~/.grish-ai/group-reminders.sqlite`): additive
+таблица `group_reminders` (chat_id/thread_id/source_message_id/due_at/text/status);
+low-confidence → `needs_confirmation` (без авто-спама); `fireDue` пропускает
+archived/pending-чаты. **Wire в cron-tick — follow-up (не сделано).**
+
 ### Документы / расходы (MVP)
 
 - Фото/PDF чека или накладной (по policy `ingest_mode`: default `mention` — только при

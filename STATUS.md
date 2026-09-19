@@ -373,3 +373,14 @@
 - [x] G10 edited media: ревизия архива; G11 метрики в /status
 - [x] G9 webhook — отложен (доки/отчёт)
 - [x] Tests: 649 unit — зелёные; typecheck/build зелёные; TELEGRAM_100_GAPS_REPORT.md
+
+## Phase 37 — Secretary scenario (режим «Секретарь», S0–S14)
+
+- [x] Lifecycle `pending|active|archived` (legacy completed/skipped → active); kick/left → archived, данные не DELETE
+- [x] Scenario namespace (`scenarios/registry.ts`): `secretary` → `defaultPresetId=listener` (preset `secretary` не тронут)
+- [x] Silent = listen_only (belt `listenOnly` в prefilter); voice/STT → chat_archive (kind voice)
+- [x] DM `/groups` + `/group <chatId>` (archive/reactivate/scenario, canManage)
+- [x] ACL matrix (membership ≠ management) + `groups_compare` + `group_report`
+- [x] `GroupReminderService` (additive `group_reminders`; low-confidence → needs_confirmation; archived-чат не шлёт)
+- [ ] Wire `fireDue` в cron-tick (follow-up)
+- [x] Tests green (turbo 31/31), docs/TELEGRAM-BOT.md обновлён
