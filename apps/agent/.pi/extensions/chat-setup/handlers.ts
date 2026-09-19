@@ -109,6 +109,15 @@ export async function onChatMemberAdded(
   const actorId = String(event.from.id);
   const { setup } = deps;
 
+  // P0-2: обновить title (группа могла быть переименована) — best-effort.
+  if (event.chat.title !== undefined) {
+    try {
+      await setup.updateChatMeta(chatId, { title: event.chat.title });
+    } catch {
+      /* best-effort: не роняем онбординг */
+    }
+  }
+
   const existing = await setup.get(chatId);
   if (existing && existing.status === "active") {
     return; // не спамить онбордингом

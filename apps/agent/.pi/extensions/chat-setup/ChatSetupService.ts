@@ -227,12 +227,30 @@ export class ChatSetupService {
     await this.save(chats);
   }
 
-  /** S2 (optional): отметить последнюю активность в чате. */
-  async touchLastSeen(chatId: string): Promise<void> {
+  /** S2 (optional): отметить последнюю активность в чате (throttle ≤1 раз в 60с). */
+  private readonly lastSeenThrottle = new Map<string, number>();
+  static readonly LAST_SEEN_THROTTLE_MS = 60_000;
+
+  async touchLastSeen(chatId: string, now: Date = new Date()): Promise<void> {
+    const ts = now.getTime();
+    const last = this.lastSeenThrottle.get(chatId) ?? 0;
+    if (ts - last < ChatSetupService.LAST_SEEN_THROTTLE_MS) return; // throttle
+    this.lastSeenThrottle.set(chatId, ts);
     const chats = await this.list();
     const rec = chats.find((c) => c.chatId === chatId);
     if (!rec) return;
-    rec.lastSeenAt = new Date().toISOString();
+    rec.lastSeenAt = now.toISOString();
+    await this.save(chats);
+  }
+
+  /** P0-2: обновить метаданные чата (title) — только при изменении. */
+  async updateChatMeta(chatId: string, meta: { title?: string }): Promise<void> {
+    if (meta.title === undefined) return;
+    const chats = await this.list();
+    const rec = chats.find((c) => c.chatId === chatId);
+    if (!rec) return;
+    if (rec.chatTitle === meta.title) return;
+    rec.chatTitle = meta.title;
     await this.save(chats);
   }
 

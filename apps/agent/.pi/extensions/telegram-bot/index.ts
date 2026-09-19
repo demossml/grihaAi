@@ -410,14 +410,18 @@ function getController(): TelegramBotController {
         // Единый медиа-конвейер (photo/document/voice/video/audio): download →
         // OCR/STT → archive → expense. Одна точка для allowed-ходов (OCR до
         // агента) и фоновых путей (listener / archive_ocr_ingest).
-        processMedia: async (msg, ctx) =>
-          runMediaPipelineFor(msg, {
+        processMedia: async (msg, ctx) => {
+          const res = await runMediaPipelineFor(msg, {
             chatId: ctx.chatId,
             userId: ctx.userId,
             kind: ctx.kind,
             allowed: ctx.allowed,
             archive: ctx.archive,
-          }),
+          });
+          // P0-2: best-effort lastSeen (throttle внутри) — не роняет pipeline.
+          if (res?.archived) void setup.touchLastSeen(ctx.chatId).catch(() => undefined);
+          return res;
+        },
         // G1: альбом — каждый файл через тот же конвейер, один ответ агента.
         albumBufferMs: 1000,
         processMediaAlbum: async (batch, ctx) => {
@@ -540,7 +544,11 @@ function getController(): TelegramBotController {
                 },
               },
             );
-            if (res.stored) incMetric("telegram_listener_archived");
+            if (res.stored) {
+              incMetric("telegram_listener_archived");
+              // P0-2: best-effort lastSeen (throttle внутри).
+              void setup.touchLastSeen(ctx.chatId).catch(() => undefined);
+            }
             return { stored: res.stored };
           } catch (err: unknown) {
             console.error(
