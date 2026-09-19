@@ -171,3 +171,66 @@ describe("worker full pipeline (L6)", () => {
     assert.deepEqual(input2.photo, [{ file_id: "p1", file_unique_id: "pu1" }]);
   });
 });
+
+describe("ListenerMediaPipeline voice/STT (S5)", () => {
+  const voiceInput = {
+    chatId: "-100",
+    threadId: "15",
+    messageId: "8",
+    fromUserId: "42",
+    voice: { file_id: "v1", file_unique_id: "vu1", duration: 5, mime_type: "audio/ogg" },
+  };
+
+  it("voice → STT → archive kind=voice, rawText=транскрипт", async () => {
+    const repo = makeRepo();
+    const pipeline = new ListenerMediaPipeline(repo, emptyExtractor, async () => makeFile("voice"), {
+      stt: async () => ({ ok: true, text: "привет, запомни это" }),
+    });
+    const res = await pipeline.process(voiceInput);
+    assert.equal(res.archived, true);
+    assert.equal(repo.countArchive("-100"), 1);
+    const rec = repo.findArchiveByFileUniqueId("-100", "vu1");
+    assert.ok(rec, "строка в chat_archive");
+    assert.equal(rec!.kind, "voice");
+    assert.equal(rec!.rawText, "привет, запомни это");
+    assert.equal(rec!.needsReview, false);
+  });
+
+  it("повторный voice с тем же file_unique_id → вторая строка НЕ создаётся", async () => {
+    const repo = makeRepo();
+    const pipeline = new ListenerMediaPipeline(repo, emptyExtractor, async () => makeFile("voice"), {
+      stt: async () => ({ ok: true, text: "раз" }),
+    });
+    await pipeline.process(voiceInput);
+    await pipeline.process(voiceInput);
+    assert.equal(repo.countArchive("-100"), 1, "дедуп по chat_id+file_unique_id");
+  });
+
+  it("STT ok:false → не бросает, архив voice с needsReview", async () => {
+    const repo = makeRepo();
+    const pipeline = new ListenerMediaPipeline(repo, emptyExtractor, async () => makeFile("voice"), {
+      stt: async () => ({ ok: false, text: "", error: "stt down" }),
+    });
+    const res = await pipeline.process(voiceInput);
+    assert.equal(res.archived, true);
+    assert.equal(repo.countArchive("-100"), 1);
+    const rec = repo.findArchiveByFileUniqueId("-100", "vu1");
+    assert.equal(rec!.kind, "voice");
+    assert.equal(rec!.needsReview, true);
+  });
+
+  it("STT throw → не бросает пользователю, архив всё равно пишется", async () => {
+    const repo = makeRepo();
+    const pipeline = new ListenerMediaPipeline(repo, emptyExtractor, async () => makeFile("voice"), {
+      stt: async () => {
+        throw new Error("STT backend down");
+      },
+    });
+    const res = await pipeline.process(voiceInput);
+    assert.equal(res.archived, true);
+    assert.equal(repo.countArchive("-100"), 1);
+    const rec = repo.findArchiveByFileUniqueId("-100", "vu1");
+    assert.equal(rec!.kind, "voice");
+    assert.equal(rec!.needsReview, true);
+  });
+});
