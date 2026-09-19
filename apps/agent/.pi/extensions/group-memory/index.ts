@@ -19,7 +19,9 @@ import { getDocumentsRepository } from "../../../src/services/documents/index.js
 import {
   groupHistoryHandler,
   groupRecentHandler,
+  groupCompareHandler,
   type GroupAccessDeps,
+  type GroupCompareArgs,
   type GroupHistoryArgs,
   type GroupRecentArgs,
   type GroupToolsContext,
@@ -51,6 +53,12 @@ const RecentSchema = Type.Object({
   chatId: Type.Optional(Type.String({ description: "Optional; omit = all accessible configured chats (cap 10 chats)" })),
   sinceHours: Type.Optional(Type.Number({ description: "Default 24, max 168" })),
   limit: Type.Optional(Type.Number({ description: "Default 20, max 50" })),
+});
+
+const CompareSchema = Type.Object({
+  chatIds: Type.Array(Type.String(), { description: "Список chatId для сравнения (каждый проверяется ACL, fail closed)" }),
+  sinceHours: Type.Optional(Type.Number({ description: "Default 24, max 168" })),
+  limit: Type.Optional(Type.Number({ description: "Default 50, max 200" })),
 });
 
 function realDeps(): GroupAccessDeps {
@@ -111,6 +119,30 @@ export default function groupMemory(pi: ExtensionAPI): void {
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ result: string }>> {
       const text = await groupRecentHandler(
+        params,
+        toolContext(ctx),
+        getDocumentsRepository(),
+        realDeps(),
+      );
+      return { content: [{ type: "text", text }], details: { result: text } };
+    },
+  });
+
+  pi.registerTool({
+    name: "groups_compare",
+    label: "Compare groups",
+    description:
+      "Сравнить недавние события по явному списку чатов (sourceChatId/sourceMessageId). " +
+      "Каждый chatId проверяется ACL — отказ любого чата → deny (fail closed). Read-only.",
+    parameters: CompareSchema,
+    async execute(
+      _id: string,
+      params: GroupCompareArgs,
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ result: string }>> {
+      const text = await groupCompareHandler(
         params,
         toolContext(ctx),
         getDocumentsRepository(),

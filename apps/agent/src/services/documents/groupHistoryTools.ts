@@ -195,3 +195,55 @@ export async function groupRecentHandler(
     items: rows.map(formatArchiveItem),
   });
 }
+
+// ── S10: groups_compare (cross-group) ────────────────────────────────────────
+
+export interface GroupCompareArgs {
+  chatIds: string[];
+  sinceHours?: number;
+  limit?: number;
+}
+
+/** Item сравнения: явный sourceChatId/sourceMessageId + поля архива (H4). */
+export function formatCompareItem(rec: ChatArchiveRecord): Record<string, unknown> {
+  return {
+    sourceChatId: rec.chatId,
+    sourceMessageId: rec.messageId,
+    ...formatArchiveItem(rec),
+  };
+}
+
+/**
+ * S10: сравнить недавние события по явному списку чатов.
+ * Fail closed: ЕСЛИ хоть один chatId не проходит assertCanReadChat → deny.
+ * Read-only; в group contexts ничего не пишет.
+ */
+export async function groupCompareHandler(
+  args: GroupCompareArgs,
+  ctx: GroupToolsContext,
+  repo: DocumentsRepository,
+  deps: GroupAccessDeps,
+): Promise<string> {
+  const userId = ctx.userId;
+  if (!userId) return "Не определён пользователь сессии.";
+
+  const chatIds = args.chatIds ?? [];
+  if (chatIds.length === 0) return "Укажите chatIds: список чатов для сравнения.";
+
+  // Fail closed: EVERY chatId должен пройти ACL.
+  for (const chatId of chatIds) {
+    if (!(await assertCanReadChat(userId, chatId, deps))) return ACCESS_DENIED;
+  }
+
+  const limit = clampInt(args.limit ?? 50, 1, 200);
+  const sinceHours = clampInt(args.sinceHours ?? 24, 1, 168);
+  const sinceIso = new Date(Date.now() - sinceHours * 3600_000).toISOString();
+
+  const rows = repo.listRecent({ chatIds, sinceIso, limit });
+  return JSON.stringify({
+    chats: chatIds,
+    since: sinceIso,
+    count: rows.length,
+    items: rows.map(formatCompareItem),
+  });
+}
