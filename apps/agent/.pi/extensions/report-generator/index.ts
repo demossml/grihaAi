@@ -9,6 +9,8 @@ import {
   type ExpenseReportData,
 } from "../../../src/utils/reports/report-schemas.js";
 import { renderPdfReport, renderPresentation } from "../../../src/utils/reports/report-renderer.js";
+import { renderViaCliOrLegacy } from "../../../src/services/render/renderViaCliOrLegacy.js";
+import type { RenderRequest } from "@griha/render-contracts";
 import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
 import { getSessionContext } from "../user-rules/context.js";
 import { logTelegramEvent } from "../telegram-bot/telegram-diagnostics.js";
@@ -135,7 +137,19 @@ export default function reportGenerator(
       });
 
       try {
-        const filePath = await renderPdfReport(params.reportType, renderData);
+        const caption = buildReportCaption(params.reportType, renderData);
+        const request: RenderRequest = {
+          format: "pdf",
+          template: params.reportType,
+          title: caption,
+          locale: "ru",
+          blocks: [{ kind: "markdown", text: caption }],
+          data: renderData,
+        };
+        // P5: ветвление рендера. Без GRIHA_RENDER_CLI=1 → legacy (renderPdfReport) 1:1.
+        const { filePath } = await renderViaCliOrLegacy(request, () =>
+          renderPdfReport(params.reportType, renderData),
+        );
         logTelegramEvent({
           event: "document.created",
           correlationId,
@@ -149,7 +163,7 @@ export default function reportGenerator(
         // to the reply as a document (same per-session form as file_id handling).
         // E4: dedupeKey подавляет повторную отправку того же отчёта (send_file
         // и второй generate_report за ход).
-        setSessionFile(ctx.sessionManager.getSessionId(), filePath, buildReportCaption(params.reportType, renderData), {
+        setSessionFile(ctx.sessionManager.getSessionId(), filePath, caption, {
           dedupeKey: `report:${params.reportType}`,
         });
         return {
