@@ -66,10 +66,7 @@ import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
 import { transcribeVoice } from "@griha/stt";
 import { logTelegramError } from "./telegram-diagnostics.js";
-import {
-  GroupReminderService,
-  getGroupRemindersDbPath,
-} from "../../../src/services/reminders/GroupReminderService.js";
+import { getGroupReminderService } from "../../../src/services/reminders/GroupReminderService.js";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
 // Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
@@ -687,15 +684,13 @@ async function stopBot(): Promise<void> {
 }
 
 // ── P0-3: reminders tick (fireDue → sendNotify) ──────────────────────────────
-let remindersSvc: GroupReminderService | null = null;
 let reminderTicker: ReturnType<typeof setInterval> | null = null;
 
 const REMINDER_TICK_MS = 30_000;
 
 async function fireDueReminders(): Promise<void> {
-  if (!remindersSvc) return;
   const setup = getChatSetupService();
-  await remindersSvc.fireDue(new Date(), {
+  await getGroupReminderService().fireDue(new Date(), {
     isChatActive: (chatId) => setup.isConfiguredSync(chatId),
     send: async (chatId, text, threadId) => {
       const ctl = getController();
@@ -710,10 +705,6 @@ async function fireDueReminders(): Promise<void> {
 
 function startReminderTick(): void {
   if (reminderTicker) return;
-  if (!remindersSvc) {
-    remindersSvc = new GroupReminderService(getGroupRemindersDbPath());
-    remindersSvc.init();
-  }
   reminderTicker = setInterval(() => {
     void fireDueReminders().catch((err: unknown) => {
       // fireDue помечает fired ТОЛЬКО после успешного send → fail не теряет напоминание.
@@ -727,8 +718,6 @@ function stopReminderTick(): void {
     clearInterval(reminderTicker);
     reminderTicker = null;
   }
-  remindersSvc?.close();
-  remindersSvc = null;
 }
 
 /** file_id/file_unique_id из фото (самый большой размер), документа или медиа. */

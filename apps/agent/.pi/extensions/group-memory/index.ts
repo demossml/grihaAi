@@ -21,6 +21,7 @@ import {
   groupRecentHandler,
   groupCompareHandler,
   groupReportHandler,
+  assertCanReadChat,
   type GroupAccessDeps,
   type GroupCompareArgs,
   type GroupHistoryArgs,
@@ -28,6 +29,10 @@ import {
   type GroupReportArgs,
   type GroupToolsContext,
 } from "../../../src/services/documents/groupHistoryTools.js";
+import {
+  getGroupReminderService,
+  type GroupReminderStatus,
+} from "../../../src/services/reminders/GroupReminderService.js";
 
 const HistorySchema = Type.Object({
   chatId: Type.Optional(Type.String({ description: "Telegram chat id (e.g. -100…). Default: current chat from session context if omitted." })),
@@ -68,6 +73,31 @@ const ReportSchema = Type.Object({
   dateFrom: Type.Optional(Type.String({ description: "YYYY-MM-DD inclusive optional" })),
   dateTo: Type.Optional(Type.String({ description: "YYYY-MM-DD inclusive optional" })),
   threadId: Type.Optional(Type.String({ description: "Forum topic id; omit for whole chat" })),
+});
+
+const ReminderAddSchema = Type.Object({
+  chatId: Type.String({ description: "Telegram chat id" }),
+  text: Type.String({ description: "Текст напоминания" }),
+  dueAt: Type.String({ description: "ISO datetime due (e.g. 2026-09-20T09:00:00.000Z)" }),
+  threadId: Type.Optional(Type.String({ description: "Forum topic id optional" })),
+  sourceMessageId: Type.Optional(Type.String({ description: "provenance: id исходного сообщения" })),
+  confidence: Type.Optional(Type.Number({ description: "0..1; <0.5 → needs_confirmation" })),
+});
+
+const ReminderListSchema = Type.Object({
+  chatId: Type.String({ description: "Telegram chat id" }),
+  status: Type.Optional(
+    Type.Union([
+      Type.Literal("pending"),
+      Type.Literal("needs_confirmation"),
+      Type.Literal("fired"),
+      Type.Literal("cancelled"),
+    ]),
+  ),
+});
+
+const ReminderConfirmSchema = Type.Object({
+  id: Type.String({ description: "Reminder id" }),
 });
 
 function realDeps(): GroupAccessDeps {
@@ -182,6 +212,111 @@ export default function groupMemory(pi: ExtensionAPI): void {
         realDeps(),
       );
       return { content: [{ type: "text", text }], details: { result: text } };
+    },
+  });
+
+  pi.registerTool({
+    name: "group_reminder_add",
+    label: "Add group reminder",
+    description:
+      "Создать напоминание для группы (chatId, text, dueAt ISO). ACL через assertCanReadChat. " +
+      "low confidence → needs_confirmation (не рассылается без подтверждения).",
+    parameters: ReminderAddSchema,
+    async execute(
+      _id: string,
+      params: {
+        chatId: string;
+        text: string;
+        dueAt: string;
+        threadId?: string;
+        sourceMessageId?: string;
+        confidence?: number;
+      },
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ id: string; status?: string }>> {
+      const userId = toolContext(ctx).userId;
+      if (!userId) {
+        return { content: [{ type: "text", text: "Не определён пользователь сессии." }], details: { id: "" } };
+      }
+      if (!(await assertCanReadChat(userId, params.chatId, realDeps()))) {
+        return { content: [{ type: "text", text: "Нет доступа к чату." }], details: { id: "" } };
+      }
+      const r = getGroupReminderService().add({
+        chatId: params.chatId,
+        text: params.text,
+        dueAt: params.dueAt,
+        threadId: params.threadId,
+        sourceMessageId: params.sourceMessageId,
+        confidence: params.confidence,
+      });
+      return {
+        content: [{ type: "text", text: `Reminder ${r.id} (${r.status}).` }],
+        details: { id: r.id, status: r.status },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "group_reminder_list",
+    label: "List group reminders",
+    description: "Список напоминаний чата (опционально по статусу). ACL через assertCanReadChat.",
+    parameters: ReminderListSchema,
+    async execute(
+      _id: string,
+      params: { chatId: string; status?: GroupReminderStatus },
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ reminders: Array<{ id: string; text: string; dueAt: string; status: string }> }>> {
+      const userId = toolContext(ctx).userId;
+      if (!userId) {
+        return { content: [{ type: "text", text: "Не определён пользователь сессии." }], details: { reminders: [] } };
+      }
+      if (!(await assertCanReadChat(userId, params.chatId, realDeps()))) {
+        return { content: [{ type: "text", text: "Нет доступа к чату." }], details: { reminders: [] } };
+      }
+      const list = getGroupReminderService().list(params.chatId, params.status);
+      const text = list.length === 0
+        ? "Напоминаний нет."
+        : list.map((r) => `- [${r.status}] ${r.text} (до ${r.dueAt})`).join("\n");
+      return {
+        content: [{ type: "text", text }],
+        details: {
+          reminders: list.map((r) => ({ id: r.id, text: r.text, dueAt: r.dueAt, status: r.status })),
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "group_reminder_confirm",
+    label: "Confirm group reminder",
+    description: "Подтвердить needs_confirmation → pending. Только canManage (owner/admin).",
+    parameters: ReminderConfirmSchema,
+    async execute(
+      _id: string,
+      params: { id: string },
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ id: string; status?: string }>> {
+      const userId = toolContext(ctx).userId;
+      if (!userId) {
+        return { content: [{ type: "text", text: "Не определён пользователь сессии." }], details: { id: "" } };
+      }
+      if (!(await getUsersService().canManage(userId))) {
+        return { content: [{ type: "text", text: "Нет доступа. Нужна роль owner или admin." }], details: { id: "" } };
+      }
+      const r = getGroupReminderService().confirm(params.id);
+      if (!r) {
+        return { content: [{ type: "text", text: "Reminder не найден или не в статусе needs_confirmation." }], details: { id: "" } };
+      }
+      return {
+        content: [{ type: "text", text: `Reminder ${r.id} подтверждён (${r.status}).` }],
+        details: { id: r.id, status: r.status },
+      };
     },
   });
 }

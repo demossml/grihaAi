@@ -199,4 +199,38 @@ export class GroupReminderService {
       .prepare(`UPDATE group_reminders SET status = 'cancelled', updated_at = ? WHERE id = ?`)
       .run(now, id);
   }
+
+  /** P0-4: напоминания чата (опционально по статусу). */
+  list(chatId: string, status?: GroupReminderStatus): GroupReminder[] {
+    const rows = status
+      ? (this.requireDb()
+          .prepare(`SELECT * FROM group_reminders WHERE chat_id = ? AND status = ? ORDER BY due_at ASC`)
+          .all(chatId, status) as ReminderRow[])
+      : (this.requireDb()
+          .prepare(`SELECT * FROM group_reminders WHERE chat_id = ? ORDER BY due_at ASC`)
+          .all(chatId) as ReminderRow[]);
+    return rows.map(rowToReminder);
+  }
+
+  /** P0-4: подтвердить needs_confirmation → pending. Возвращает обновлённый, иначе undefined. */
+  confirm(id: string): GroupReminder | undefined {
+    const existing = this.get(id);
+    if (!existing || existing.status !== "needs_confirmation") return undefined;
+    const now = new Date().toISOString();
+    this.requireDb()
+      .prepare(`UPDATE group_reminders SET status = 'pending', updated_at = ? WHERE id = ?`)
+      .run(now, id);
+    return this.get(id);
+  }
+}
+
+let singleton: GroupReminderService | null = null;
+
+/** Единый инстанс на процесс (~/.grish-ai/group-reminders.sqlite). */
+export function getGroupReminderService(): GroupReminderService {
+  if (!singleton) {
+    singleton = new GroupReminderService(getGroupRemindersDbPath());
+    singleton.init();
+  }
+  return singleton;
 }

@@ -109,4 +109,30 @@ describe("GroupReminderService (S12)", () => {
     assert.equal(due.length, 1, "не помечен fired");
     assert.equal(due[0].status, "pending", "остаётся pending — ретрай в след. тике");
   });
+
+  it("P0-4: list(chatId, status) фильтрует по чату и статусу", () => {
+    const { svc } = makeService();
+    svc.add({ chatId: "-100", dueAt: pastDue, text: "a" });
+    svc.add({ chatId: "-100", dueAt: pastDue, text: "b", confidence: 0.1 }); // needs_confirmation
+    svc.add({ chatId: "-200", dueAt: pastDue, text: "c" });
+    assert.equal(svc.list("-100").length, 2, "только чат -100");
+    assert.equal(svc.list("-100", "needs_confirmation").length, 1);
+    assert.equal(svc.list("-100", "pending").length, 1);
+  });
+
+  it("P0-4: confirm needs_confirmation → pending (появляется в listDue)", () => {
+    const { svc } = makeService();
+    const r = svc.add({ chatId: "-100", dueAt: pastDue, text: "подтверди", confidence: 0.1 });
+    assert.equal(r.status, "needs_confirmation");
+    const confirmed = svc.confirm(r.id);
+    assert.equal(confirmed?.status, "pending");
+    assert.equal(svc.listDue(new Date()).length, 1, "после confirm — в listDue");
+  });
+
+  it("P0-4: confirm не-needs_confirmation → undefined", () => {
+    const { svc } = makeService();
+    const r = svc.add({ chatId: "-100", dueAt: pastDue, text: "уже pending" });
+    assert.equal(r.status, "pending");
+    assert.equal(svc.confirm(r.id), undefined);
+  });
 });

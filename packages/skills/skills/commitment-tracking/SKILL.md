@@ -27,3 +27,9 @@ Statuses are derived from the due date — never set `due_soon`/`overdue` by han
 - Never create a commitment from an uncertain statement without clarifying.
 - Link to the source message/session/contact/meeting when available.
 - A completed commitment stays in history; do not delete without user request.
+
+## Group reminders
+- To schedule a group reminder call `group_reminder_add` with ISO `dueAt`.
+- Never claim success without the tool result.
+- If status is `needs_confirmation`, tell the user to confirm via `group_reminder_confirm`.
+- Do not invent due dates without user intent.
