@@ -1,15 +1,18 @@
 import { parseArgs } from "node:util";
 import { readFile } from "node:fs/promises";
 import { renderDocument, listTemplates } from "@griha/render-tools";
+import { runMcpServer } from "./mcp/server.js";
 
 const USAGE = `Usage:
   griha-render <pdf|pptx> --template <name> --out <dir> [--data <file> | --stdin]
   griha-render list-templates
+  griha-render mcp
 
 Commands:
   pdf             render a PDF document
   pptx            render a PPTX document
   list-templates  print available template names (JSON)
+  mcp             start MCP stdio server (JSON-RPC on stdin/stdout)
 
 Options:
   --template <name>  template: sales-report | expense-report | meeting-minutes
@@ -68,6 +71,11 @@ export async function run(argv: string[], io: CliIO): Promise<number> {
 
   if (command === "list-templates") {
     io.stdout(JSON.stringify(listTemplates()));
+    return 0;
+  }
+
+  if (command === "mcp") {
+    await runMcpServer(io);
     return 0;
   }
 
