@@ -20,10 +20,12 @@ import {
   groupHistoryHandler,
   groupRecentHandler,
   groupCompareHandler,
+  groupReportHandler,
   type GroupAccessDeps,
   type GroupCompareArgs,
   type GroupHistoryArgs,
   type GroupRecentArgs,
+  type GroupReportArgs,
   type GroupToolsContext,
 } from "../../../src/services/documents/groupHistoryTools.js";
 
@@ -59,6 +61,13 @@ const CompareSchema = Type.Object({
   chatIds: Type.Array(Type.String(), { description: "Список chatId для сравнения (каждый проверяется ACL, fail closed)" }),
   sinceHours: Type.Optional(Type.Number({ description: "Default 24, max 168" })),
   limit: Type.Optional(Type.Number({ description: "Default 50, max 200" })),
+});
+
+const ReportSchema = Type.Object({
+  sourceChatId: Type.String({ description: "Telegram chat id" }),
+  dateFrom: Type.Optional(Type.String({ description: "YYYY-MM-DD inclusive optional" })),
+  dateTo: Type.Optional(Type.String({ description: "YYYY-MM-DD inclusive optional" })),
+  threadId: Type.Optional(Type.String({ description: "Forum topic id; omit for whole chat" })),
 });
 
 function realDeps(): GroupAccessDeps {
@@ -143,6 +152,30 @@ export default function groupMemory(pi: ExtensionAPI): void {
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ result: string }>> {
       const text = await groupCompareHandler(
+        params,
+        toolContext(ctx),
+        getDocumentsRepository(),
+        realDeps(),
+      );
+      return { content: [{ type: "text", text }], details: { result: text } };
+    },
+  });
+
+  pi.registerTool({
+    name: "group_report",
+    label: "Group report",
+    description:
+      "Сводка по чату: количество сообщений/файлов + сумма расходов (если есть). " +
+      "Read-only, ACL через assertCanReadChat. Без сырых путей.",
+    parameters: ReportSchema,
+    async execute(
+      _id: string,
+      params: GroupReportArgs,
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ result: string }>> {
+      const text = await groupReportHandler(
         params,
         toolContext(ctx),
         getDocumentsRepository(),

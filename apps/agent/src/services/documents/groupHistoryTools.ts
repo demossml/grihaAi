@@ -247,3 +247,56 @@ export async function groupCompareHandler(
     items: rows.map(formatCompareItem),
   });
 }
+
+// ── S11: group_report (сводка по одному чату) ────────────────────────────────
+
+export interface GroupReportArgs {
+  sourceChatId: string;
+  dateFrom?: string;
+  dateTo?: string;
+  threadId?: string;
+}
+
+/** Виды, считаемые «файлом» (не текстом). */
+const FILE_KINDS = new Set(["photo", "document", "voice", "video", "video_note", "audio", "expense"]);
+
+/**
+ * S11: сводка по чату — количество сообщений/файлов + сумма расходов (если есть).
+ * Read-only; assertCanReadChat первым. Пусто → честная структура со счётчиками 0,
+ * а не выдуманный текст. Без сырых путей.
+ */
+export async function groupReportHandler(
+  args: GroupReportArgs,
+  ctx: GroupToolsContext,
+  repo: DocumentsRepository,
+  deps: GroupAccessDeps,
+): Promise<string> {
+  const userId = ctx.userId;
+  if (!userId) return "Не определён пользователь сессии.";
+  const chatId = args.sourceChatId;
+  if (!chatId) return "Укажите sourceChatId.";
+  if (!(await assertCanReadChat(userId, chatId, deps))) return ACCESS_DENIED;
+
+  const threadId = args.threadId !== undefined && args.threadId !== "" ? args.threadId : undefined;
+  const fromDate = args.dateFrom !== undefined && args.dateFrom !== "" ? args.dateFrom : undefined;
+  const toDate = args.dateTo !== undefined && args.dateTo !== "" ? args.dateTo : undefined;
+
+  // Сообщения (текст) vs файлы (медиа). Практический кап 1000 строк на отчёт.
+  const rows = repo.listMessages({ chatId, threadId, fromDate, toDate, limit: 1000 });
+  const messageCount = rows.filter((r) => r.kind === "text").length;
+  const fileCount = rows.filter((r) => FILE_KINDS.has(r.kind)).length;
+
+  const expenses = await repo.query({ chatId, threadId, fromDate, toDate });
+
+  return JSON.stringify({
+    chatId,
+    threadId,
+    dateFrom: fromDate,
+    dateTo: toDate,
+    messageCount,
+    fileCount,
+    expenseCount: expenses.count,
+    expenseTotal: expenses.totalSum,
+    currency: expenses.currency,
+  });
+}
