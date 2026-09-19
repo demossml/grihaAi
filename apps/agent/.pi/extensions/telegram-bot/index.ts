@@ -54,7 +54,9 @@ import {
 } from "../chat-setup/ChatSetupService.js";
 import {
   handleSetupCallback,
+  isRemovalStatus,
   onChatMemberAdded,
+  onChatMemberRemoved,
   runSetupCommand,
   tryHandleCustomText,
 } from "../chat-setup/handlers.js";
@@ -316,8 +318,13 @@ function getController(): TelegramBotController {
         usersCommandHandler: (args, ctx) => handleUsersCommand(users, args, ctx),
         // Chat-setup (онбординг групп): my_chat_member → DM, cs:-callbacks,
         // custom-текст в DM, /setup с keyboard'ами (D5).
-        chatMemberHandler: (event, deps) =>
-          onChatMemberAdded(event, { setup, users, sendMessage: deps.sendMessage }),
+        chatMemberHandler: (event, deps) => {
+          // S2: уход из чата → markArchived (данные живы); добавление → онбординг.
+          if (isRemovalStatus(event.newStatus)) {
+            return onChatMemberRemoved(event, { setup });
+          }
+          return onChatMemberAdded(event, { setup, users, sendMessage: deps.sendMessage });
+        },
         setupCallbackHandler: (data, ctx, deps) =>
           handleSetupCallback(data, ctx, {
             setup,
@@ -556,7 +563,7 @@ async function bootstrapUsers(): Promise<void> {
   // hard-правила в SQLite — перезаписать managed-правила пресетом (идемпотентно,
   // статус НЕ трогаем). A3.
   for (const rec of await setup.list()) {
-    if (rec.status !== "completed" || !rec.presetId) continue;
+    if (rec.status !== "active" || !rec.presetId) continue;
     const presetId = rec.presetId as PresetId;
     const hard = getUserRulesService().getHardRules(rec.chatId);
     const marker = presetMarkerKey(presetId);

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { UserRulesService } from "../../.pi/extensions/user-rules/UserRulesService.js";
 import { ChatSetupService } from "../../.pi/extensions/chat-setup/ChatSetupService.js";
-import { onChatMemberAdded, handleSetupCallback, tryHandleCustomText } from "../../.pi/extensions/chat-setup/handlers.js";
+import { onChatMemberAdded, onChatMemberRemoved, handleSetupCallback, tryHandleCustomText } from "../../.pi/extensions/chat-setup/handlers.js";
 import type { ManagedRuleInput } from "../../.pi/extensions/user-rules/UserRulesService.js";
 
 const tmpDirs: string[] = [];
@@ -65,7 +65,7 @@ describe("ChatSetupService", () => {
     assert.equal(requireMention?.value, true);
 
     const rec = await setup.get("-100");
-    assert.equal(rec?.status, "completed");
+    assert.equal(rec?.status, "active");
     assert.equal(rec?.presetId, "team");
   });
 
@@ -84,11 +84,11 @@ describe("ChatSetupService", () => {
     assert.equal((await setup.get("-100"))?.status, "pending");
   });
 
-  it("markSkipped → status skipped", async () => {
+  it("markSkipped → status active", async () => {
     const { setup } = makeSetup();
     await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "1" });
     await setup.markSkipped("-100");
-    assert.equal((await setup.get("-100"))?.status, "skipped");
+    assert.equal((await setup.get("-100"))?.status, "active");
   });
 
   it("custom flow: waiting → setPendingRules → confirmCustom replaces rules", async () => {
@@ -101,7 +101,7 @@ describe("ChatSetupService", () => {
     await setup.confirmCustom("-100", "5");
     assert.equal(rules.replaced.length, 1);
     assert.equal(rules.replaced[0].meta.source, "custom");
-    assert.equal((await setup.get("-100"))?.status, "completed");
+    assert.equal((await setup.get("-100"))?.status, "active");
     assert.equal((await setup.get("-100"))?.presetId, "custom");
   });
 
@@ -275,7 +275,7 @@ describe("onboarding handlers", () => {
     );
     assert.equal(handled, true);
     assert.equal(rules.replaced[0].meta.source, "preset:team");
-    assert.equal((await setup.get("-100"))?.status, "completed");
+    assert.equal((await setup.get("-100"))?.status, "active");
     assert.ok(edits[0].includes("Участник команды"));
   });
 
@@ -371,7 +371,7 @@ describe("onboarding handlers", () => {
       },
     );
     assert.equal(rules.replaced[0].meta.source, "preset:team");
-    assert.equal((await setup.get("-100"))?.status, "completed");
+    assert.equal((await setup.get("-100"))?.status, "active");
   });
 
   it("Пакет B: getChatMember бросил (сеть) → fail closed, пресет НЕ применён", async () => {
@@ -456,5 +456,84 @@ describe("onboarding handlers", () => {
       async () => undefined,
     );
     assert.equal(handled, false);
+  });
+});
+
+describe("S2 lifecycle", () => {
+  it("load old completed → active в памяти (нормализация при чтении)", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chat-setup-s2-"));
+    tmpDirs.push(dir);
+    const file = path.join(dir, "chat-setup.json");
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        chats: [
+          {
+            chatId: "-100",
+            chatType: "group",
+            addedByUserId: "1",
+            status: "completed",
+            presetId: "team",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    const rules: FakeRules = { replaced: [], replaceChatManagedRules() {} };
+    const setup = new ChatSetupService(file, rules as unknown as UserRulesService);
+    assert.equal((await setup.get("-100"))?.status, "active");
+  });
+
+  it("active → archived → active, одна запись на chatId", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "1" });
+    await setup.markCompleted("-100", "team");
+    assert.equal((await setup.get("-100"))?.status, "active");
+
+    await setup.markArchived("-100");
+    assert.equal((await setup.get("-100"))?.status, "archived");
+    assert.ok((await setup.get("-100"))?.deactivatedAt, "deactivatedAt проставлен");
+
+    await setup.reactivateFromArchived("-100");
+    assert.equal((await setup.get("-100"))?.status, "active");
+    assert.ok((await setup.get("-100"))?.activatedAt, "activatedAt проставлен");
+
+    const all = await setup.list();
+    assert.equal(all.filter((c) => c.chatId === "-100").length, 1, "одна запись на чат");
+  });
+
+  it("isConfiguredSync: archived → false; active → true", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "1" });
+    await setup.markCompleted("-100", "team");
+    assert.equal(setup.isConfiguredSync("-100"), true);
+    await setup.markArchived("-100");
+    assert.equal(setup.isConfiguredSync("-100"), false);
+  });
+
+  it("kicked → onChatMemberRemoved вызывает markArchived", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "1" });
+    await setup.markCompleted("-100", "team");
+    await onChatMemberRemoved(
+      { oldStatus: "administrator", newStatus: "kicked", chat: { id: -100, type: "group" }, from: { id: 1 } },
+      { setup },
+    );
+    assert.equal((await setup.get("-100"))?.status, "archived");
+  });
+
+  it("markArchived не трогает записи других чатов", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatType: "group", addedByUserId: "1" });
+    await setup.markCompleted("-100", "team");
+    await setup.markPending({ chatId: "-200", chatType: "group", addedByUserId: "1" });
+    await setup.markCompleted("-200", "listener");
+
+    await setup.markArchived("-100");
+
+    assert.equal((await setup.get("-100"))?.status, "archived");
+    assert.equal((await setup.get("-200"))?.status, "active", "другой чат не тронут");
   });
 });

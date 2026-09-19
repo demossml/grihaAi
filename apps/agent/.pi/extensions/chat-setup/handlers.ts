@@ -82,6 +82,20 @@ function wasAddedToChat(event: MyChatMemberEvent): boolean {
   );
 }
 
+/** S2: бот ушёл из чата (left/kicked — kicked покрывает и banned). */
+export function isRemovalStatus(newStatus: string): boolean {
+  return newStatus === "left" || newStatus === "kicked";
+}
+
+/** S2: бота кикнули/выгнали → markArchived (данные НЕ удаляются). */
+export async function onChatMemberRemoved(
+  event: MyChatMemberEvent,
+  deps: { setup: ChatSetupService },
+): Promise<void> {
+  if (event.chat.type === "private") return;
+  await deps.setup.markArchived(String(event.chat.id));
+}
+
 /** §4: бота добавили в группу → safe_default + pending + онбординг в группу (и в DM). */
 export async function onChatMemberAdded(
   event: MyChatMemberEvent,
@@ -95,7 +109,7 @@ export async function onChatMemberAdded(
   const { setup } = deps;
 
   const existing = await setup.get(chatId);
-  if (existing && (existing.status === "completed" || existing.status === "skipped")) {
+  if (existing && existing.status === "active") {
     return; // не спамить онбордингом
   }
 

@@ -15,10 +15,20 @@ import {
   type PresetId,
   type PresetRule,
 } from "./RulePresets.js";
-import type { ChatSetupRecord, ChatSetupStoreFile } from "./types.js";
+import type { ChatSetupRecord, ChatSetupStoreFile, SetupStatus } from "./types.js";
 
 export function getChatSetupPath(): string {
   return path.join(getConfigDir(), "chat-setup.json");
+}
+
+/**
+ * S2: нормализация статуса при чтении старого JSON.
+ * legacy completed/skipped → active (семантика «настроен и слушает»).
+ */
+export function normalizeSetupStatus(status: string | undefined): SetupStatus {
+  if (status === "completed" || status === "skipped" || status === "active") return "active";
+  if (status === "archived") return "archived";
+  return "pending";
 }
 
 export interface MarkPendingInput {
@@ -40,7 +50,16 @@ export class ChatSetupService {
     if (!fs.existsSync(this.filePath)) return { version: 1, chats: [] };
     try {
       const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8")) as ChatSetupStoreFile;
-      if (parsed && parsed.version === 1 && Array.isArray(parsed.chats)) return parsed;
+      if (parsed && parsed.version === 1 && Array.isArray(parsed.chats)) {
+        // S2: normalize legacy completed/skipped → active (in-memory only).
+        return {
+          version: 1,
+          chats: parsed.chats.map((c) => ({
+            ...c,
+            status: normalizeSetupStatus(c.status as string),
+          })),
+        };
+      }
     } catch (err: unknown) {
       console.error(
         `[chat-setup] chat-setup.json unreadable: ${err instanceof Error ? err.message : String(err)}`,
@@ -52,14 +71,21 @@ export class ChatSetupService {
   private async save(chats: ChatSetupRecord[]): Promise<void> {
     const dir = path.dirname(this.filePath);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // S2: дедуп по chatId — максимум одна запись на чат (защитная сетка).
+    const seen = new Set<string>();
+    const deduped = chats.filter((c) => {
+      if (seen.has(c.chatId)) return false;
+      seen.add(c.chatId);
+      return true;
+    });
     const tmp = `${this.filePath}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ version: 1 as const, chats }, null, 2), {
+    fs.writeFileSync(tmp, JSON.stringify({ version: 1 as const, chats: deduped }, null, 2), {
       encoding: "utf8",
       mode: 0o600,
     });
     fs.chmodSync(tmp, 0o600);
     fs.renameSync(tmp, this.filePath);
-    this.cache = chats.map((c) => ({ ...c }));
+    this.cache = deduped.map((c) => ({ ...c }));
   }
 
   async list(): Promise<ChatSetupRecord[]> {
@@ -80,15 +106,15 @@ export class ChatSetupService {
   }
 
   /**
-   * R1/R5: true → группа настроена (completed|skipped), можно применять
-   * обычные hard-rules. false → pending/неизвестно → SILENT в группе.
+   * R1/R5: true → группа настроена (active) — можно применять обычные
+   * hard-rules. false → pending/archived/неизвестно → SILENT в группе.
    * Для private не применяется (R6) — решает вызывающий.
    */
   isConfiguredSync(chatId: string): boolean {
     this.loadSync();
     const rec = this.cache!.find((c) => c.chatId === chatId);
     if (!rec) return false;
-    return rec.status === "completed" || rec.status === "skipped";
+    return rec.status === "active";
   }
 
   async get(chatId: string): Promise<ChatSetupRecord | null> {
@@ -103,13 +129,27 @@ export class ChatSetupService {
     const now = new Date().toISOString();
     if (idx >= 0) {
       const existing = chats[idx];
-      if (existing.status === "completed" || existing.status === "skipped") return existing;
-      chats[idx] = {
-        ...existing,
-        chatTitle: input.chatTitle ?? existing.chatTitle,
-        chatType: input.chatType,
-        updatedAt: now,
-      };
+      // S2: active → без изменений (не затираем настройку).
+      if (existing.status === "active") return existing;
+      // S2: archived → реактивация.
+      if (existing.status === "archived") {
+        chats[idx] = {
+          ...existing,
+          status: "active",
+          activatedAt: now,
+          chatTitle: input.chatTitle ?? existing.chatTitle,
+          chatType: input.chatType,
+          updatedAt: now,
+        };
+      } else {
+        // pending → обновить title/type, статус остаётся pending.
+        chats[idx] = {
+          ...existing,
+          chatTitle: input.chatTitle ?? existing.chatTitle,
+          chatType: input.chatType,
+          updatedAt: now,
+        };
+      }
     } else {
       const record: ChatSetupRecord = {
         chatId: input.chatId,
@@ -133,9 +173,10 @@ export class ChatSetupService {
     const rec = chats.find((c) => c.chatId === chatId);
     if (!rec) return;
     const now = new Date().toISOString();
-    rec.status = "completed";
+    rec.status = "active";
     rec.presetId = presetId;
     rec.completedAt = now;
+    rec.activatedAt = rec.activatedAt ?? now;
     rec.updatedAt = now;
     rec.waitingCustom = undefined;
     rec.pendingRules = undefined;
@@ -147,9 +188,44 @@ export class ChatSetupService {
     const rec = chats.find((c) => c.chatId === chatId);
     if (!rec) return;
     const now = new Date().toISOString();
-    rec.status = "skipped";
+    rec.status = "active";
     rec.updatedAt = now;
     rec.completedAt = now;
+    rec.activatedAt = rec.activatedAt ?? now;
+    await this.save(chats);
+  }
+
+  /** S2: уход в архив (kick/left/removal). Данные правил/архива НЕ трогаются. */
+  async markArchived(chatId: string): Promise<void> {
+    const chats = await this.list();
+    const rec = chats.find((c) => c.chatId === chatId);
+    if (!rec) return;
+    const now = new Date().toISOString();
+    rec.status = "archived";
+    rec.deactivatedAt = now;
+    rec.updatedAt = now;
+    await this.save(chats);
+  }
+
+  /** S2: реактивация из архива (archived → active). Историю НЕ удаляем. */
+  async reactivateFromArchived(chatId: string): Promise<void> {
+    const chats = await this.list();
+    const rec = chats.find((c) => c.chatId === chatId);
+    if (!rec || rec.status !== "archived") return;
+    const now = new Date().toISOString();
+    rec.status = "active";
+    rec.activatedAt = now;
+    rec.deactivatedAt = undefined;
+    rec.updatedAt = now;
+    await this.save(chats);
+  }
+
+  /** S2 (optional): отметить последнюю активность в чате. */
+  async touchLastSeen(chatId: string): Promise<void> {
+    const chats = await this.list();
+    const rec = chats.find((c) => c.chatId === chatId);
+    if (!rec) return;
+    rec.lastSeenAt = new Date().toISOString();
     await this.save(chats);
   }
 

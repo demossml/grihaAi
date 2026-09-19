@@ -62,7 +62,7 @@ function realDeps(): GroupAccessDeps {
     isAllowed: (userId, chatId) => users.isAllowed(userId, chatId),
     listConfiguredChatIds: async () =>
       (await setup.list())
-        .filter((c) => c.status === "completed" || c.status === "skipped")
+        .filter((c) => c.status === "active")
         .map((c) => c.chatId),
   };
 }
