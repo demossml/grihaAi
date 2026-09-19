@@ -24,6 +24,20 @@
 - **Тесты**: `node:test` через `tsx` (1127 unit + golden fixtures)
 - **Lint**: ESLint 10 (flat config; TS-парсинг через `@babel/eslint-parser` — typescript-eslint не поддерживает TS 7)
 
+## Внешние инструменты
+
+Рендер PDF/PPTX-отчётов вынесен в отдельные пакеты (`packages/render-contracts`,
+`packages/render-tools`) и CLI `apps/render-cli`; активируются флагами — по умолчанию
+старое поведение 1:1. Отдельно — read-only диагностика окружения: `apps/telegram-cli doctor`.
+
+```bash
+npm run render                            # build CLI + запуск bin.js
+GRIHA_RENDER_CLI=1 ../../node_modules/.bin/pi   # рендер через spawn CLI
+node apps/telegram-cli/dist/bin.js doctor # диагностика окружения (offline)
+```
+
+Подробности и флаги — [docs/EXTERNAL-TOOLS.md](docs/EXTERNAL-TOOLS.md).
+
 ## Быстрый старт
 
 ```bash
