@@ -65,6 +65,15 @@ describe("RulePresets", () => {
       }
     }
   });
+
+  it("P0-1: сценарий «Секретарь — тихий архив» выше пресета «Ассистент (отвечает по @)»", () => {
+    const labels = buildOnboardingKeyboard("-100").map((row) => row[0].text);
+    const scenarioIdx = labels.indexOf("Секретарь — тихий архив");
+    const presetIdx = labels.indexOf("Ассистент (отвечает по @)");
+    assert.ok(scenarioIdx >= 0, "кнопка сценария есть");
+    assert.ok(presetIdx >= 0, "кнопка пресета есть");
+    assert.ok(scenarioIdx < presetIdx, "сценарий выше пресета");
+  });
 });
 
 describe("pre-filter structured keys (§9)", () => {

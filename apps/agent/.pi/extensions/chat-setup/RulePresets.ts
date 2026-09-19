@@ -200,14 +200,16 @@ export function escapeHtml(input: string): string {
 export function buildOnboardingText(chatTitle: string): string {
   return (
     `Меня добавили в группу «${escapeHtml(chatTitle)}».` +
-    `\n\nКак мне здесь работать?\nВыберите сценарий — правила применятся сразу.`
+    `\n\nКак мне здесь работать?\nВыберите сценарий — правила применятся сразу.` +
+    `\n\nТихий секретарь: молчит в группе, сохраняет историю; отчёты — в личке.` +
+    `\nАссистент по @: отвечает только когда обратились.`
   );
 }
 
 const ONBOARDING_BUTTONS: Array<{ label: string; action: string }> = [
+  { label: "Секретарь — тихий архив", action: "s:secretary" },
+  { label: "Ассистент (отвечает по @)", action: "p:secretary" },
   { label: "Участник команды", action: "p:team" },
-  { label: "Секретарь в группе", action: "p:secretary" },
-  { label: "Сценарий: тихий секретарь", action: "s:secretary" },
   { label: "Слушатель", action: "p:listener" },
   { label: "Магазин / API", action: "p:shop" },
   { label: "Только мои сообщения", action: "p:only_me" },

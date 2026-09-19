@@ -53,7 +53,7 @@ function buildGroupCard(rec: ChatSetupRecord): string {
 /** Кнопки карточки группы: g:{chatId}:{action}. */
 function buildGroupKeyboard(chatId: string): InlineButton[][] {
   return [
-    [{ text: "Сценарий Секретарь", callbackData: `g:${chatId}:scenario` }],
+    [{ text: "Секретарь — тихий архив", callbackData: `g:${chatId}:scenario` }],
     [{ text: "В архив", callbackData: `g:${chatId}:archive` }],
     [{ text: "Активировать", callbackData: `g:${chatId}:activate` }],
   ];

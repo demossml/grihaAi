@@ -87,7 +87,7 @@ describe("runSetupCommand (D5 + группы)", () => {
     const text = await runSetupCommand("-1002", { chatId: "42", userId: "42", isPrivate: true }, deps(setup, sent));
     assert.ok(text.includes("«Группа 2»"));
     assert.equal(sent.length, 1);
-    assert.ok(sent[0].buttons![0][0].callbackData === "cs:-1002:p:team");
+    assert.ok(sent[0].buttons![0][0].callbackData === "cs:-1002:s:secretary");
   });
 
   it("Пакет B: /setup <chatId> от чужого пользователя → «Недостаточно прав»", async () => {
