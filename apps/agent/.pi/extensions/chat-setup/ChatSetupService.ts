@@ -118,6 +118,12 @@ export class ChatSetupService {
     return rec.status === "active";
   }
 
+  /** S4: сценарий чата (sync, из cache) — для prefilter belt. */
+  getScenarioSync(chatId: string): string | undefined {
+    this.loadSync();
+    return this.cache!.find((c) => c.chatId === chatId)?.scenario;
+  }
+
   async get(chatId: string): Promise<ChatSetupRecord | null> {
     const chats = await this.list();
     return chats.find((c) => c.chatId === chatId) ?? null;

@@ -24,6 +24,12 @@ export interface RulePreFilterInput {
    * игнорируется (R6). Bridge обязан передавать boolean для group/supergroup.
    */
   groupConfigured?: boolean;
+  /**
+   * S4: принудительный listen_only (belt) — scenario "secretary" без явного
+   * правила listen_only. Ведёт себя как listen_only=true (тихий архив, ответ
+   * только на @mention/reply).
+   */
+  listenOnly?: boolean;
 }
 
 /**
@@ -186,7 +192,9 @@ export function evaluatePreFilter(
   // ── Архивариус (listen_only): агент НЕ вызывается для ordinary messages (L1); ──
   // фоновая архивация/OCR идёт отдельно (не здесь). Ответ разрешён ТОЛЬКО на
   // @mention или reply боту (спека listen-only OCR).
-  if (has("listen_only") && truthy(hardValue(hardRules, "listen_only"))) {
+  const listenOnly =
+    input.listenOnly === true || (has("listen_only") && truthy(hardValue(hardRules, "listen_only")));
+  if (listenOnly) {
     // Прочие фильтры сохраняются: игнор ботов и сервисных сообщений.
     if (has("ignore_bots") && hardValue(hardRules, "ignore_bots") !== false && input.fromIsBot) {
       return blockedWithReason("bot-ignored");

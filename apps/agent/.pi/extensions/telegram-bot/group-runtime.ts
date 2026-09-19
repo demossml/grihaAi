@@ -61,6 +61,8 @@ export interface PrepareTurnDeps {
    * rulesContext. Не задана → без секции (1:1).
    */
   profileSection?: (hard: UserRule[], soft: UserRule[]) => string;
+  /** S4: сценарий чата (namespace scenarios) для belt listen_only. */
+  getScenario?: (chatId: string) => string | undefined;
 }
 
 function blocked(
@@ -93,6 +95,8 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
     profileSection.length > 0 ? `${baseContext}\n${profileSection}` : baseContext;
 
   // 4) R-GR-4: hard-правила — в коде (prefilter), не через LLM.
+  // S4: scenario "secretary" → belt listen_only (даже если правила пустые).
+  const scenario = deps.getScenario?.(input.chatId);
   const prefilterInput: RulePreFilterInput = {
     chatId: input.chatId,
     fromUserId: input.userId,
@@ -105,11 +109,19 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
     startsWithOtherMention: input.startsWithOtherMention,
     fromIsBot: input.fromIsBot,
     isService: input.isService,
+    listenOnly: scenario === "secretary",
   };
   const gate = deps.evaluate(hard, prefilterInput);
   if (!gate.process) {
     // A1/L-A3: prefilter запретил агента, но archive/suppressReply НЕ теряются —
     // listener без mention должен тихо архивировать (process:false, archive:true).
+    if (scenario === "secretary") {
+      // S4 observability: сценарий + операция, без текста пользователя.
+      console.log(
+        `[group-runtime] scenario=secretary chatId=${input.chatId} ` +
+          `process=${gate.process} archive=${gate.archive} suppress=${gate.suppressReply}`,
+      );
+    }
     return blocked("prefilter", {
       archive: gate.archive === true,
       suppressReply: gate.suppressReply === true,

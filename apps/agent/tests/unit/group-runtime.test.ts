@@ -148,6 +148,55 @@ describe("prepareGroupTurn", () => {
   });
 });
 
+describe("S4 scenario secretary (belt listen_only)", () => {
+  it("secretary + обычный текст → archive/suppress, агент НЕ вызывается", () => {
+    const res = prepareGroupTurn(
+      groupCtx(),
+      makeDeps({ getHardRules: () => [], getScenario: () => "secretary" }),
+    );
+    assert.equal(res.process, false);
+    assert.equal(res.archive, true);
+    assert.equal(res.suppressReply, true);
+    assert.equal(res.blockReason, "listen_only");
+  });
+
+  it("secretary + mention → агент разрешён", () => {
+    const res = prepareGroupTurn(
+      groupCtx({ botMentioned: true }),
+      makeDeps({ getHardRules: () => [], getScenario: () => "secretary" }),
+    );
+    assert.equal(res.process, true);
+  });
+
+  it("secretary + pending → ни агента, ни архива", () => {
+    const res = prepareGroupTurn(
+      groupCtx(),
+      makeDeps({ isGroupConfigured: () => false, getScenario: () => "secretary" }),
+    );
+    assert.equal(res.process, false);
+    assert.equal(res.archive, false);
+    assert.equal(res.suppressReply, false);
+    assert.equal(res.reason, "group-not-configured");
+  });
+
+  it("secretary + archived → ни агента, ни архива", () => {
+    // archived → isGroupConfigured false (как не настроена).
+    const res = prepareGroupTurn(
+      groupCtx(),
+      makeDeps({ isGroupConfigured: () => false, getScenario: () => "secretary" }),
+    );
+    assert.equal(res.process, false);
+    assert.equal(res.archive, false);
+    assert.equal(res.suppressReply, false);
+  });
+
+  it("без сценария (нет getScenario) → поведение 1:1 не меняется", () => {
+    const res = prepareGroupTurn(groupCtx(), makeDeps());
+    assert.equal(res.process, false, "require_mention без mention → prefilter silent");
+    assert.equal(res.blockReason, "require_mention");
+  });
+});
+
 describe("shouldNotifyPoorOcr (R-GR-8)", () => {
   it("флаг false (default) → не уведомляем", () => {
     assert.equal(shouldNotifyPoorOcr([], { needsReview: true }), false);

@@ -305,6 +305,8 @@ function getController(): TelegramBotController {
             // O1 (§29): групповой profile-override за флагом (правило agent_profile).
             profileSection: (hard, soft) =>
               buildGroupProfileSection(process.env, [...hard, ...soft]),
+            // S4: scenario → belt listen_only в prepareGroupTurn.
+            getScenario: (chatId) => setup.getScenarioSync(chatId),
           }),
         rulesHandler: makeGuardedRulesHandler({
           run: (args, ctx) => telegramRulesHandler(args, ctx),
