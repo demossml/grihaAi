@@ -129,6 +129,7 @@ export const DEFAULT_TELEGRAM_COMMANDS: Array<{ command: string; description: st
   { command: "new", description: "Начать новую сессию" },
   { command: "status", description: "Статус бота" },
   { command: "rules", description: "Управление правилами пользователя" },
+  { command: "groups", description: "Управление группами (DM)" },
   { command: "approve", description: "Одобрить запрос: /approve <id>" },
   { command: "deny", description: "Отклонить запрос: /deny <id>" },
 ];
@@ -178,6 +179,17 @@ export interface TelegramBotControllerOptions {
       /** Проверка реального статуса actor в чате (getChatMember). */
       getChatMember: (chatId: number, userId: number) => Promise<{ status: string }>;
     },
+  ) => Promise<boolean>;
+  /** S6: прямой handler /groups | /group <chatId> (DM-only, canManage). */
+  groupsCommandHandler?: (
+    args: string,
+    ctx: { chatId: string; userId: string; isPrivate: boolean },
+    send: TelegramReplySender,
+  ) => string | Promise<string>;
+  /** S6: callback g:... (карточка группы: сценарий/архив/активировать). */
+  groupsCallbackHandler?: (
+    data: string,
+    ctx: TelegramCallbackQueryContext,
   ) => Promise<boolean>;
   /** Обработчик «бота добавили в чат» (онбординг). */
   chatMemberHandler?: (
@@ -438,6 +450,7 @@ export class TelegramBotController {
                 });
               }
             : undefined,
+          groupsCommandHandler: this.options?.groupsCommandHandler,
           pendingGroupsHint: this.options?.pendingGroupsHint,
           transcribeVoice: this.options?.transcribeVoice,
           customSetupInterceptor: this.options?.customSetupInterceptor,
@@ -585,6 +598,11 @@ export class TelegramBotController {
           return bot.api.getChatMember(chatId, userId);
         },
       });
+      if (handled) return;
+    }
+    // S6: карточка группы (g:...) — guard canManage внутри handler'а.
+    if ((ctx.data ?? "").startsWith("g:") && this.options?.groupsCallbackHandler) {
+      const handled = await this.options.groupsCallbackHandler(ctx.data as string, ctx);
       if (handled) return;
     }
     const userId = ctx.from?.id;

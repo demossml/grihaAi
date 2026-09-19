@@ -417,6 +417,12 @@ export class TelegramBridge {
         ctx: { chatId: string; userId: string; isPrivate: boolean },
         send: TelegramReplySender,
       ) => string | Promise<string>;
+      /** S6: прямой handler /groups | /group <chatId> ... — DM-only, canManage. */
+      groupsCommandHandler?: (
+        args: string,
+        ctx: { chatId: string; userId: string; isPrivate: boolean },
+        send: TelegramReplySender,
+      ) => string | Promise<string>;
       /** D9: подсказка в /start про pending-группы (private). */
       pendingGroupsHint?: (userId: string) => string | Promise<string>;
       /** D3: STT-транскрипция голосового ДО агента. */
@@ -896,6 +902,20 @@ export class TelegramBridge {
       const handler = this.options?.setupCommandHandler;
       if (handler) {
         const args = text.slice("/setup".length).trim();
+        const reply = await handler(
+          args,
+          { chatId: String(chatId), userId: String(userId), isPrivate: chatType === "private" },
+          send,
+        );
+        await send(chatId, reply);
+        return { handled: true };
+      }
+    }
+    // S6: /groups | /group <chatId> — DM-only оркестратор групп (canManage).
+    if (text === "/groups" || text.startsWith("/groups ") || text === "/group" || text.startsWith("/group ")) {
+      const handler = this.options?.groupsCommandHandler;
+      if (handler) {
+        const args = text.replace(/^\/(groups|group)\s*/, "").trim();
         const reply = await handler(
           args,
           { chatId: String(chatId), userId: String(userId), isPrivate: chatType === "private" },

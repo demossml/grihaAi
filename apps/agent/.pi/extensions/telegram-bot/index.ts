@@ -60,6 +60,7 @@ import {
   runSetupCommand,
   tryHandleCustomText,
 } from "../chat-setup/handlers.js";
+import { handleGroupCallback, runGroupsCommand } from "../chat-setup/groups.js";
 import { presetRulesWithActor, presetMarkerKey, type PresetId } from "../chat-setup/RulePresets.js";
 import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
@@ -346,6 +347,12 @@ function getController(): TelegramBotController {
             getChatMember: async (chatId, userId) =>
               mapChatMemberStatus((await deps.getChatMember(Number(chatId), Number(userId))).status),
           }),
+        groupsCommandHandler: (args, ctx, send) =>
+          runGroupsCommand(args, ctx, { setup, users }, async (chatId, text, extra) => {
+            await send(chatId, text, undefined, extra);
+          }),
+        groupsCallbackHandler: (data, ctx) =>
+          handleGroupCallback(data, ctx, { setup, users }),
         pendingGroupsHint: async (userId) => {
           // D9: только группы, добавленные этим пользователем.
           const pending = (await setup.list()).filter(
