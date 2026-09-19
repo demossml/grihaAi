@@ -1,0 +1,19 @@
+{
+  "name": "@griha/telegram-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "griha-telegram": "./dist/bin.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "dev": "tsx src/bin.ts"
+  },
+  "dependencies": {
+    "@griha/telegram-doctor-core": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13"
+  }
+}
