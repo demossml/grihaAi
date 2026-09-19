@@ -65,6 +65,11 @@ import { presetRulesWithActor, presetMarkerKey, type PresetId } from "../chat-se
 import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
 import { transcribeVoice } from "@griha/stt";
+import { logTelegramError } from "./telegram-diagnostics.js";
+import {
+  GroupReminderService,
+  getGroupRemindersDbPath,
+} from "../../../src/services/reminders/GroupReminderService.js";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
 // Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
@@ -633,6 +638,8 @@ async function startBot(): Promise<boolean> {
     });
     // R-GR-7: фоновый воркер ретраев медиа — с ботом стартует/останавливается.
     startMediaRetry();
+    // P0-3: напоминания групп — fireDue → sendNotify (active-чат).
+    startReminderTick();
     return true;
   } catch (err: unknown) {
     console.error("[telegram-bot] startBot error:", err);
@@ -676,6 +683,52 @@ async function stopBot(): Promise<void> {
   await controller?.stop();
   setCronDeliveryNotifier(null);
   stopMediaRetry();
+  stopReminderTick();
+}
+
+// ── P0-3: reminders tick (fireDue → sendNotify) ──────────────────────────────
+let remindersSvc: GroupReminderService | null = null;
+let reminderTicker: ReturnType<typeof setInterval> | null = null;
+
+const REMINDER_TICK_MS = 30_000;
+
+async function fireDueReminders(): Promise<void> {
+  if (!remindersSvc) return;
+  const setup = getChatSetupService();
+  await remindersSvc.fireDue(new Date(), {
+    isChatActive: (chatId) => setup.isConfiguredSync(chatId),
+    send: async (chatId, text, threadId) => {
+      const ctl = getController();
+      await ctl.sendNotify(
+        Number(chatId),
+        `Напоминание: ${text}`,
+        threadId !== undefined ? Number(threadId) : undefined,
+      );
+    },
+  });
+}
+
+function startReminderTick(): void {
+  if (reminderTicker) return;
+  if (!remindersSvc) {
+    remindersSvc = new GroupReminderService(getGroupRemindersDbPath());
+    remindersSvc.init();
+  }
+  reminderTicker = setInterval(() => {
+    void fireDueReminders().catch((err: unknown) => {
+      // fireDue помечает fired ТОЛЬКО после успешного send → fail не теряет напоминание.
+      logTelegramError({ operation: "group_reminder_tick", error: err });
+    });
+  }, REMINDER_TICK_MS);
+}
+
+function stopReminderTick(): void {
+  if (reminderTicker) {
+    clearInterval(reminderTicker);
+    reminderTicker = null;
+  }
+  remindersSvc?.close();
+  remindersSvc = null;
 }
 
 /** file_id/file_unique_id из фото (самый большой размер), документа или медиа. */

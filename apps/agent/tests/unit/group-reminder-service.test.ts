@@ -94,4 +94,19 @@ describe("GroupReminderService (S12)", () => {
     const due = svc.listDue(new Date());
     assert.equal(due.length, 0, "low-confidence не авто-рассылается");
   });
+
+  it("P0-3: send fail → НЕ fired (остаётся pending для ретрая)", async () => {
+    const { svc } = makeService();
+    svc.add({ chatId: "-100", dueAt: pastDue, text: "напомни" });
+    const deps: FireReminderDeps = {
+      isChatActive: () => true,
+      send: async () => {
+        throw new Error("send down");
+      },
+    };
+    await assert.rejects(() => svc.fireDue(new Date(), deps), /send down/);
+    const due = svc.listDue(new Date());
+    assert.equal(due.length, 1, "не помечен fired");
+    assert.equal(due[0].status, "pending", "остаётся pending — ретрай в след. тике");
+  });
 });
