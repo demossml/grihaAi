@@ -21,6 +21,7 @@ import {
   type PresetRule,
 } from "./RulePresets.js";
 import { extractPolicyPatch, policyPatchToRules } from "./policy-extraction.js";
+import { getScenario } from "../scenarios/registry.js";
 
 export interface MyChatMemberEvent {
   oldStatus: string;
@@ -180,7 +181,7 @@ export async function handleSetupCallback(
 
   // Пакет B: мутирующие действия над группой (p/skip/custom/confirm/cancel) —
   // строгая проверка реального статуса actor в чате (creator/administrator).
-  const MUTATING_ACTIONS = new Set(["p", "skip", "custom", "confirm", "cancel"]);
+  const MUTATING_ACTIONS = new Set(["p", "s", "skip", "custom", "confirm", "cancel"]);
   if (MUTATING_ACTIONS.has(action)) {
     const check = await checkGroupAuthority(chatId, actorId, rec, deps);
     if (!check.ok) {
@@ -194,6 +195,22 @@ export async function handleSetupCallback(
     await ctx.answerCallbackQuery("Применено");
     await ctx.editMessageText(
       `Готово. Режим «${PRESETS[presetId as PresetId].title}» для чата ${chatId}.`,
+      { removeKeyboard: true },
+    );
+    return true;
+  }
+
+  // S3: сценарий (namespace scenarios) — применяет defaultPresetId + record.scenario.
+  if (action === "s" && presetId) {
+    const scenario = getScenario(presetId);
+    if (!scenario) {
+      await ctx.answerCallbackQuery("Неизвестный сценарий", { showAlert: true });
+      return true;
+    }
+    await deps.setup.applyScenario(chatId, presetId, { actorId });
+    await ctx.answerCallbackQuery("Применено");
+    await ctx.editMessageText(
+      `Готово. Сценарий «${scenario.title}» для чата ${chatId}.`,
       { removeKeyboard: true },
     );
     return true;

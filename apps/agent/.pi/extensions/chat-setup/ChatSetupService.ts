@@ -16,6 +16,7 @@ import {
   type PresetRule,
 } from "./RulePresets.js";
 import type { ChatSetupRecord, ChatSetupStoreFile, SetupStatus } from "./types.js";
+import { getScenario } from "../scenarios/registry.js";
 
 export function getChatSetupPath(): string {
   return path.join(getConfigDir(), "chat-setup.json");
@@ -227,6 +228,29 @@ export class ChatSetupService {
     if (!rec) return;
     rec.lastSeenAt = new Date().toISOString();
     await this.save(chats);
+  }
+
+  /**
+   * S3: применить сценарий (namespace scenarios). Ставит record.scenario,
+   * применяет defaultPresetId сценария (через applyPreset) и активирует чат.
+   * НЕ меняет определение пресета (RulePresets.secretary остаётся прежним).
+   */
+  async applyScenario(
+    chatId: string,
+    scenarioId: string,
+    opts: { actorId: string },
+  ): Promise<void> {
+    const scenario = getScenario(scenarioId);
+    if (!scenario) throw new Error(`unknown scenario ${scenarioId}`);
+    const chats = await this.list();
+    const rec = chats.find((c) => c.chatId === chatId);
+    if (rec) {
+      rec.scenario = scenarioId;
+      await this.save(chats);
+    }
+    await this.applyPreset(chatId, scenario.defaultPresetId as PresetId, {
+      actorId: opts.actorId,
+    });
   }
 
   /**

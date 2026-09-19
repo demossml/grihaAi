@@ -207,6 +207,7 @@ export function buildOnboardingText(chatTitle: string): string {
 const ONBOARDING_BUTTONS: Array<{ label: string; action: string }> = [
   { label: "Участник команды", action: "p:team" },
   { label: "Секретарь в группе", action: "p:secretary" },
+  { label: "Сценарий: тихий секретарь", action: "s:secretary" },
   { label: "Слушатель", action: "p:listener" },
   { label: "Магазин / API", action: "p:shop" },
   { label: "Только мои сообщения", action: "p:only_me" },
