@@ -128,12 +128,117 @@ test("invalid → ok false INVALID_INPUT", async () => {
   if (!result.ok) assert.equal(result.code, "INVALID_INPUT");
 });
 
+const R4_FIXTURES: Array<{ template: string; data: Record<string, unknown> }> = [
+  {
+    template: "sales-report",
+    data: {
+      title: "Отчёт по продажам",
+      periodLabel: "Сентябрь 2026",
+      generatedAtLabel: "2026-09-20",
+      summary: { orders: 2, units: 5, revenueLabel: "12 000,00 ₽" },
+      rows: [
+        { dateLabel: "01.09", product: "Кабель", qty: 3, amountLabel: "6 000,00 ₽" },
+        { dateLabel: "02.09", product: "Розетка", qty: 2, amountLabel: "6 000,00 ₽" },
+      ],
+      totalLabel: "12 000,00 ₽",
+    },
+  },
+  {
+    template: "sellers-report",
+    data: {
+      periodLabel: "Сентябрь 2026",
+      generatedAtLabel: "2026-09-20",
+      rows: [
+        { seller: "Иван", deals: 5, revenueLabel: "7 000,00 ₽", sharePercent: 58 },
+        { seller: "Мария", deals: 3, revenueLabel: "5 000,00 ₽", sharePercent: 42 },
+      ],
+      totalLabel: "12 000,00 ₽",
+    },
+  },
+  {
+    template: "revenue-report",
+    data: {
+      periodLabel: "2026",
+      generatedAtLabel: "2026-09-20",
+      byMonth: [
+        { monthLabel: "Январь", revenueLabel: "10 000,00 ₽" },
+        { monthLabel: "Февраль", revenueLabel: "20 000,00 ₽" },
+      ],
+      totalLabel: "30 000,00 ₽",
+    },
+  },
+  {
+    template: "profit-report",
+    data: {
+      periodLabel: "Сентябрь 2026",
+      generatedAtLabel: "2026-09-20",
+      revenueLabel: "100 000,00 ₽",
+      cogsLabel: "60 000,00 ₽",
+      opexLabel: "20 000,00 ₽",
+      profitLabel: "20 000,00 ₽",
+      marginPercentLabel: "20%",
+      rows: [
+        { category: "Материалы", amountLabel: "60 000,00 ₽" },
+        { category: "Аренда", amountLabel: "20 000,00 ₽" },
+      ],
+    },
+  },
+  {
+    template: "generic-table-report",
+    data: {
+      title: "Произвольная таблица",
+      subtitleLines: ["Период: Сентябрь 2026"],
+      columns: [
+        { key: "name", header: "Название", align: "left", width: "50%" },
+        { key: "value", header: "Значение", align: "right", width: "50%" },
+      ],
+      rows: [
+        { name: "А", value: "1" },
+        { name: "Б", value: "2" },
+      ],
+      footerNote: "Примечание",
+    },
+  },
+];
+
+test("R4: все шаблоны рендерятся (bytes > 5000)", async () => {
+  for (const fixture of R4_FIXTURES) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "render-tools-"));
+    try {
+      const result = await renderDocument(
+        {
+          format: "pdf",
+          template: fixture.template as never,
+          title: "Отчёт",
+          blocks: [{ kind: "markdown", text: "x" }],
+          data: fixture.data,
+        },
+        { outDir: dir },
+      );
+      assert.equal(result.ok, true, `${fixture.template}: ${JSON.stringify(result)}`);
+      if (result.ok) {
+        assert.ok(result.bytes > 5000, `${fixture.template}: bytes=${result.bytes}`);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("unknown template → UNKNOWN_TEMPLATE (registry miss)", async () => {
   // RenderTemplateSchema — enum из 3 имён, поэтому "unknown" отвергается
   // safeParse ещё раньше (INVALID_INPUT). Ветку UNKNOWN_TEMPLATE проверяем
   // напрямую через registry: неизвестное имя → getRenderer undefined.
   assert.equal(getRenderer("unknown"), undefined);
-  assert.deepEqual([...listTemplates()].sort(), ["expense-report", "meeting-minutes", "sales-report"]);
+  assert.deepEqual([...listTemplates()].sort(), [
+    "expense-report",
+    "generic-table-report",
+    "meeting-minutes",
+    "profit-report",
+    "revenue-report",
+    "sales-report",
+    "sellers-report",
+  ]);
 
   // Через публичный renderDocument enum-схема отдаёт INVALID_INPUT для "unknown".
   const viaRender = await renderDocument(

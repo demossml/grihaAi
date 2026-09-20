@@ -7,6 +7,10 @@ export const RenderTemplateSchema = z.enum([
   "sales-report",
   "expense-report",
   "meeting-minutes",
+  "sellers-report",
+  "revenue-report",
+  "profit-report",
+  "generic-table-report",
 ]);
 export type RenderTemplate = z.infer<typeof RenderTemplateSchema>;
 

@@ -10,3 +10,9 @@ export type {
   ExpenseSupplierRow,
   ExpenseReportInput,
 } from "./templates/expenseReportTypes.js";
+export type { SalesReportInput } from "./templates/salesReport.js";
+export type { SellersReportInput } from "./templates/sellersReport.js";
+export type { RevenueReportInput } from "./templates/revenueReport.js";
+export type { ProfitReportInput } from "./templates/profitReport.js";
+export type { GenericTableReportInput, GenericTableColumn } from "./templates/genericTableReport.js";
+export { formatMoney, formatCount } from "./layout/format.js";
