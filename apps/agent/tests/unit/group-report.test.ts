@@ -132,4 +132,32 @@ describe("groupReportHandler (S11)", () => {
     );
     assert.equal(out, ACCESS_DENIED);
   });
+
+  it("title пробрасывается из getChatTitle (chat-A → «Ремонт»)", async () => {
+    const repo = makeRepo();
+    const out = await groupReportHandler(
+      { sourceChatId: "chat-A" },
+      { userId: "42" },
+      repo,
+      {
+        ...deps(true),
+        getChatTitle: (id) => (id === "chat-A" ? "Ремонт" : undefined),
+      },
+    );
+    const r = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(r.title, "Ремонт");
+    assert.equal(r.chatId, "chat-A");
+  });
+
+  it("title null если getChatTitle вернул undefined", async () => {
+    const repo = makeRepo();
+    const out = await groupReportHandler(
+      { sourceChatId: "-100" },
+      { userId: "42" },
+      repo,
+      { ...deps(true), getChatTitle: () => undefined },
+    );
+    const r = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(r.title, null);
+  });
 });

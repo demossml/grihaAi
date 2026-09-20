@@ -111,6 +111,7 @@ function realDeps(): GroupAccessDeps {
       (await setup.list())
         .filter((c) => c.status === "active")
         .map((c) => c.chatId),
+    getChatTitle: (chatId) => setup.getChatTitleSync(chatId),
   };
 }
 

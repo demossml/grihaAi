@@ -92,4 +92,38 @@ describe("groupCompareHandler (S10)", () => {
     );
     assert.ok(out.includes("Укажите chatIds"));
   });
+
+  it("groups заголовок с title для A и B (разные названия)", async () => {
+    const repo = makeRepo();
+    archiveRow(repo, { id: "a1", chatId: "chat-A", messageId: "1", rawText: "из A" });
+    archiveRow(repo, { id: "a2", chatId: "chat-B", messageId: "2", rawText: "из B" });
+
+    const out = await groupCompareHandler(
+      { chatIds: ["chat-A", "chat-B"] },
+      { userId: "42" },
+      repo,
+      {
+        ...deps(() => true),
+        getChatTitle: (id) => (id === "chat-A" ? "Ремонт" : id === "chat-B" ? "Офис" : undefined),
+      },
+    );
+    const parsed = JSON.parse(out) as { groups: Array<{ chatId: string; title: string | null }> };
+    const byId = new Map(parsed.groups.map((g) => [g.chatId, g.title]));
+    assert.equal(byId.get("chat-A"), "Ремонт");
+    assert.equal(byId.get("chat-B"), "Офис");
+  });
+
+  it("title null для чата без getChatTitle результата", async () => {
+    const repo = makeRepo();
+    archiveRow(repo, { id: "a1", chatId: "chat-A", messageId: "1", rawText: "из A" });
+
+    const out = await groupCompareHandler(
+      { chatIds: ["chat-A"] },
+      { userId: "42" },
+      repo,
+      { ...deps(() => true), getChatTitle: () => undefined },
+    );
+    const parsed = JSON.parse(out) as { groups: Array<{ chatId: string; title: string | null }> };
+    assert.equal(parsed.groups[0].title, null);
+  });
 });

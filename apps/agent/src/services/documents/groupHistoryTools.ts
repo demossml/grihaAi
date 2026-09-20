@@ -18,6 +18,8 @@ export interface GroupAccessDeps {
   isAllowed: (userId: string, chatId: string) => Promise<boolean>;
   /** configured chatIds (completed|skipped) для group_recent без chatId. */
   listConfiguredChatIds: () => Promise<string[]>;
+  /** Title группы из ChatSetupRecord.chatTitle или undefined (null в ответах tools). */
+  getChatTitle?: (chatId: string) => string | undefined;
 }
 
 /** H2/H3: (a) configured + (b) allowed или canManage. */
@@ -146,6 +148,7 @@ export async function groupHistoryHandler(
 
   return JSON.stringify({
     chatId,
+    title: deps.getChatTitle?.(chatId) ?? null,
     count: rows.length,
     items: rows.map(formatArchiveItem),
   });
@@ -184,12 +187,13 @@ export async function groupRecentHandler(
   }
 
   if (chatIds.length === 0) {
-    return JSON.stringify({ chats: [], since: sinceIso, count: 0, items: [] });
+    return JSON.stringify({ chats: [], groups: [], since: sinceIso, count: 0, items: [] });
   }
 
   const rows = repo.listRecent({ chatIds, sinceIso, limit });
   return JSON.stringify({
     chats: chatIds,
+    groups: chatIds.map((id) => ({ chatId: id, title: deps.getChatTitle?.(id) ?? null })),
     since: sinceIso,
     count: rows.length,
     items: rows.map(formatArchiveItem),
@@ -242,6 +246,7 @@ export async function groupCompareHandler(
   const rows = repo.listRecent({ chatIds, sinceIso, limit });
   return JSON.stringify({
     chats: chatIds,
+    groups: chatIds.map((id) => ({ chatId: id, title: deps.getChatTitle?.(id) ?? null })),
     since: sinceIso,
     count: rows.length,
     items: rows.map(formatCompareItem),
@@ -290,6 +295,7 @@ export async function groupReportHandler(
 
   return JSON.stringify({
     chatId,
+    title: deps.getChatTitle?.(chatId) ?? null,
     threadId,
     dateFrom: fromDate,
     dateTo: toDate,

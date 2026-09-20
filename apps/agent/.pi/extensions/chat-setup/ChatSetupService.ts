@@ -124,6 +124,13 @@ export class ChatSetupService {
     return this.cache!.find((c) => c.chatId === chatId)?.scenario;
   }
 
+  /** Title группы из setup-записи или undefined, если записи нет / title пустой. */
+  getChatTitleSync(chatId: string): string | undefined {
+    this.loadSync();
+    const t = this.cache!.find((c) => c.chatId === chatId)?.chatTitle?.trim();
+    return t && t.length > 0 ? t : undefined;
+  }
+
   async get(chatId: string): Promise<ChatSetupRecord | null> {
     const chats = await this.list();
     return chats.find((c) => c.chatId === chatId) ?? null;

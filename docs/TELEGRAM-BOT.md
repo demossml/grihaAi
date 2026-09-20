@@ -322,6 +322,11 @@ OS-процесса/субагента на группу нет — изоляц
 configured И (canManage ИЛИ isAllowed)), `groups_compare` (fail-closed по всем chatId),
 `group_report` (counts + расходы, без сырых путей).
 
+**Title групп в tools:** `group_report` / `groups_compare` / `group_history` / `group_recent`
+возвращают `title` (или `groups[].title`) из `ChatSetupRecord.chatTitle` (через
+`ChatSetupService.getChatTitleSync`). Значение `null`, если группа не в setup или title
+не сохранили при add. Обновление title из Telegram update — отдельный этап (не сделан).
+
 **Напоминания** (`GroupReminderService`, `~/.grish-ai/group-reminders.sqlite`): additive
 таблица `group_reminders` (chat_id/thread_id/source_message_id/due_at/text/status);
 low-confidence → `needs_confirmation` (без авто-спама); `fireDue` пропускает
