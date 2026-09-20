@@ -12,7 +12,8 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "eslint apps packages",
-    "render": "npm run build -w @griha/render-cli && node apps/render-cli/dist/bin.js"
+    "render": "npm run build -w @griha/render-cli && node apps/render-cli/dist/bin.js",
+    "obs": "npm run build -w @griha/obs-cli && node apps/obs-cli/dist/bin.js"
   },
   "devDependencies": {
     "@babel/core": "^8.0.5",

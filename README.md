@@ -38,6 +38,21 @@ node apps/telegram-cli/dist/bin.js doctor # диагностика окруже�
 
 Подробности и флаги — [docs/EXTERNAL-TOOLS.md](docs/EXTERNAL-TOOLS.md).
 
+## Наблюдаемость
+
+Журнал работы Griha **без LLM** — JSONL в `~/.grish-ai/obs/` (пакет
+`packages/observability`). CLI `griha-obs` для терминала/ssh и agent-tools
+`obs_summary`/`obs_query` для операторского агента на Mac Mini.
+
+```bash
+npm run obs                                  # build CLI + запуск bin.js
+node apps/obs-cli/dist/bin.js tail --lines 100
+node apps/obs-cli/dist/bin.js query --event gate.block --limit 20
+```
+
+`GRIHA_OBS=0` выключает запись; `GRIHA_OBS_DIR` меняет каталог. Подробности —
+[docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+
 ## Быстрый старт
 
 ```bash
