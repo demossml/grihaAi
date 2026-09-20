@@ -225,6 +225,37 @@ test("R4: все шаблоны рендерятся (bytes > 5000)", async () =
   }
 });
 
+test("R5: sellers с долями 50/30/20 → bars рендерятся (без chart-либ)", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "render-tools-"));
+  try {
+    const result = await renderDocument(
+      {
+        format: "pdf",
+        template: "sellers-report",
+        title: "Отчёт по продавцам",
+        blocks: [{ kind: "markdown", text: "x" }],
+        data: {
+          periodLabel: "Сентябрь 2026",
+          generatedAtLabel: "2026-09-20",
+          rows: [
+            { seller: "Иван", deals: 5, revenueLabel: "5 000,00 ₽", sharePercent: 50 },
+            { seller: "Мария", deals: 3, revenueLabel: "3 000,00 ₽", sharePercent: 30 },
+            { seller: "Олег", deals: 2, revenueLabel: "2 000,00 ₽", sharePercent: 20 },
+          ],
+          totalLabel: "10 000,00 ₽",
+        },
+      },
+      { outDir: dir },
+    );
+    assert.equal(result.ok, true, JSON.stringify(result));
+    if (result.ok) {
+      assert.ok(result.bytes > 5000, `bytes=${result.bytes}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("unknown template → UNKNOWN_TEMPLATE (registry miss)", async () => {
   // RenderTemplateSchema — enum из 3 имён, поэтому "unknown" отвергается
   // safeParse ещё раньше (INVALID_INPUT). Ветку UNKNOWN_TEMPLATE проверяем

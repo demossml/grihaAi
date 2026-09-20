@@ -15,4 +15,12 @@ export type { SellersReportInput } from "./templates/sellersReport.js";
 export type { RevenueReportInput } from "./templates/revenueReport.js";
 export type { ProfitReportInput } from "./templates/profitReport.js";
 export type { GenericTableReportInput, GenericTableColumn } from "./templates/genericTableReport.js";
-export { formatMoney, formatCount } from "./layout/format.js";
+export { formatMoney, formatCount, parseMoneyLabel } from "./layout/format.js";
+export {
+  buildHorizontalBars,
+  buildBarText,
+  addHorizontalBarsTable,
+  BAR_COLUMNS,
+  BAR_BLOCK,
+  type HorizontalBarItem,
+} from "./layout/barChart.js";

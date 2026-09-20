@@ -7,11 +7,13 @@ import { SpecBuilder, type Spec } from "./spec.js";
 import { REPORT_COLORS } from "../layout/tokens.js";
 import { buildReportShellSpec } from "../layout/shell.js";
 import { addReportTable } from "../layout/table.js";
+import { addHorizontalBarsTable } from "../layout/barChart.js";
+import { parseMoneyLabel } from "../layout/format.js";
 
 export interface RevenueReportInput {
   periodLabel: string;
   generatedAtLabel: string;
-  byMonth: Array<{ monthLabel: string; revenueLabel: string }>;
+  byMonth: Array<{ monthLabel: string; revenueLabel: string; value?: number }>;
   totalLabel: string;
 }
 
@@ -35,6 +37,17 @@ export function buildRevenueReportSpec(input: RevenueReportInput): Spec {
         });
       } else {
         b.add("Text", { text: "Нет данных по месяцам.", fontSize: 10, color: REPORT_COLORS.muted });
+      }
+      b.add("Spacer", { height: 8 });
+      if (input.byMonth.length > 0) {
+        addHorizontalBarsTable(
+          b,
+          input.byMonth.map((m) => ({
+            label: m.monthLabel,
+            value: m.value ?? parseMoneyLabel(m.revenueLabel),
+            valueLabel: m.revenueLabel,
+          })),
+        );
       }
       b.add("Spacer", { height: 8 });
       b.add("Divider", { color: REPORT_COLORS.border, thickness: 1, marginTop: 4, marginBottom: 4 });

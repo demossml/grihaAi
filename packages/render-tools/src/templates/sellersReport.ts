@@ -7,6 +7,7 @@ import { SpecBuilder, type Spec } from "./spec.js";
 import { REPORT_COLORS } from "../layout/tokens.js";
 import { buildReportShellSpec } from "../layout/shell.js";
 import { addReportTable } from "../layout/table.js";
+import { addHorizontalBarsTable } from "../layout/barChart.js";
 
 export interface SellersReportInput {
   periodLabel: string;
@@ -42,6 +43,17 @@ export function buildSellersReportSpec(input: SellersReportInput): Spec {
         });
       } else {
         b.add("Text", { text: "Нет данных по продавцам.", fontSize: 10, color: REPORT_COLORS.muted });
+      }
+      b.add("Spacer", { height: 8 });
+      if (input.rows.length > 0) {
+        addHorizontalBarsTable(
+          b,
+          input.rows.map((r) => ({
+            label: r.seller,
+            value: r.sharePercent,
+            valueLabel: `${r.sharePercent}%`,
+          })),
+        );
       }
       b.add("Spacer", { height: 8 });
       b.add("Divider", { color: REPORT_COLORS.border, thickness: 1, marginTop: 4, marginBottom: 4 });
