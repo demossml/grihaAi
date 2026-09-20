@@ -29,7 +29,15 @@ test("tools/call list_templates → content text JSON-массив", async () =>
   });
   const result = resp.result as { content: Array<{ type: string; text: string }> };
   const list = JSON.parse(result.content[0].text);
-  assert.deepEqual([...list].sort(), ["expense-report", "meeting-minutes", "sales-report"]);
+  assert.deepEqual([...list].sort(), [
+    "expense-report",
+    "generic-table-report",
+    "meeting-minutes",
+    "profit-report",
+    "revenue-report",
+    "sales-report",
+    "sellers-report",
+  ]);
 });
 
 test("tools/call render_pdf invalid → isError true", async () => {

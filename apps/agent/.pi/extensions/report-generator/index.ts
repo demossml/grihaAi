@@ -16,10 +16,10 @@ import { getSessionContext } from "../user-rules/context.js";
 import { logTelegramEvent } from "../telegram-bot/telegram-diagnostics.js";
 import { emit } from "@griha/observability";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
+import { getChatSetupService } from "../chat-setup/ChatSetupService.js";
 import {
-  buildExpenseReportData,
+  buildExpenseReportInput,
   EXPENSE_REPORT_EMPTY_MESSAGE,
-  type ExpenseReportBuildResult,
 } from "../../../src/services/documents/expenseReportTools.js";
 import type { DocumentsRepository } from "../../../src/services/documents/DocumentsRepository.js";
 
@@ -49,7 +49,12 @@ type GeneratePresentationParams = Static<typeof GeneratePresentationSchema>;
 
 /** Человекочитаемая подпись Telegram-документа для отчёта. */
 function buildReportCaption(reportType: GenerateReportParams["reportType"], data: GenerateReportParams["data"]): string {
-  const period = typeof data.period === "string" ? data.period : undefined;
+  const period =
+    typeof data.periodLabel === "string"
+      ? data.periodLabel
+      : typeof data.period === "string"
+        ? data.period
+        : undefined;
   switch (reportType) {
     case "sales-report":
       return period ? `Отчёт по продажам за ${period}` : "Отчёт по продажам";
@@ -111,18 +116,24 @@ export default function reportGenerator(
             };
           }
           const repo = deps?.documentsRepo ?? getDocumentsRepository();
-          const built: ExpenseReportBuildResult = await buildExpenseReportData(repo, {
-            chatId: sessionCtx.chatId,
-            threadId: sessionCtx.threadId,
-            period: typeof expenseData.period === "string" ? expenseData.period : undefined,
-          });
+          // R6: rich-вход ExpenseReportInput (group title + поставщики + чеки с
+          // позициями) — тот же тип, что рисует @griha/render-tools.
+          const built = await buildExpenseReportInput(
+            repo,
+            {
+              chatId: sessionCtx.chatId,
+              threadId: sessionCtx.threadId,
+              period: typeof expenseData.period === "string" ? expenseData.period : undefined,
+            },
+            { getChatTitle: (chatId) => getChatSetupService().getChatTitleSync(chatId) },
+          );
           if (!built.ok) {
             return {
               content: [{ type: "text", text: built.error }],
               details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
             };
           }
-          renderData = built.data;
+          renderData = built.data as unknown as Record<string, unknown>;
         }
       }
 

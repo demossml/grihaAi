@@ -58,5 +58,13 @@ test("list-templates → code 0 и JSON-массив", async () => {
   });
   assert.equal(code, 0);
   const list = JSON.parse(out.join(""));
-  assert.deepEqual([...list].sort(), ["expense-report", "meeting-minutes", "sales-report"]);
+  assert.deepEqual([...list].sort(), [
+    "expense-report",
+    "generic-table-report",
+    "meeting-minutes",
+    "profit-report",
+    "revenue-report",
+    "sales-report",
+    "sellers-report",
+  ]);
 });

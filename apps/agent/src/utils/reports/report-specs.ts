@@ -218,8 +218,56 @@ export function buildReportSpec(type: ReportType, data: Record<string, unknown>)
     case "sales-report":
       return buildSalesReportSpec(data as SalesReportData);
     case "expense-report":
-      return buildExpenseReportSpec(data as ExpenseReportData);
+      return buildExpenseReportSpec(normalizeExpenseData(data));
     case "meeting-minutes":
       return buildMeetingMinutesSpec(data as MeetingMinutesData);
   }
+}
+
+/** Извлечь число из денежной метки "1 234,56 ₽" (для legacy-адаптера). */
+function parseMoneyLabel(label: string): number {
+  if (!label) return 0;
+  const cleaned = label.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(",", ".");
+  const v = Number.parseFloat(cleaned);
+  return Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * R6: rich ExpenseReportInput → legacy ExpenseReportData (обратная совместимость
+ * legacy-рендера). Если данные уже старые (period/totalAmount/categories/items),
+ * возвращаются как есть.
+ */
+function normalizeExpenseData(data: Record<string, unknown>): ExpenseReportData {
+  const isRich =
+    (typeof data.summary === "object" && data.summary !== null) ||
+    Array.isArray(data.suppliers) ||
+    Array.isArray(data.receipts);
+  if (!isRich) return data as ExpenseReportData;
+
+  const summary = (data.summary ?? {}) as { totalLabel?: string };
+  const suppliers = Array.isArray(data.suppliers)
+    ? (data.suppliers as Array<{ supplier: string; totalLabel: string }>)
+    : [];
+  const receipts = Array.isArray(data.receipts)
+    ? (data.receipts as Array<{ title: string; meta: string; items: Array<{ name: string; amountLabel: string }> }>)
+    : [];
+
+  return {
+    period:
+      typeof data.periodLabel === "string"
+        ? data.periodLabel
+        : typeof data.period === "string"
+          ? data.period
+          : "",
+    totalAmount: parseMoneyLabel(summary.totalLabel ?? ""),
+    categories: suppliers.map((s) => ({ name: s.supplier, amount: parseMoneyLabel(s.totalLabel) })),
+    items: receipts.flatMap((r) =>
+      (r.items ?? []).map((it) => ({
+        date: r.meta ?? "",
+        category: r.title ?? "",
+        description: it.name,
+        amount: parseMoneyLabel(it.amountLabel),
+      })),
+    ),
+  };
 }
