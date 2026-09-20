@@ -13,6 +13,7 @@ import { buildTelegramSessionKey } from "./session-key.js";
 import { logTelegramError } from "./telegram-diagnostics.js";
 import { formatRulesContext } from "../user-rules/format-rules-context.js";
 import type { evaluatePreFilter, RulePreFilterInput } from "../user-rules/prefilter.js";
+import { emit } from "@griha/observability";
 
 export interface PrepareTurnInput {
   chatId: string;
@@ -82,6 +83,13 @@ function blocked(
 export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps): PrepareTurnResult {
   // 2) R-GR-1: pending (group/supergroup/channel) — нулевой ответ (даже на @mention).
   if ((input.isGroup || input.isChannel === true) && !deps.isGroupConfigured(input.chatId)) {
+    emit({
+      component: "telegram.gate",
+      event: "gate.block",
+      chatId: input.chatId,
+      userId: input.userId,
+      data: { reason: "group-not-configured" },
+    });
     return blocked("group-not-configured");
   }
 
@@ -122,6 +130,18 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
           `process=${gate.process} archive=${gate.archive} suppress=${gate.suppressReply}`,
       );
     }
+    emit({
+      component: "telegram.gate",
+      event: "gate.block",
+      chatId: input.chatId,
+      userId: input.userId,
+      data: {
+        reason: gate.reason ?? "prefilter",
+        scenario,
+        archive: gate.archive === true,
+        suppressReply: gate.suppressReply === true,
+      },
+    });
     return blocked("prefilter", {
       archive: gate.archive === true,
       suppressReply: gate.suppressReply === true,
@@ -129,6 +149,18 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
       blockReason: gate.reason ?? "prefilter",
     });
   }
+
+  emit({
+    component: "telegram.gate",
+    event: "gate.allow",
+    chatId: input.chatId,
+    userId: input.userId,
+    data: {
+      scenario: scenario,
+      archive: gate.archive === true,
+      suppressReply: gate.suppressReply === true,
+    },
+  });
 
   return {
     process: true,

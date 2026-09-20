@@ -36,6 +36,7 @@ import {
 } from "./file-send-bridge.js";
 import { setTelegramPinApi } from "./pin-bridge.js";
 import { logTelegramError } from "./telegram-diagnostics.js";
+import { emit } from "@griha/observability";
 
 /** Minimal callback-query context surface (grammy `callback_query:data`). */
 export interface TelegramCallbackQueryContext {
@@ -750,6 +751,20 @@ export class TelegramBotController {
           }),
         "sendDocument",
       );
+      // O4: факт отправки документа.
+      let bytes: number | undefined;
+      try {
+        bytes = fs.statSync(filePath).size;
+      } catch {
+        bytes = undefined;
+      }
+      emit({
+        component: "telegram.send",
+        event: "telegram.send.document",
+        ok: docOk,
+        chatId: String(chatId),
+        data: { bytes },
+      });
     }
     if (textOk && docOk) {
       console.log(
@@ -854,6 +869,14 @@ export class TelegramBotController {
       return;
     }
     incMetric("telegram_updates_total");
+    // O4: факт приёма update (без текста).
+    emit({
+      component: "telegram.bot",
+      event: "update.received",
+      updateId: update.updateId,
+      chatId: msg?.chat?.id !== undefined ? String(msg.chat.id) : undefined,
+      data: { chatType: msg?.chat?.type },
+    });
     console.log(
       `[telegram-bot] incoming update kind=${kind} user=${msg?.from?.id ?? "?"} ` +
         `sender_chat=${msg?.senderChat?.id ?? "-"} chat=${msg?.chat?.id ?? "?"} type=${msg?.chat?.type ?? "?"} ` +

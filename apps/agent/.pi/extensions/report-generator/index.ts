@@ -14,6 +14,7 @@ import type { RenderRequest } from "@griha/render-contracts";
 import { setSessionFile } from "../../../src/utils/telegram/session-files.js";
 import { getSessionContext } from "../user-rules/context.js";
 import { logTelegramEvent } from "../telegram-bot/telegram-diagnostics.js";
+import { emit } from "@griha/observability";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import {
   buildExpenseReportData,
@@ -146,10 +147,26 @@ export default function reportGenerator(
           blocks: [{ kind: "markdown", text: caption }],
           data: renderData,
         };
+        emit({
+          component: "report.render",
+          event: "report.render.start",
+          chatId: sessionCtx?.chatId,
+          data: { reportType: params.reportType },
+        });
+        const startedAt = Date.now();
         // P5: ветвление рендера. Без GRIHA_RENDER_CLI=1 → legacy (renderPdfReport) 1:1.
         const { filePath } = await renderViaCliOrLegacy(request, () =>
           renderPdfReport(params.reportType, renderData),
         );
+        const bytes = statSync(filePath).size;
+        emit({
+          component: "report.render",
+          event: "report.render.end",
+          ok: true,
+          chatId: sessionCtx?.chatId,
+          durationMs: Date.now() - startedAt,
+          data: { reportType: params.reportType, bytes },
+        });
         logTelegramEvent({
           event: "document.created",
           correlationId,
@@ -172,6 +189,13 @@ export default function reportGenerator(
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        emit({
+          component: "report.render",
+          event: "report.render.end",
+          ok: false,
+          chatId: sessionCtx?.chatId,
+          data: { reportType: params.reportType, error: message },
+        });
         return {
           content: [{ type: "text", text: `Report generation failed: ${message}` }],
           details: { error: message },

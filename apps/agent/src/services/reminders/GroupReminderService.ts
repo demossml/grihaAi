@@ -15,6 +15,7 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { getConfigDir } from "@griha/config";
+import { emit } from "@griha/observability";
 
 export type GroupReminderStatus = "pending" | "needs_confirmation" | "fired" | "cancelled";
 
@@ -177,10 +178,23 @@ export class GroupReminderService {
     for (const r of due) {
       if (!deps.isChatActive(r.chatId)) {
         skipped++;
+        emit({
+          component: "reminder",
+          event: "reminder.fire",
+          chatId: r.chatId,
+          ok: false,
+          data: { skipped: "inactive" },
+        });
         continue; // archived/pending — не шлём напоминание.
       }
       await deps.send(r.chatId, r.text, r.threadId);
       this.markFired(r.id);
+      emit({
+        component: "reminder",
+        event: "reminder.fire",
+        chatId: r.chatId,
+        ok: true,
+      });
       fired++;
     }
     return { fired, skipped };
