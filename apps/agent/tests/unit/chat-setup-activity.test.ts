@@ -76,4 +76,39 @@ describe("updateChatMeta (P0-2)", () => {
     await setup.updateChatMeta("-100", {});
     assert.equal((await setup.get("-100"))?.chatTitle, "Старое");
   });
+
+  it("trim: title с пробелами обрезается", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatTitle: "Старое", chatType: "group", addedByUserId: "1" });
+    await setup.updateChatMeta("-100", { title: "  Ремонт  " });
+    assert.equal((await setup.get("-100"))?.chatTitle, "Ремонт");
+    assert.equal(setup.getChatTitleSync("-100"), "Ремонт");
+  });
+
+  it("whitespace-only title → no-op", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatTitle: "Старое", chatType: "group", addedByUserId: "1" });
+    await setup.updateChatMeta("-100", { title: "   " });
+    assert.equal((await setup.get("-100"))?.chatTitle, "Старое");
+  });
+
+  it("неизвестный chatId → не создаёт запись (list length тот же)", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatTitle: "Старое", chatType: "group", addedByUserId: "1" });
+    const before = (await setup.list()).length;
+    await setup.updateChatMeta("-999", { title: "Новый чат" });
+    const after = (await setup.list()).length;
+    assert.equal(before, after);
+    assert.equal(await setup.get("-999"), null);
+  });
+
+  it("обновляет updatedAt при изменении title", async () => {
+    const { setup } = makeSetup();
+    await setup.markPending({ chatId: "-100", chatTitle: "Старое", chatType: "group", addedByUserId: "1" });
+    const before = (await setup.get("-100"))?.updatedAt;
+    await new Promise((r) => setTimeout(r, 5));
+    await setup.updateChatMeta("-100", { title: "Новое" });
+    const after = (await setup.get("-100"))?.updatedAt;
+    assert.notEqual(after, before, "updatedAt должен обновиться");
+  });
 });

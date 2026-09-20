@@ -325,7 +325,13 @@ configured И (canManage ИЛИ isAllowed)), `groups_compare` (fail-closed по 
 **Title групп в tools:** `group_report` / `groups_compare` / `group_history` / `group_recent`
 возвращают `title` (или `groups[].title`) из `ChatSetupRecord.chatTitle` (через
 `ChatSetupService.getChatTitleSync`). Значение `null`, если группа не в setup или title
-не сохранили при add. Обновление title из Telegram update — отдельный этап (не сделан).
+не сохранили при add.
+
+**Refresh title из update (best-effort):** при любом inbound update с `message.chat.title`
+(группа/supergroup/channel) контроллер вызывает `ChatSetupService.updateChatMeta`
+(fire-and-forget, без вызова Telegram `getChat`). Обновляет только существующую запись;
+пустой/неизменённый title — no-op. После переименования группы title подтянется со
+следующим сообщением в ней.
 
 **Напоминания** (`GroupReminderService`, `~/.grish-ai/group-reminders.sqlite`): additive
 таблица `group_reminders` (chat_id/thread_id/source_message_id/due_at/text/status);

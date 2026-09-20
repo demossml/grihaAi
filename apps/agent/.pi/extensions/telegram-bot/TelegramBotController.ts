@@ -261,6 +261,8 @@ export interface TelegramBotControllerOptions {
   getBotSelf?: () => { id: number; username?: string } | undefined;
   /** R1: false → pending-группа silent (ChatSetupService.isConfiguredSync). */
   getGroupConfigured?: (chatId: string) => boolean;
+  /** Title refresh: best-effort обновление chatTitle из inbound update (без getChat). */
+  updateChatMeta?: (chatId: string, title: string) => void | Promise<void>;
   /** Advertised bot commands (defaults to DEFAULT_TELEGRAM_COMMANDS). */
   commands?: Array<{ command: string; description: string }>;
   /** Send retry policy (injectable for tests). */
@@ -862,6 +864,20 @@ export class TelegramBotController {
     const update = this.toTgUpdate(ctx);
     if (!update) return;
     const msg = update.message;
+    // Title refresh (best-effort, без getChat): chat.title из inbound update.
+    const chat = msg?.chat;
+    const chatTitle = chat?.title?.trim();
+    if (chat && chatTitle) {
+      const updateMeta = this.options?.updateChatMeta;
+      if (updateMeta) {
+        Promise.resolve(updateMeta(String(chat.id), chatTitle)).catch((err: unknown) => {
+          console.warn(
+            "[telegram-bot] updateChatMeta failed:",
+            err instanceof Error ? err.message : err,
+          );
+        });
+      }
+    }
     if (msg?.isService) {
       console.log(
         `[telegram-bot] service message chat=${msg.chat?.id ?? "?"} ignored (not agent input)`,
@@ -915,7 +931,7 @@ export class TelegramBotController {
         senderChat: sender?.senderChatId
           ? { id: Number(sender.senderChatId), title: sender.senderChatTitle }
           : undefined,
-        chat: { id: chatIdNum, type: n.chat.type },
+        chat: { id: chatIdNum, type: n.chat.type, title: n.chat.title },
         messageId: n.message.id !== "0" ? Number(n.message.id) : undefined,
         threadId: n.message.threadId,
         isForum: n.chat.isForum,

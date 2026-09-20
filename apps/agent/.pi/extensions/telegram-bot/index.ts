@@ -412,6 +412,8 @@ function getController(): TelegramBotController {
         getBotSelf: () => botSelf,
         // R1: pending-группа silent (онбординг не завершён → prefilter false).
         getGroupConfigured: (chatId) => setup.isConfiguredSync(chatId),
+        // Title refresh: chatTitle из inbound update (без getChat) — best-effort.
+        updateChatMeta: (chatId, title) => setup.updateChatMeta(chatId, { title }),
         // Единый медиа-конвейер (photo/document/voice/video/audio): download →
         // OCR/STT → archive → expense. Одна точка для allowed-ходов (OCR до
         // агента) и фоновых путей (listener / archive_ocr_ingest).

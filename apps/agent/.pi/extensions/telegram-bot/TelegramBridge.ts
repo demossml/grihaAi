@@ -34,7 +34,7 @@ export interface TgMessage {
   from?: TgUser;
   /** Канал/группа-отправитель (channel_post); from при этом может отсутствовать. */
   senderChat?: TgSenderChat;
-  chat?: { id: number; type?: string };
+  chat?: { id: number; type?: string; title?: string };
   messageId?: number;
   /** Тема форума (message_thread_id); undefined в обычных группах/DM. */
   threadId?: string;

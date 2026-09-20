@@ -252,12 +252,14 @@ export class ChatSetupService {
 
   /** P0-2: обновить метаданные чата (title) — только при изменении. */
   async updateChatMeta(chatId: string, meta: { title?: string }): Promise<void> {
-    if (meta.title === undefined) return;
+    const title = meta.title?.trim();
+    if (!title) return; // пустой/whitespace title — no-op
     const chats = await this.list();
     const rec = chats.find((c) => c.chatId === chatId);
-    if (!rec) return;
-    if (rec.chatTitle === meta.title) return;
-    rec.chatTitle = meta.title;
+    if (!rec) return; // нет записи setup — не создаём
+    if (rec.chatTitle === title) return;
+    rec.chatTitle = title;
+    rec.updatedAt = new Date().toISOString();
     await this.save(chats);
   }
 

@@ -887,6 +887,84 @@ describe("telegram bot controller", () => {
     await controller.stop();
   });
 
+  it("title refresh: chat.title из inbound update → updateChatMeta (без getChat)", async () => {
+    const fake = new FakeBot();
+    const calls: Array<{ chatId: string; title: string }> = [];
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake, {
+      updateChatMeta: (chatId, title) => {
+        calls.push({ chatId, title });
+      },
+    });
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: {
+        from: { id: 123 },
+        chat: { id: -100, type: "supergroup", title: "Закупки" },
+        text: "привет",
+      },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(calls, [{ chatId: "-100", title: "Закупки" }]);
+    await controller.stop();
+  });
+
+  it("title refresh: нет title → updateChatMeta не вызывается", async () => {
+    const fake = new FakeBot();
+    let calls = 0;
+    const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake, {
+      updateChatMeta: () => {
+        calls++;
+      },
+    });
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: { from: { id: 123 }, chat: { id: 123, type: "private" }, text: "привет" },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(calls, 0, "private чат без title — no-op");
+    await controller.stop();
+  });
+
+  it("title refresh: сервисное сообщение (rename) с title → updateChatMeta, но без агента", async () => {
+    const fake = new FakeBot();
+    const calls: Array<{ chatId: string; title: string }> = [];
+    let agentCalls = 0;
+    const controller = new TelegramBotController(
+      async () => {
+        agentCalls++;
+        return { text: "x" };
+      },
+      [123],
+      () => fake,
+      {
+        updateChatMeta: (chatId, title) => {
+          calls.push({ chatId, title });
+        },
+      },
+    );
+    controller.start("token");
+
+    await fake.handler?.({
+      update: { update_id: 1 },
+      message: {
+        from: { id: 42 },
+        chat: { id: -100, type: "supergroup", title: "Склад" },
+        new_chat_title: "Склад",
+      },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(calls, [{ chatId: "-100", title: "Склад" }]);
+    assert.equal(agentCalls, 0, "агент не вызывается на сервисное сообщение");
+    await controller.stop();
+  });
+
   it("send_file через контроллер: документ в чат (с темой форума), ошибки без падения", async () => {
     const fake = new FakeBot();
     const controller = new TelegramBotController(async () => ({ text: "x" }), [123], () => fake);
