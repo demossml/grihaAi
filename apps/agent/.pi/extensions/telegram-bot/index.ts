@@ -66,6 +66,7 @@ import { mapChatMemberStatus } from "./chat-auth.js";
 import { setTelegramFileAclCheck } from "./file-send-bridge.js";
 import { transcribeVoice } from "@griha/stt";
 import { logTelegramError } from "./telegram-diagnostics.js";
+import { emit } from "@griha/observability";
 import { getGroupReminderService } from "../../../src/services/reminders/GroupReminderService.js";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
@@ -90,6 +91,8 @@ async function ensureBotSelf(
       const me = await api.getMe();
       const username = me.username ?? process.env.TELEGRAM_BOT_USERNAME;
       console.log(`[telegram-bot] getMe ok: id=${me.id} username=${username ?? ""}`);
+      // O3: перед long polling — факт готовности бота (без токена).
+      emit({ component: "telegram.bot", event: "polling.started", ok: true, data: { username: username ?? "" } });
       return { id: me.id, username };
     } catch (err: unknown) {
       console.error(

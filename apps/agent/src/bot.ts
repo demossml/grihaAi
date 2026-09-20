@@ -14,10 +14,14 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { getConfigDir } from "@griha/config";
+import { initObs, emit } from "@griha/observability";
 
 const AGENT_CWD = process.cwd();
 
 async function main(): Promise<void> {
+  initObs();
+  emit({ component: "bot", event: "process.start", data: { pid: process.pid } });
+
   const agentDir = getAgentDir();
   const loader = new DefaultResourceLoader({ cwd: AGENT_CWD, agentDir });
   await loader.reload();
@@ -56,6 +60,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("uncaughtException", (err) => {
     console.error("[bot] uncaught exception:", err);
+    emit({ component: "bot", event: "process.uncaught", level: "error", data: { message: err instanceof Error ? err.message : String(err) } });
     try {
       session.dispose();
     } catch {
@@ -65,6 +70,7 @@ async function main(): Promise<void> {
   });
   process.on("unhandledRejection", (reason) => {
     console.error("[bot] unhandled rejection:", reason);
+    emit({ component: "bot", event: "process.unhandledRejection", level: "error", data: { message: reason instanceof Error ? reason.message : String(reason) } });
   });
 
   // Safety keep-alive (long polling обычно сам держит event loop).
