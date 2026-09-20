@@ -23,7 +23,7 @@ export const REPORT_COLORS = {
 
 const PAGE_MARGINS = { marginTop: 32, marginBottom: 32, marginLeft: 40, marginRight: 40 } as const;
 
-class SpecBuilder {
+export class SpecBuilder {
   private elements: Record<string, SpecElement> = {};
   private n = 0;
   private parentId: string | null = null;
