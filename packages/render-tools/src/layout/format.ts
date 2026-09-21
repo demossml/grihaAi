@@ -18,7 +18,7 @@ export function formatCount(n: number): string {
 export function parseMoneyLabel(label: string): number {
   if (!label) return 0;
   const cleaned = label
-    .replace(/[^\d.,\-]/g, "")
+    .replace(/[^\d.,-]/g, "")
     .replace(/\./g, "")
     .replace(",", ".");
   const v = Number.parseFloat(cleaned);
