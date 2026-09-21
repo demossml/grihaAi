@@ -47,6 +47,8 @@ import { createHttpLearningLlm } from "../../../src/utils/learning/http-learning
 import { telegramRulesHandler } from "../user-rules/index.js";
 import { applyApprovalDecision } from "../approval-gate/index.js";
 import { getUsersService, resolveOwnerId } from "../../../src/services/UsersService.js";
+import { SystemUpdateService } from "../../../src/services/update/SystemUpdateService.js";
+import { isOwnerUserId } from "../../../src/services/update/owner.js";
 import { formatExpenseBrief } from "../../../src/services/documents/groupHistoryTools.js";
 import { handleUsersCommand } from "../../../src/services/users-command.js";
 import {
@@ -485,6 +487,35 @@ function getController(): TelegramBotController {
           return `Гриша работает.\n\nМетрики:\n${lines || "(нет данных)"}`;
         },
         botUsername: botSelf?.username,
+        // system_update: /update [status] — private-only, owner.
+        updateCommandHandler: async (args, ctx) => {
+          if (!ctx.isPrivate) return "Обновление — только в личных сообщениях с ботом.";
+          if (!isOwnerUserId(ctx.userId)) return "Обновление доступно только владельцу бота.";
+          const svc = new SystemUpdateService({
+            repoDir: process.cwd(),
+            assertOwner: (u) => isOwnerUserId(u),
+          });
+          const wantStatus = args === "status";
+          const result = wantStatus
+            ? await svc.status()
+            : await svc.run({ userId: ctx.userId, fromCli: false });
+          if (!result.ok) {
+            return `Ошибка обновления (${result.code}): ${result.message}`;
+          }
+          if (wantStatus) {
+            const dirty = result.log.find((l) => l.startsWith("dirty=")) ?? "dirty=no";
+            return [
+              `Статус обновления:`,
+              `remote: ${result.remote}`,
+              `branch: ${result.branch}`,
+              `sha: ${result.beforeSha}`,
+              dirty,
+            ].join("\n");
+          }
+          return result.restarted
+            ? `Обновлено ${result.beforeSha} → ${result.afterSha}. Перезапускаю…`
+            : `Уже актуально (${result.beforeSha}).`;
+        },
         // G7: заявка на вступление — по умолчанию ТОЛЬКО уведомление владельцу
         // (автоодобрение исключительно при явном правиле join_auto_approve).
         joinRequestHandler: async (event, deps) => {

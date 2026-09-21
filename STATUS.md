@@ -404,3 +404,11 @@
 - [ ] report_run PDF orchestrator (not in this change)
 - [ ] secretary_digest (future)
 
+## Phase 40 — System update (self-update)
+
+- [x] `SystemUpdateService` (`apps/agent/src/services/update/`): status/run, git fetch+`--ff-only` (demossml/grihaAi), DIRTY/BUILD/WRONG_REMOTE/DENY
+- [x] Telegram `/update` / `/update status` (private + owner) + tool `system_update`
+- [x] CLI `npm run system-update[:status] -w @griha/agent` (allowLocalCli)
+- [x] restart через `systemctl --user restart griha-ai` (или `GRIHA_RESTART_CMD`)
+- [ ] авто-update по cron (не в этом этапе)
+

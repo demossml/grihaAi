@@ -8,7 +8,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test \"tests/**/*.test.ts\"",
     "bot": "tsx src/bot.ts",
-    "dev": "echo \"run pi from this directory: ../../node_modules/.bin/pi\""
+    "dev": "echo \"run pi from this directory: ../../node_modules/.bin/pi\"",
+    "system-update": "tsx src/services/update/cli.ts",
+    "system-update:status": "tsx src/services/update/cli.ts --status"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.85.1",

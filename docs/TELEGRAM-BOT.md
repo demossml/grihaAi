@@ -210,7 +210,11 @@ await session.bindExtensions({ mode: "json" });
 | `/telegram-start` | Запустить long polling. |
 | `/telegram-stop` | Остановить long polling. |
 
-В самом Telegram пользователю доступны: `/start`, `/status`, `/new`.
+В самом Telegram пользователю доступны: `/start`, `/status`, `/new`, `/update`.
+
+`/update` / `/update status` — самообновление с GitHub `demossml/grihaAi` (main),
+только private + owner. Dirty working tree → отказ; build упал → без restart.
+Подробнее — [docs/SYSTEM_UPDATE.md](SYSTEM_UPDATE.md).
 
 `/new` — реальный сброс изолированной диалоговой сессии: `TelegramBridge` зовёт `resetHandler` → `TelegramSessionPool.reset(userId)`. Текущий `AgentSession` для `tg:<userId>` закрывается (`dispose()`), новый с чистым `sessionId` создаётся лениво на следующем сообщении.
 

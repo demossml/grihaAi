@@ -242,6 +242,11 @@ export interface TelegramBotControllerOptions {
   ) => Promise<void>;
   /** G11: /status для admin (метрики). */
   statusHandler?: (userId: string) => string | Promise<string>;
+  /** system_update: /update [status] — private-only, owner. */
+  updateCommandHandler?: (
+    args: string,
+    ctx: { chatId: string; userId: string; isPrivate: boolean },
+  ) => string | Promise<string>;
   /** G4: bot username для deep links. */
   botUsername?: string;
   /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
@@ -462,6 +467,7 @@ export class TelegramBotController {
           processMediaAlbum: this.options?.processMediaAlbum,
           pinHandler: this.options?.pinHandler,
           statusHandler: this.options?.statusHandler,
+          updateCommandHandler: this.options?.updateCommandHandler,
           botUsername: this.options?.botUsername,
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,

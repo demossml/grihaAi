@@ -29,6 +29,7 @@ import telegramFileSend from "../telegram-file-send/index.js";
 import documents from "../documents/index.js";
 import groupMemory from "../group-memory/index.js";
 import obsTools from "../obs-tools/index.js";
+import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
@@ -78,6 +79,7 @@ const SUB_SESSION_EXTENSIONS: ExtensionFactory[] = [
   documents,
   groupMemory,
   obsTools,
+  systemUpdate,
   providerBootstrap,
 ];
 

@@ -480,6 +480,11 @@ export class TelegramBridge {
       ) => Promise<string>;
       /** G11: /status — расширенный вывод для admin (метрики). */
       statusHandler?: (userId: string) => string | Promise<string>;
+      /** system_update: /update [status] — private-only, owner. */
+      updateCommandHandler?: (
+        args: string,
+        ctx: { chatId: string; userId: string; isPrivate: boolean },
+      ) => string | Promise<string>;
       /** G4: deep link bot username для onboarding-подсказки. */
       botUsername?: string;
       /** Архивариус: сохранить текст/медиа в chat_archive (тихо, без ack). */
@@ -921,6 +926,20 @@ export class TelegramBridge {
           { chatId: String(chatId), userId: String(userId), isPrivate: chatType === "private" },
           send,
         );
+        await send(chatId, reply);
+        return { handled: true };
+      }
+    }
+    // system_update: /update [status] — private-only, owner (handler проверяет).
+    if (text === "/update" || text.startsWith("/update ")) {
+      const handler = this.options?.updateCommandHandler;
+      if (handler) {
+        const args = text.slice("/update".length).trim();
+        const reply = await handler(args, {
+          chatId: String(chatId),
+          userId: String(userId),
+          isPrivate: chatType === "private",
+        });
         await send(chatId, reply);
         return { handled: true };
       }

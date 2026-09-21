@@ -61,6 +61,13 @@ LLM/OCR/PDF. Agent-tools: `report_data_expenses`, `report_data_problems`, `docum
 `chatId` или `groupQuery` (название из setup) + ACL. Подробнее —
 [docs/REPORT_DATA.md](docs/REPORT_DATA.md).
 
+## Самообновление
+
+Безопасный self-update с GitHub `demossml/grihaAi` (main): Telegram `/update` (owner)
+или tool `system_update`, либо CLI `npm run system-update -w @griha/agent`. Dirty →
+отказ, build упал → без restart, данные `~/.grish-ai` не трогаются. Подробнее —
+[docs/SYSTEM_UPDATE.md](docs/SYSTEM_UPDATE.md).
+
 ## Быстрый старт
 
 ```bash
