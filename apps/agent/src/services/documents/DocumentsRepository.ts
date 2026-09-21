@@ -813,4 +813,33 @@ export class DocumentsRepository {
       note,
     };
   }
+
+  /**
+   * D5: read-only список полных строк расходов для report-data (без агрегации,
+   * без изменения поведения query/expenses_sum). Отдаёт rawText/itemsJson/
+   * messageId/confidence/kind, которых нет в сводке query().
+   */
+  listExpenseRowsForReport(q: {
+    chatId: string;
+    threadId?: string;
+    fromDate?: string;
+    toDate?: string;
+    limit: number;
+  }): ExpenseDocument[] {
+    const threadId = q.threadId ?? null;
+    const fromDate = q.fromDate ?? null;
+    const toDate = q.toDate ?? null;
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM expense_documents
+         WHERE chat_id = ?
+           AND (? IS NULL OR thread_id = ?)
+           AND (? IS NULL OR doc_date >= ?)
+           AND (? IS NULL OR doc_date <= ?)
+         ORDER BY doc_date DESC, created_at DESC
+         LIMIT ?`,
+      )
+      .all(q.chatId, threadId, threadId, fromDate, fromDate, toDate, toDate, q.limit) as DocRow[];
+    return rows.map(rowToDoc);
+  }
 }

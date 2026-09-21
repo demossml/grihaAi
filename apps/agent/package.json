@@ -18,6 +18,7 @@
     "@griha/observability": "*",
     "@griha/render-contracts": "*",
     "@griha/render-tools": "*",
+    "@griha/report-data": "*",
     "@griha/shared-types": "*",
     "@griha/skills": "*",
     "@griha/stt": "*",
