@@ -20,6 +20,7 @@ import type { DocumentsRepository } from "../../../src/services/documents/Docume
 import { resolveReportDataScope, type ReportChatType } from "../../../src/services/documents/reportDataScope.js";
 import { resolveGroupQuery, type GroupTitleRecord } from "../../../src/services/documents/resolveGroupQuery.js";
 import { assertCanReadChat, type GroupAccessDeps } from "../../../src/services/documents/groupHistoryTools.js";
+import { fillExpenseDocumentService } from "../../../src/services/documents/documentFill.js";
 
 const PERIOD = Type.Optional(Type.Union([Type.Literal("7d"), Type.Literal("14d"), Type.Literal("30d"), Type.Literal("month")]));
 
@@ -394,6 +395,76 @@ export default function documents(
         period: { fromDate: params.fromDate, toDate: params.toDate },
         threadId: resolved.threadId,
       });
+      const text = JSON.stringify(result);
+      return { content: [{ type: "text", text }], details: { result: text } };
+    },
+  });
+
+  const DocumentFillSchema = Type.Object({
+    expenseId: Type.String({ description: "id чека (из report_data_problems / expense_documents.id)" }),
+    supplier: Type.Optional(Type.String()),
+    total: Type.Optional(Type.Number()),
+    docDate: Type.Optional(Type.String({ description: "YYYY-MM-DD" })),
+    currency: Type.Optional(Type.String()),
+    items: Type.Optional(
+      Type.Array(
+        Type.Object({
+          name: Type.String(),
+          qty: Type.Optional(Type.Number()),
+          sum: Type.Optional(Type.Number()),
+        }),
+      ),
+    ),
+    note: Type.Optional(Type.String({ description: "Дописать в raw_text с префиксом [manual]" })),
+    chatId: Type.Optional(Type.String({ description: "В личке: chatId группы" })),
+    groupQuery: Type.Optional(Type.String({ description: "В личке: название группы (из /groups)" })),
+  });
+
+  pi.registerTool({
+    name: "document_fill",
+    label: "Fill expense document",
+    description:
+      "Дозаполнить проблемный чек вручную (supplier, total, docDate, items). " +
+      "Сначала report_data_problems, затем document_fill с expenseId. " +
+      "В группе — только чеки этой группы. В личке — chatId или groupQuery + ACL.",
+    parameters: DocumentFillSchema,
+    async execute(
+      _id: string,
+      params: {
+        expenseId: string;
+        supplier?: string;
+        total?: number;
+        docDate?: string;
+        currency?: string;
+        items?: Array<{ name: string; qty?: number; sum?: number }>;
+        note?: string;
+        chatId?: string;
+        groupQuery?: string;
+      },
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ result: string }>> {
+      const resolved = await resolveReportDataChat(ctx, {
+        chatId: params.chatId,
+        groupQuery: params.groupQuery,
+      }, aclDeps, listSetupRecords);
+      if (!resolved.ok) {
+        const text = denyJson(resolved);
+        return { content: [{ type: "text", text }], details: { result: text } };
+      }
+      const result = await fillExpenseDocumentService(
+        {
+          expenseId: params.expenseId,
+          supplier: params.supplier,
+          total: params.total,
+          docDate: params.docDate,
+          currency: params.currency,
+          items: params.items,
+          note: params.note,
+        },
+        { repo: deps?.documentsRepo ?? getDocumentsRepository(), expectedChatId: resolved.chatId },
+      );
       const text = JSON.stringify(result);
       return { content: [{ type: "text", text }], details: { result: text } };
     },

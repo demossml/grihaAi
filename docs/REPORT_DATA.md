@@ -47,6 +47,13 @@ LLM только передаёт параметры. PDF и Telegram — **не
 - Несколько совпадений по названию → `AMBIGUOUS` + список кандидатов (без данных расходов).
 - Пример: `groupQuery: "Ремонт"` → `chatId -100…`; сравнение case-insensitive, `ё`→`е`, partial fallback.
 
+## Дозаполнение чеков (`document_fill`)
+
+- Запись только в `apps/agent/src/services/documents/` (пакет `report-data` остаётся read-only).
+- `document_fill` tool: `expenseId` (из `report_data_problems`) + поля `supplier/total/docDate/currency/items/note`.
+- Scope как у `report_data_*`: группа — только свои чеки; личка — `chatId`/`groupQuery` + ACL.
+- После fill с total → `needs_review=0`; чек другого чата → `CHAT_MISMATCH`; неизвестный id → `NOT_FOUND`.
+
 ## Что НЕ делает
 
 - Не рендерит PDF, не шлёт `sendDocument`, не ходит в Telegram.

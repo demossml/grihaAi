@@ -42,6 +42,12 @@ tags: [documents, finance]
 - «Проблемные чеки» (нет суммы / needs_review / пустой OCR) → `report_data_problems`.
 - `chatId` бери из `/groups` или из явного id пользователя; не подставляй id лички.
 
+## Дозаполнение чеков (document_fill)
+- Пользователь дал сумму/поставщика по проблемному чеку →
+  `document_fill` с `expenseId` (id брать из `report_data_problems`, не выдумывать).
+- `expenseId` — только из problems или явного id пользователя.
+- После fill можно снова вызвать `report_data_expenses` для актуального итога.
+
 ## Group data and reports
 - For "what happened in group X" / reports / counts use tools:
   `group_report`, `group_history`, `group_recent`, `groups_compare`, `expenses_*`.

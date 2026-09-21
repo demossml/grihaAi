@@ -737,6 +737,70 @@ export class DocumentsRepository {
     return row ? rowToDoc(row) : null;
   }
 
+  /** document_fill: синхронное чтение полной строки по id (read-only). */
+  getExpenseById(id: string): ExpenseDocument | null {
+    const row = this.db.prepare(`SELECT * FROM expense_documents WHERE id = ?`).get(id) as
+      | DocRow
+      | undefined;
+    return row ? rowToDoc(row) : null;
+  }
+
+  /**
+   * document_fill: UPDATE только переданных полей + needs_review + updated_at.
+   * Возвращает false, если строки нет. Только expense_documents (archive не трогаем).
+   */
+  fillExpenseDocument(
+    id: string,
+    fields: {
+      supplier?: string;
+      total?: number;
+      docDate?: string;
+      currency?: string;
+      itemsJson?: string | null;
+      rawText?: string;
+      needsReview: number;
+      updatedAt: string;
+    },
+  ): boolean {
+    const exists = this.db.prepare(`SELECT id FROM expense_documents WHERE id = ?`).get(id);
+    if (!exists) return false;
+
+    const sets: string[] = [];
+    const values: Array<string | number | null> = [];
+    if (fields.supplier !== undefined) {
+      sets.push("supplier = ?");
+      values.push(fields.supplier);
+    }
+    if (fields.total !== undefined) {
+      sets.push("total = ?");
+      values.push(fields.total);
+    }
+    if (fields.docDate !== undefined) {
+      sets.push("doc_date = ?");
+      values.push(fields.docDate);
+    }
+    if (fields.currency !== undefined) {
+      sets.push("currency = ?");
+      values.push(fields.currency);
+    }
+    if (fields.itemsJson !== undefined) {
+      sets.push("items_json = ?");
+      values.push(fields.itemsJson);
+    }
+    if (fields.rawText !== undefined) {
+      sets.push("raw_text = ?");
+      values.push(fields.rawText);
+    }
+    sets.push("needs_review = ?");
+    values.push(fields.needsReview);
+    sets.push("updated_at = ?");
+    values.push(fields.updatedAt);
+
+    values.push(id);
+    this.db.prepare(`UPDATE expense_documents SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+    return true;
+  }
+
   /**
    * Полная история по умолчанию: fromDate/toDate фильтруют только если заданы.
    */
