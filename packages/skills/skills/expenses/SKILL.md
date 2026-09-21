@@ -33,6 +33,15 @@ tags: [documents, finance]
 - If the tool returns EMPTY/NO_DATA («Нет данных для PDF-отчёта»): tell the user
   briefly — do NOT invent tables or numbers.
 
+## Report data (обязательно)
+- Вопросы «расходы / итог / отчёт по чекам» по группе:
+  вызови `report_data_expenses` с `chatId` группы и `format=compact`
+  (или `expanded`, если просят позиции чеков).
+- Не вызывай `group_history` / `group_recent` для суммирования чеков —
+  для сумм и итогов только `report_data_expenses`.
+- «Проблемные чеки» (нет суммы / needs_review / пустой OCR) → `report_data_problems`.
+- `chatId` бери из `/groups` или из явного id пользователя; не подставляй id лички.
+
 ## Group data and reports
 - For "what happened in group X" / reports / counts use tools:
   `group_report`, `group_history`, `group_recent`, `groups_compare`, `expenses_*`.
