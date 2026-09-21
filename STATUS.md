@@ -394,3 +394,13 @@
 - [x] P0-5 skill «## Group data and reports» (отчёты только через tools)
 - [x] Tests green (turbo 31/31)
 - [ ] follow-up: sendNotify в DM при needs_confirmation; reply_to source message в напоминании
+
+## Phase 39 — Report data + fill
+
+- [x] `packages/report-data` (read-only): `createReportDataService`, `buildExpenseReport` (compact/expanded), `listProblemExpenses`
+- [x] tools `report_data_expenses` / `report_data_problems` (JSON; без LLM/OCR/PDF)
+- [x] scope группа vs личка (`resolveReportDataScope`) + `groupQuery` (название → chatId, `resolveGroupQuery`)
+- [x] `document_fill` — дозаполнение проблемных чеков (`getExpenseById`/`fillExpenseDocument`, `needs_review` очищается при `total`)
+- [ ] report_run PDF orchestrator (not in this change)
+- [ ] secretary_digest (future)
+

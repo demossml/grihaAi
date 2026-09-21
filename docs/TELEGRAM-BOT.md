@@ -333,6 +333,12 @@ configured И (canManage ИЛИ isAllowed)), `groups_compare` (fail-closed по 
 пустой/неизменённый title — no-op. После переименования группы title подтянется со
 следующим сообщением в ней.
 
+**Expense report tools (`report_data` / `document_fill`):** в группе `report_data_expenses`
+/ `report_data_problems` всегда scoped к текущей группе (чужой `chatId` → отказ); в личке —
+`chatId` или `groupQuery` (название из setup) + ACL. `document_fill` дозаполняет проблемный
+чек (после `report_data_problems`). Цифры/чеки — только через эти tools, не через
+`group_history`. Подробнее — [docs/REPORT_DATA.md](REPORT_DATA.md).
+
 **Напоминания** (`GroupReminderService`, `~/.grish-ai/group-reminders.sqlite`): additive
 таблица `group_reminders` (chat_id/thread_id/source_message_id/due_at/text/status);
 low-confidence → `needs_confirmation` (без авто-спама); `fireDue` пропускает

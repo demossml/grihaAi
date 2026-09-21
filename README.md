@@ -45,13 +45,21 @@ node apps/telegram-cli/dist/bin.js doctor # диагностика окруже�
 `obs_summary`/`obs_query` для операторского агента на Mac Mini.
 
 ```bash
-npm run obs                                  # build CLI + запуск bin.js
+npm run obs                                   # build CLI + запуск bin.js
 node apps/obs-cli/dist/bin.js tail --lines 100
 node apps/obs-cli/dist/bin.js query --event gate.block --limit 20
 ```
 
 `GRIHA_OBS=0` выключает запись; `GRIHA_OBS_DIR` меняет каталог. Подробности —
 [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+
+## Отчётные данные (расходы)
+
+Пакет `@griha/report-data` читает `expense_documents` (compact/expanded/problems) без
+LLM/OCR/PDF. Agent-tools: `report_data_expenses`, `report_data_problems`, `document_fill`
+(дозаполнение проблемных чеков). Scope: в группе — только текущая группа; в личке —
+`chatId` или `groupQuery` (название из setup) + ACL. Подробнее —
+[docs/REPORT_DATA.md](docs/REPORT_DATA.md).
 
 ## Быстрый старт
 
