@@ -17,6 +17,9 @@ import { createReportDataService, type ReportDataService } from "@griha/report-d
 import { createDocumentsExpensesReader } from "../../../src/services/documents/reportDataAdapter.js";
 import { getChatSetupService } from "../chat-setup/ChatSetupService.js";
 import type { DocumentsRepository } from "../../../src/services/documents/DocumentsRepository.js";
+import { resolveReportDataScope, type ReportChatType } from "../../../src/services/documents/reportDataScope.js";
+import { resolveGroupQuery, type GroupTitleRecord } from "../../../src/services/documents/resolveGroupQuery.js";
+import { assertCanReadChat, type GroupAccessDeps } from "../../../src/services/documents/groupHistoryTools.js";
 
 const PERIOD = Type.Optional(Type.Union([Type.Literal("7d"), Type.Literal("14d"), Type.Literal("30d"), Type.Literal("month")]));
 
@@ -63,10 +66,132 @@ function getReportDataService(repo: DocumentsRepository): ReportDataService {
   });
 }
 
+/** Эвристика: Telegram group/supergroup имеют отрицательный chatId. */
+function isGroupLikeChatId(chatId?: string): boolean {
+  if (!chatId) return false;
+  const n = Number(chatId);
+  return Number.isFinite(n) && n < 0;
+}
+
+function reportAclDeps(): GroupAccessDeps {
+  const setup = getChatSetupService();
+  const users = getUsersService();
+  return {
+    isConfiguredSync: (chatId) => setup.isConfiguredSync(chatId),
+    canManage: (userId) => users.canManage(userId),
+    isAllowed: (userId, chatId) => users.isAllowed(userId, chatId),
+    listConfiguredChatIds: async () =>
+      (await setup.list()).filter((c) => c.status === "active").map((c) => c.chatId),
+  };
+}
+
+type ResolveChatOutcome =
+  | { ok: true; chatId: string; threadId?: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      candidates?: Array<{ chatId: string; title: string | null }>;
+    };
+
+/**
+ * Финальный chatId для report_data_*: группа → свой ctx; личка → args.chatId
+ * или groupQuery (название → chatId) + ACL. aclDeps/listSetupRecords injectable.
+ */
+async function resolveReportDataChat(
+  ctx: ExtensionContext,
+  args: { chatId?: string; groupQuery?: string; threadId?: string },
+  aclDeps: GroupAccessDeps,
+  listSetupRecords: () => Promise<Array<{ chatId: string; chatTitle: string | null }>>,
+): Promise<ResolveChatOutcome> {
+  const tctx = getSessionContext(ctx.sessionManager.getSessionId());
+  const ctxChatId = tctx?.chatId;
+  const isGroupLike = isGroupLikeChatId(ctxChatId);
+  const ctxChatType: ReportChatType = isGroupLike ? "group" : "private";
+
+  if (isGroupLike) {
+    const scope = resolveReportDataScope({
+      ctxChatId,
+      ctxChatType,
+      ctxThreadId: tctx?.threadId,
+      ctxUserId: tctx?.userId,
+      argsChatId: args.chatId,
+      argsThreadId: args.threadId,
+    });
+    if (!scope.ok) return { ok: false, code: scope.code, message: scope.message };
+    return { ok: true, chatId: scope.chatId, threadId: scope.threadId };
+  }
+
+  // private
+  const userId = tctx?.userId;
+  if (!userId) {
+    return { ok: false, code: "DENY", message: "Не определён пользователь сессии." };
+  }
+
+  let chatId: string | undefined;
+  if (args.chatId?.trim()) {
+    chatId = args.chatId.trim();
+    const allowed = await assertCanReadChat(userId, chatId, aclDeps);
+    if (!allowed) return { ok: false, code: "DENY", message: "Чат не настроен или нет доступа." };
+  } else if (args.groupQuery?.trim()) {
+    const active = await listSetupRecords();
+    const records: GroupTitleRecord[] = [];
+    for (const c of active) {
+      if (await assertCanReadChat(userId, c.chatId, aclDeps)) {
+        records.push({ chatId: c.chatId, chatTitle: c.chatTitle ?? null });
+      }
+    }
+    const resolved = resolveGroupQuery(args.groupQuery, records);
+    if (!resolved.ok) {
+      return {
+        ok: false,
+        code: resolved.code,
+        message: resolved.message,
+        candidates: resolved.candidates,
+      };
+    }
+    chatId = resolved.chatId;
+  } else {
+    return {
+      ok: false,
+      code: "MISSING_CHAT_ID",
+      message: "Укажите chatId группы или groupQuery (название из /groups).",
+    };
+  }
+
+  return { ok: true, chatId, threadId: args.threadId || undefined };
+}
+
+function denyJson(outcome: {
+  code: string;
+  message: string;
+  candidates?: Array<{ chatId: string; title: string | null }>;
+}): string {
+  return JSON.stringify({
+    ok: false,
+    code: outcome.code,
+    message: outcome.message,
+    ...(outcome.candidates ? { candidates: outcome.candidates } : {}),
+  });
+}
+
 export default function documents(
   pi: ExtensionAPI,
-  deps?: { documentsRepo?: DocumentsRepository },
+  deps?: {
+    documentsRepo?: DocumentsRepository;
+    aclDeps?: GroupAccessDeps;
+    listSetupRecords?: () => Promise<Array<{ chatId: string; chatTitle: string | null }>>;
+  },
 ): void {
+  const aclDeps = deps?.aclDeps ?? reportAclDeps();
+  const listSetupRecords =
+    deps?.listSetupRecords ??
+    (async () => {
+      const setup = getChatSetupService();
+      return (await setup.list())
+        .filter((c) => c.status === "active")
+        .map((c) => ({ chatId: c.chatId, chatTitle: c.chatTitle ?? null }));
+    });
   pi.registerTool({
     name: "expenses_sum",
     label: "Sum expenses",
@@ -171,7 +296,12 @@ export default function documents(
   });
 
   const ReportDataExpensesSchema = Type.Object({
-    chatId: Type.String({ description: "Telegram chat id группы (не лички). Обязателен." }),
+    chatId: Type.Optional(
+      Type.String({ description: "Telegram chat id группы. В личке можно передать groupQuery вместо chatId." }),
+    ),
+    groupQuery: Type.Optional(
+      Type.String({ description: "Название группы (из /groups), если chatId неизвестен. Только личка." }),
+    ),
     format: Type.Union([Type.Literal("compact"), Type.Literal("expanded")], {
       description: "compact = сводка+поставщики; expanded = + позиции чеков",
     }),
@@ -181,7 +311,12 @@ export default function documents(
   });
 
   const ReportDataProblemsSchema = Type.Object({
-    chatId: Type.String({ description: "Telegram chat id группы." }),
+    chatId: Type.Optional(
+      Type.String({ description: "Telegram chat id группы. В личке можно передать groupQuery вместо chatId." }),
+    ),
+    groupQuery: Type.Optional(
+      Type.String({ description: "Название группы (из /groups), если chatId неизвестен. Только личка." }),
+    ),
     fromDate: Type.Optional(Type.String({ description: "Optional YYYY-MM-DD" })),
     toDate: Type.Optional(Type.String({ description: "Optional YYYY-MM-DD" })),
     threadId: Type.Optional(Type.String()),
@@ -192,13 +327,14 @@ export default function documents(
     label: "Report data: expenses",
     description:
       "Собрать расходы группы из БД (без повторного OCR). " +
-      "Обязателен chatId группы (не лички). format: compact | expanded. " +
-      "Без fromDate/toDate — вся история. Не используй group_history для сумм чеков.",
+      "В группе — всегда текущая группа; в личке укажи chatId группы или groupQuery (название из /groups, напр. 'Ремонт'). " +
+      "format: compact | expanded. Без fromDate/toDate — вся история. Не используй group_history для сумм чеков.",
     parameters: ReportDataExpensesSchema,
     async execute(
       _id: string,
       params: {
-        chatId: string;
+        chatId?: string;
+        groupQuery?: string;
         format: "compact" | "expanded";
         fromDate?: string;
         toDate?: string;
@@ -206,15 +342,20 @@ export default function documents(
       },
       _signal: unknown,
       _onUpdate: unknown,
-      _ctx: ExtensionContext,
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ result: string }>> {
+      const resolved = await resolveReportDataChat(ctx, params, aclDeps, listSetupRecords);
+      if (!resolved.ok) {
+        const text = denyJson(resolved);
+        return { content: [{ type: "text", text }], details: { result: text } };
+      }
       const result = await getReportDataService(
         deps?.documentsRepo ?? getDocumentsRepository(),
       ).buildExpenseReport({
-        chatId: params.chatId,
+        chatId: resolved.chatId,
         format: params.format,
         period: { fromDate: params.fromDate, toDate: params.toDate },
-        threadId: params.threadId,
+        threadId: resolved.threadId,
       });
       const text = JSON.stringify(result);
       return { content: [{ type: "text", text }], details: { result: text } };
@@ -225,21 +366,33 @@ export default function documents(
     name: "report_data_problems",
     label: "Report data: problems",
     description:
-      "Список проблемных чеков группы (нет суммы, needs_review, пустой OCR) для ручного дополнения.",
+      "Список проблемных чеков группы (нет суммы, needs_review, пустой OCR) для ручного дополнения. " +
+      "В группе — текущая группа; в личке — chatId или groupQuery (название из /groups).",
     parameters: ReportDataProblemsSchema,
     async execute(
       _id: string,
-      params: { chatId: string; fromDate?: string; toDate?: string; threadId?: string },
+      params: {
+        chatId?: string;
+        groupQuery?: string;
+        fromDate?: string;
+        toDate?: string;
+        threadId?: string;
+      },
       _signal: unknown,
       _onUpdate: unknown,
-      _ctx: ExtensionContext,
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ result: string }>> {
+      const resolved = await resolveReportDataChat(ctx, params, aclDeps, listSetupRecords);
+      if (!resolved.ok) {
+        const text = denyJson(resolved);
+        return { content: [{ type: "text", text }], details: { result: text } };
+      }
       const result = await getReportDataService(
         deps?.documentsRepo ?? getDocumentsRepository(),
       ).listProblemExpenses({
-        chatId: params.chatId,
+        chatId: resolved.chatId,
         period: { fromDate: params.fromDate, toDate: params.toDate },
-        threadId: params.threadId,
+        threadId: resolved.threadId,
       });
       const text = JSON.stringify(result);
       return { content: [{ type: "text", text }], details: { result: text } };

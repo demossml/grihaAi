@@ -40,6 +40,13 @@ LLM только передаёт параметры. PDF и Telegram — **не
 { "chatId": "-100…" }   // report_data_problems
 ```
 
+## Scope (группа vs личка)
+
+- В группе `report_data_*` всегда scoped к текущей группе; чужой `chatId` → `CHAT_MISMATCH` (отказ).
+- В личке: `chatId` ИЛИ `groupQuery` (название из setup `/groups`); затем ACL (`assertCanReadChat`).
+- Несколько совпадений по названию → `AMBIGUOUS` + список кандидатов (без данных расходов).
+- Пример: `groupQuery: "Ремонт"` → `chatId -100…`; сравнение case-insensitive, `ё`→`е`, partial fallback.
+
 ## Что НЕ делает
 
 - Не рендерит PDF, не шлёт `sendDocument`, не ходит в Telegram.
