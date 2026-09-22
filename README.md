@@ -81,6 +81,8 @@ LLM/OCR/PDF. Agent-tools: `report_data_expenses`, `report_data_problems`, `docum
 `tryRuleRoute` + опциональный LLM Flash (`routeWithFlash`) + `fallbackRoute`.
 Decision → `resolveGenerationBudget`. Флаг `GRIHA_FLASH_ROUTER` (default off), без
 истории/ACL/сумм в Flash. Подробнее — [docs/FLASH_ROUTER.md](docs/FLASH_ROUTER.md).
+Pool-wire (Phase 2.1) — `preparePoolRouting` перед `session.prompt`, fail-safe,
+флаги off → ноль накладных.
 
 ## Быстрый старт
 

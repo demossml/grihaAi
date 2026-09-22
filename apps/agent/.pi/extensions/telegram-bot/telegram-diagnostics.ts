@@ -82,6 +82,12 @@ export interface TelegramEvent {
   sha256?: string;
   mimeType?: string;
   artifactId?: string;
+  /** Phase 2.1: routing.decision */
+  role?: string;
+  complexity?: string;
+  kind?: string;
+  confidence?: number;
+  source?: string;
 }
 
 /** Записать структурированное событие lifecycle. Не бросает никогда. */
@@ -102,6 +108,11 @@ export function logTelegramEvent(event: TelegramEvent): void {
     if (event.sha256 !== undefined) entry.sha256 = event.sha256;
     if (event.mimeType !== undefined) entry.mimeType = event.mimeType;
     if (event.artifactId !== undefined) entry.artifactId = event.artifactId;
+    if (event.role !== undefined) entry.role = event.role;
+    if (event.complexity !== undefined) entry.complexity = event.complexity;
+    if (event.kind !== undefined) entry.kind = event.kind;
+    if (event.confidence !== undefined) entry.confidence = event.confidence;
+    if (event.source !== undefined) entry.source = event.source;
     console.log(`[telegram-bot] event ${JSON.stringify(entry)}`);
   } catch {
     /* никогда не бросаем из логирования */

@@ -432,3 +432,13 @@
 - [ ] pool wire (сбор RoutingContext в TelegramSessionPool) — deferred
 - [ ] calibration auto-apply (Phase 3)
 
+## Phase 43 — Flash Router pool wire (Phase 2.1)
+
+- [x] `apps/agent/.pi/extensions/telegram-bot/pool-routing.ts`: `buildRoutingContext` + `preparePoolRouting`
+- [x] Врезка в `TelegramSessionPool.runPrompt` перед `session.prompt` (flags off → ноль накладных)
+- [x] Fail-safe: ошибка маршрутизации не роняет ход (prompt всё равно выполняется)
+- [x] obs-событие `routing.decision` (role/complexity/kind/confidence/source/reason)
+- [x] `hasImage`/`hasVoice`/`chatType` прокинуты через `GrishaAgent` → meta → pool
+- [ ] callFlash в pool (нет прямого model caller) — rule-route + fallback только
+- [x] Тесты `telegram-pool-routing.test.ts` (7) + regress зелёные; флаги всё ещё default off
+

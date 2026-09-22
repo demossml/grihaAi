@@ -257,6 +257,9 @@ function grishaAgent(): GrishaAgent {
       threadId: input.threadId,
       updateId: input.updateId,
       rulesContext: input.rulesContext,
+      hasImage: input.hasImage,
+      hasVoice: input.hasVoice,
+      chatType: input.chatType,
     });
   };
 }

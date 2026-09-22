@@ -33,6 +33,7 @@ import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
+import { preparePoolRouting } from "./pool-routing.js";
 
 /**
  * Inline extension for isolated Telegram sub-sessions: registers the provider
@@ -98,6 +99,10 @@ export interface TelegramSessionMeta {
   updateId?: number;
   /** R-GR-3: контекст правил чата, передаётся в prompt на КАЖДЫЙ ход. */
   rulesContext?: string;
+  /** Phase 2.1: маршрутизация (hasImage/hasVoice/chatType для RoutingContext). */
+  hasImage?: boolean;
+  hasVoice?: boolean;
+  chatType?: string;
 }
 
 export interface TelegramSessionPoolOptions {
@@ -272,7 +277,7 @@ export class TelegramSessionPool {
     const entry = this.getOrCreate(sessionKey, userId, meta);
     const run = async (): Promise<TelegramReply> => {
       const session = await entry.sessionPromise;
-      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId, meta.updateId, meta.rulesContext);
+      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId, meta.updateId, meta.rulesContext, meta.hasImage, meta.hasVoice, meta.chatType);
     };
     entry.queue = entry.queue.then(run, run);
     return entry.queue;
@@ -298,6 +303,9 @@ export class TelegramSessionPool {
     threadId?: string,
     updateId?: number,
     rulesContext?: string,
+    hasImage?: boolean,
+    hasVoice?: boolean,
+    chatType?: string,
   ): Promise<TelegramReply> {
     let settled = false;
     let resolveReply!: (value: TelegramReply) => void;
@@ -394,6 +402,33 @@ export class TelegramSessionPool {
       });
       finish({ text: PROMPT_TIMEOUT_MESSAGE });
     }, this.promptTimeoutMs);
+
+    // Phase 2.1: маршрутизация перед prompt (fail-safe; флаги off → ноль накладных).
+    try {
+      const routed = await preparePoolRouting(
+        { text: message, hasImage, hasVoice, chatType },
+        { env: process.env },
+      );
+      if (routed.decision) {
+        logTelegramEvent({
+          event: "routing.decision",
+          ...baseEvent,
+          role: routed.decision.role,
+          complexity: routed.decision.complexity,
+          kind: routed.decision.kind,
+          confidence: routed.decision.confidence,
+          source: routed.decision.source,
+          reason: routed.decision.reason,
+        });
+      }
+      if (routed.budget) {
+        console.debug(
+          `[telegram-bot] generation-budget role=${routed.decision?.role ?? "?"} complexity=${routed.budget.complexity} initial=${routed.budget.initialMaxTokens} hard=${routed.budget.hardMaxTokens} temperature=${routed.budget.temperature}`,
+        );
+      }
+    } catch {
+      // fail-safe: routing никогда не роняет ход
+    }
 
     try {
       // R-GR-3: rulesContext — явный per-turn префикс (не только первый ход).

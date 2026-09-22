@@ -123,6 +123,10 @@ export interface GrishaAgent {
     updateId?: number;
     /** Контекст правил чата для агента (R-GR-3), передаётся каждый ход. */
     rulesContext?: string;
+    /** Phase 2.1: маршрутизация (photo/document / voice / chatType). */
+    hasImage?: boolean;
+    hasVoice?: boolean;
+    chatType?: string;
   }): Promise<GrishaAgentReply>;
 }
 
@@ -1075,6 +1079,8 @@ export class TelegramBridge {
           threadId: msg.threadId,
           updateId: update.updateId,
           rulesContext: gate2.rulesContext || undefined,
+          hasVoice: true,
+          chatType,
         });
         if (gate2.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
@@ -1112,6 +1118,7 @@ export class TelegramBridge {
           threadId: msg.threadId,
           updateId: update.updateId,
           rulesContext: gate.rulesContext || undefined,
+          chatType,
         });
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
@@ -1140,6 +1147,7 @@ export class TelegramBridge {
           threadId: msg.threadId,
           updateId: update.updateId,
           rulesContext: gate.rulesContext || undefined,
+          chatType,
         });
         if (gate.suppressReply) return { handled: true, reason: "archived-silent" };
         await this.sendReply(chatId, response, msg.threadId);
@@ -1182,6 +1190,7 @@ export class TelegramBridge {
         threadId: msg.threadId,
         updateId: update.updateId,
         rulesContext: gate.rulesContext || undefined,
+        chatType,
       });
       if (gate.suppressReply) return { handled: true, reason: "archived-silent", archived };
       await this.sendReply(chatId, response, msg.threadId);
@@ -1297,6 +1306,8 @@ export class TelegramBridge {
         threadId: msg.threadId,
         updateId: batch.items[0]?.updateId,
         rulesContext: gate.rulesContext || undefined,
+        hasImage: true,
+        chatType,
       });
       if (gate.suppressReply) return media ?? null;
       await this.sendReply(chatId, response, msg.threadId);
@@ -1429,6 +1440,9 @@ export class TelegramBridge {
         threadId: msg.threadId,
         updateId,
         rulesContext: gate.rulesContext || undefined,
+        hasImage: kind === "photo" || kind === "document",
+        hasVoice: kind === "voice" || kind === "audio" || kind === "video_note",
+        chatType,
       });
       if (gate.suppressReply) {
         return { handled: true, reason: "archived-silent", archived, mediaStatus };

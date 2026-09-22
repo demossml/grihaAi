@@ -60,6 +60,21 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
 — готовы для pool. Сбор `RoutingContext` и вызов в TelegramSessionPool — отдельная
 точка (в этом этапе API + тесты готовы, pool-wire минимальный).
 
+## TelegramSessionPool wire (Phase 2.1)
+
+- `apps/agent/.pi/extensions/telegram-bot/pool-routing.ts`:
+  `buildRoutingContext` + `preparePoolRouting` (чистые, тестируемые без grammy).
+- Врезка в `TelegramSessionPool.runPrompt` перед `session.prompt`.
+- **Flags off → ноль накладных**: `preparePoolRouting` возвращает `{ null, null }` сразу.
+- **On**: `buildRoutingContext` → `routeMessage` → `resolveGenerationBudget`
+  (complexity/kind из decision, только при `GRIHA_GENERATION_POLICY`).
+- `userText` обрезается до 1500; история/JSONL не передаётся; ACL/chatId не решает router.
+- **Fail-safe**: ошибка маршрутизации не роняет ход — prompt всё равно выполняется.
+- **callFlash: НЕ wired** (pool не имеет прямого model caller) — при `GRIHA_FLASH_ROUTER`
+  работает только rule-route + fallback (LLM-ветка не вызывается без callFlash).
+- obs: событие `routing.decision` (role/complexity/kind/confidence/source/reason, без userText).
+
 ## Next (не сделано)
 
 - Calibration auto-apply (Phase 3).
+- callFlash в pool (нужен model caller в контексте пула).
