@@ -1,4 +1,4 @@
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { initObs, resetObsForTests } from "@griha/observability";
 import type { ObsEvent, ObsSink } from "@griha/observability";
@@ -9,14 +9,19 @@ import { createExtensionState } from "../../src/runtime/generation/allocator.js"
 let captured: ObsEvent[] = [];
 const sink: ObsSink = { write(e) { captured.push(e); } };
 
+beforeEach(() => {
+  // тест-скрипт ставит GRIHA_OBS=0; obs-тесты явно включают emit.
+  delete process.env.GRIHA_OBS;
+  resetObsForTests();
+  captured = [];
+});
+
 afterEach(() => {
   resetObsForTests();
   captured = [];
-  delete process.env.GRIHA_OBS;
 });
 
 test("tryExtendBudgetWithObs → generation.extend", () => {
-  resetObsForTests();
   initObs({ sink });
   const budget = resolveGenerationBudget({ complexity: "trivial" }); // step 256, maxExt 1
   const state = createExtensionState(budget); // current = initial 256
@@ -29,7 +34,6 @@ test("tryExtendBudgetWithObs → generation.extend", () => {
 });
 
 test("tryExtendBudgetWithObs → generation.extend_denied", () => {
-  resetObsForTests();
   initObs({ sink });
   const budget = resolveGenerationBudget({ complexity: "trivial" });
   const state = { extensionsUsed: 0, currentMaxTokens: budget.hardMaxTokens };

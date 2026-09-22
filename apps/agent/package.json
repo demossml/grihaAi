@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test \"tests/**/*.test.ts\"",
+    "test": "GRIHA_OBS=0 tsx --test \"tests/**/*.test.ts\"",
     "bot": "tsx src/bot.ts",
     "dev": "echo \"run pi from this directory: ../../node_modules/.bin/pi\"",
     "system-update": "tsx src/services/update/cli.ts",
