@@ -1,24 +1,25 @@
 import type { RoutingContext, RoutingDecision } from "./types.js";
 
 /**
- * Цельнословный поиск с учётом кириллицы.
- * `\b` в JS-регэкспах не видит кириллицу (\w = [A-Za-z0-9_]), поэтому
- * boundary считаем вручную: слово окружено не-буквенно-цифровыми символами.
+ * Case-insensitive substring match (stems: «закупк», «сумм», «расход» и т.п.).
+ * `\b` в JS-регэкспах не видит кириллицу, поэтому — `includes` по lowercased text.
  */
-function hasWord(text: string, word: string): boolean {
+function hasAny(text: string, words: string[]): boolean {
   const lower = text.toLowerCase();
-  const needle = word.toLowerCase();
-  let idx = lower.indexOf(needle);
-  while (idx !== -1) {
-    const before = idx === 0 ? "" : lower[idx - 1];
-    const afterIdx = idx + needle.length;
-    const after = afterIdx >= lower.length ? "" : lower[afterIdx];
-    const isWordChar = (ch: string) => /[a-zа-яё0-9_]/i.test(ch);
-    if (!isWordChar(before) && !isWordChar(after)) return true;
-    idx = lower.indexOf(needle, idx + 1);
-  }
-  return false;
+  return words.some((w) => lower.includes(w.toLowerCase()));
 }
+
+/** report_dispatch keywords (stems): отчёт/расход/закупки/итог/суммы. */
+const REPORT_WORDS = [
+  "отчёт", "отчет", "расход", "закупк", "итог", "сумм",
+  "expenses", "report", "total",
+];
+
+/** analysis keywords: интеррогативные «почему/сравни» + анализ. */
+const ANALYSIS_WORDS = [
+  "проанализируй", "сравни", "почему", "динамика", "анализ",
+  "analysis", "compare", "why",
+];
 
 /**
  * Если возвращает Decision с confidence >= 0.8 — LLM Flash НЕ вызывать.
@@ -39,13 +40,21 @@ export function tryRuleRoute(ctx: RoutingContext): RoutingDecision | null {
     };
   }
 
-  // 2) Explicit report / expenses dispatch (host or keywords)
-  if (
-    ctx.hostHint === "report" ||
-    ["отчёт", "отчет", "расход", "итог", "сумм", "сумма", "суммы", "expenses", "expense", "report"].some(
-      (w) => hasWord(text, w),
-    )
-  ) {
+  // 2) Analysis (интеррогативные «почему/сравни» приоритетнее отчёта:
+  //    «Почему выросли расходы?» → analysis, а не report_dispatch).
+  if (ctx.hostHint === "analysis" || hasAny(text, ANALYSIS_WORDS)) {
+    return {
+      role: "main",
+      complexity: "complex",
+      kind: "analysis",
+      confidence: 0.85,
+      source: "rule",
+      reason: "analysis_keywords",
+    };
+  }
+
+  // 3) Explicit report / expenses dispatch (host or keywords)
+  if (ctx.hostHint === "report" || hasAny(text, REPORT_WORDS)) {
     return {
       role: "flash",
       complexity: "trivial",
@@ -56,7 +65,7 @@ export function tryRuleRoute(ctx: RoutingContext): RoutingDecision | null {
     };
   }
 
-  // 3) Very short chat
+  // 4) Very short chat
   if (text.length > 0 && text.length <= 40 && !ctx.hasImage) {
     return {
       role: "flash",
@@ -65,23 +74,6 @@ export function tryRuleRoute(ctx: RoutingContext): RoutingDecision | null {
       confidence: 0.8,
       source: "rule",
       reason: "short_text",
-    };
-  }
-
-  // 4) Analysis keywords
-  if (
-    ctx.hostHint === "analysis" ||
-    ["проанализируй", "сравни", "почему", "динамика", "анализ"].some((w) =>
-      hasWord(text, w),
-    )
-  ) {
-    return {
-      role: "main",
-      complexity: "complex",
-      kind: "analysis",
-      confidence: 0.85,
-      source: "rule",
-      reason: "analysis_keywords",
     };
   }
 

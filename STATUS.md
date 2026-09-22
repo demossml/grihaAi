@@ -480,6 +480,7 @@
 - [x] Telegram set_model budget apply (flag off by default)
 - [x] Flash rule-route + routeMessage (+ callFlash)
 - [x] Pool preparePoolRouting (fail-safe)
+- [x] Flash contract: report_dispatch guidance + rules + tests
 - [x] Obs v2 turn/routing/budget/finish (correlationId chain)
 - [ ] multi-pass extend в TG runtime
 - [ ] generation.finish provider usage/finishReason

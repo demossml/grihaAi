@@ -123,3 +123,26 @@ Flash role **не** переключает session model на генерацию
 
 - [GENERATION_POLICY.md](GENERATION_POLICY.md) — budget apply.
 - [OBSERVABILITY.md](OBSERVABILITY.md) — routing.decision + generation.* события.
+
+## Usage contract
+
+Flash is a routing classifier only.
+
+Pipeline:
+
+1. `tryRuleRoute` (no LLM).
+2. if unsure and `GRIHA_FLASH_ROUTER=1` and apiKey → `deepseek-v4-flash` JSON classify.
+3. else `fallback`.
+4. complexity → GenerationPolicy if `GRIHA_GENERATION_POLICY=1`.
+5. kind `report_dispatch` → inject `[ROUTE]` guidance so the agent calls DB tools.
+
+RoutingContext fields only: `userText` (max 1500), `hasImage`, `hasVoice`, `hostHint`, `chatType`.
+
+Enable:
+
+```
+export GRIHA_FLASH_ROUTER=1
+export GRIHA_GENERATION_POLICY=1
+```
+
+Restart bot. Check obs event `routing.decision`.

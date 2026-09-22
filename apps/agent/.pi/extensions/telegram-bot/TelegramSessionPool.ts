@@ -33,7 +33,7 @@ import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
-import { preparePoolRouting, type PoolRoutingResult } from "./pool-routing.js";
+import { preparePoolRouting, applyRouteGuidance, type PoolRoutingResult } from "./pool-routing.js";
 import { flashDepsFromConfig } from "./pool-call-flash.js";
 import { applyBudgetToModel } from "./pool-apply-budget.js";
 import {
@@ -548,10 +548,12 @@ export class TelegramSessionPool {
     try {
       // R-GR-3: rulesContext — явный per-turn префикс (не только первый ход).
       const fullMessage = rulesContext ? `${rulesContext}\n\n${message}` : message;
+      // Flash contract: report_dispatch → guidance брать данные из tools/БД.
+      const promptMessage = applyRouteGuidance(fullMessage, routed.decision);
       // ВАЖНО: не await зависшего prompt напрямую — иначе runPrompt (и очередь)
       // останутся pending после finish. Terminal state решает результат;
       // висящий prompt остаётся фоновым, его ошибка глушится settled-guard'ом.
-      const promptPromise = session.prompt(fullMessage, {
+      const promptPromise = session.prompt(promptMessage, {
         source: "extension",
         ...(session.isStreaming ? { streamingBehavior: "followUp" as const } : {}),
       });

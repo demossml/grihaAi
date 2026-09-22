@@ -97,3 +97,19 @@ export async function preparePoolRouting(
     return { decision: null, budget: null };
   }
 }
+
+/**
+ * Phase Flash contract: служебная строка для report_dispatch — агент должен
+ * брать данные из tools/БД, а не выдумывать суммы/строки отчёта.
+ */
+export const REPORT_DISPATCH_GUIDANCE =
+  "[ROUTE] report_dispatch: use expense/report tools from DB; do not invent totals or line items.";
+
+export function applyRouteGuidance(
+  message: string,
+  decision: { kind: string } | null | undefined,
+): string {
+  if (!decision || decision.kind !== "report_dispatch") return message;
+  if (message.includes("[ROUTE] report_dispatch")) return message;
+  return `${REPORT_DISPATCH_GUIDANCE}\n\n${message}`;
+}

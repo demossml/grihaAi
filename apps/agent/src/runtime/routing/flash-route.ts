@@ -5,20 +5,16 @@ import type {
 } from "./types.js";
 import { fallbackRoute } from "./rule-route.js";
 
-export const FLASH_ROUTER_SYSTEM = `You are a routing classifier for Griha AI.
-Return ONLY valid JSON (no markdown) with keys:
-role: "flash" | "main" | "vision"
-complexity: "trivial" | "simple" | "medium" | "complex"
-kind: "chat_reply" | "tool_orchestration" | "report_dispatch" | "analysis" | "vision_ocr" | "compression" | "other"
-confidence: number 0..1
-reason: short english snake_case
+export const FLASH_ROUTER_SYSTEM = `You are a routing classifier for Griha AI. Return ONLY valid JSON (no markdown) with keys: role: "flash" | "main" | "vision" complexity: "trivial" | "simple" | "medium" | "complex" kind: "chat_reply" | "tool_orchestration" | "report_dispatch" | "analysis" | "vision_ocr" | "compression" | "other" confidence: number 0..1 reason: short english snake_case
 
 Rules:
-- report/expenses/sum/totals → role flash, kind report_dispatch, complexity trivial|simple
-- image/ocr → role vision
-- deep analysis/compare/why → role main, complexity complex, kind analysis
-- short casual reply → role flash, complexity trivial|simple
-- NEVER invent chat ids or claim access rights
+
+- report, expenses, totals, purchases, sums → role flash, kind report_dispatch, complexity trivial or simple
+- image or ocr → role vision, kind vision_ocr
+- deep analysis, compare, why → role main, kind analysis, complexity complex
+- short casual chat → role flash, complexity trivial or simple
+- NEVER invent chat ids or access rights
+- NEVER invent money amounts
 `;
 
 export function buildFlashUserPayload(ctx: RoutingContext): string {
