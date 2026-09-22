@@ -26,7 +26,16 @@ import {
   DEFAULT_VISION_COMPLEXITY,
   isGenerationPolicyEnabled,
   resolveGenerationBudget,
+  type TaskComplexity,
+  type TaskKind,
 } from "../../runtime/generation/index.js";
+import {
+  routeMessage,
+  toLegacyModelRole,
+  type FlashRouterDeps,
+  type RoutingContext,
+  type RoutingDecision,
+} from "../../runtime/routing/index.js";
 
 export type ModelRole = "main" | "vision"; // | "voice" later
 
@@ -82,14 +91,12 @@ export class ModelRouter {
 
     // GenerationPolicy (Phase 1, flag default OFF): вычисляем бюджет; параметры
     // temp/maxTokens ещё не пробрасываются в ModelCaller — это Phase 2 (Flash).
-    if (isGenerationPolicyEnabled(this.env)) {
-      const budget = resolveGenerationBudget({
-        complexity: role === "vision" ? DEFAULT_VISION_COMPLEXITY : DEFAULT_MAIN_COMPLEXITY,
-        kind: role === "vision" ? "vision_ocr" : "chat_reply",
-      });
-      const params = budgetToRuntimeParams(budget);
-      console.debug(`[generation-policy] role=${role} ${JSON.stringify(params)}`);
-    }
+    // complexity/kind приходят из RoutingDecision только в callWithDecision.
+    this.logGenerationBudget(
+      role,
+      role === "vision" ? DEFAULT_VISION_COMPLEXITY : DEFAULT_MAIN_COMPLEXITY,
+      role === "vision" ? "vision_ocr" : "chat_reply",
+    );
 
     // B3 (post-wiring, §7): FallbackChain по политике роли.
     // Off = прямой вызов (1:1 старое поведение, без fallback).
@@ -97,6 +104,47 @@ export class ModelRouter {
       return this.callWithFallback(role, config, messages);
     }
     return this.callOnce(role, config, messages);
+  }
+
+  /**
+   * Phase 2: маршрутизация сообщения → RoutingDecision (rule → flash → fallback).
+   * LLM Flash вызывается только когда rule не уверен и флаг GRIHA_FLASH_ROUTER on.
+   */
+  async selectRoutingDecision(
+    ctx: RoutingContext,
+    callFlash?: FlashRouterDeps["callFlash"],
+  ): Promise<RoutingDecision> {
+    return routeMessage(ctx, { env: this.env, callFlash });
+  }
+
+  /**
+   * Phase 2: вызов модели по готовому RoutingDecision — complexity/kind из
+   * decision идут в resolveGenerationBudget (за флагом GRIHA_GENERATION_POLICY).
+   */
+  async callWithDecision(
+    decision: RoutingDecision,
+    messages: Array<{ role: string; content: string }>,
+  ): Promise<string> {
+    if (!this.caller) throw new Error("No model caller configured");
+    const role = toLegacyModelRole(decision.role);
+    const config = this.getConfig(role);
+    this.logGenerationBudget(role, decision.complexity, decision.kind);
+    if (isAgentRuntimeEnabled(this.env)) {
+      return this.callWithFallback(role, config, messages);
+    }
+    return this.callOnce(role, config, messages);
+  }
+
+  private logGenerationBudget(
+    role: ModelRole,
+    complexity: TaskComplexity,
+    kind: TaskKind,
+  ): void {
+    if (!isGenerationPolicyEnabled(this.env)) return;
+    const budget = resolveGenerationBudget({ complexity, kind });
+    console.debug(
+      `[generation-policy] role=${role} ${JSON.stringify(budgetToRuntimeParams(budget))}`,
+    );
   }
 
   /** Одиночный вызов без fallback (off-путь и последний кандидат). */

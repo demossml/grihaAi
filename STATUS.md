@@ -420,3 +420,15 @@
 - [ ] Flash LLM router (Phase 2)
 - [ ] `TaskProfile.complexity` wiring (сейчас default medium/simple)
 
+## Phase 42 — Flash LLM Router + TaskProfile.complexity
+
+- [x] `apps/agent/src/runtime/routing/`: `types`/`rule-route`/`flash-route`/`route-message`/`resolve-config`/`index`
+- [x] `tryRuleRoute` (детерминированный pre-route, без LLM) + `fallbackRoute`
+- [x] `parseFlashDecision` / `routeWithFlash` (LLM только при неуверенном rule)
+- [x] `routeMessage` + `isFlashRouterEnabled` (GRIHA_FLASH_ROUTER, default off)
+- [x] `resolveModelConfigForDecision` / `toLegacyModelRole` (flash → deepseek-v4-flash)
+- [x] `TaskProfile.complexity?: TaskComplexity` (optional)
+- [x] `ModelRouter.selectRoutingDecision` + `callWithDecision` (complexity/kind из decision)
+- [ ] pool wire (сбор RoutingContext в TelegramSessionPool) — deferred
+- [ ] calibration auto-apply (Phase 3)
+

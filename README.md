@@ -75,6 +75,13 @@ LLM/OCR/PDF. Agent-tools: `report_data_expenses`, `report_data_problems`, `docum
 `BudgetAllocator` (расширение в пределах hard/maxExtensions). Флаг
 `GRIHA_GENERATION_POLICY` (default off). Подробнее — [docs/GENERATION_POLICY.md](docs/GENERATION_POLICY.md).
 
+## Flash Router
+
+Маршрутизация сообщений (`apps/agent/src/runtime/routing/`): детерминированный
+`tryRuleRoute` + опциональный LLM Flash (`routeWithFlash`) + `fallbackRoute`.
+Decision → `resolveGenerationBudget`. Флаг `GRIHA_FLASH_ROUTER` (default off), без
+истории/ACL/сумм в Flash. Подробнее — [docs/FLASH_ROUTER.md](docs/FLASH_ROUTER.md).
+
 ## Быстрый старт
 
 ```bash

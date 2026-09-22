@@ -6,6 +6,8 @@
  * `GRIHA_AGENT_RUNTIME`.
  */
 
+import type { TaskComplexity } from "../generation/types.js";
+
 /**
  * Роли моделей. "main" и "vision" соответствуют текущим прод-ролям
  * (`src/utils/routing/model-router.ts`); остальные — auxiliary slots (B5),
@@ -56,6 +58,8 @@ export interface TaskProfile {
   needsReasoning?: boolean;
   /** Явная роль, если задача её задаёт (приоритет). */
   preferredRole?: ModelRuntimeRole;
+  /** Сложность задачи (Phase 2 Flash Router → GenerationPolicy). optional для backward compat. */
+  complexity?: TaskComplexity;
 }
 
 /**

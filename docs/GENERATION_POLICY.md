@@ -51,8 +51,13 @@ hard выше. `modelMaxTokens` режет hard/soft/initial по потолку
 и логирует `budgetToRuntimeParams`. Проброс temp/maxTokens в фактический API-вызов —
 Phase 2 (Flash router / GenerationEngine), не в этом этапе.
 
+## complexity теперь из router
+
+С Phase 2 (Flash Router) `complexity`/`kind` приходят из `RoutingDecision`
+(`ModelRouter.callWithDecision`), а не из default-констант. См. `docs/FLASH_ROUTER.md`.
+
 ## Next phases (не сделано)
 
-- `TaskProfile.complexity` wiring (сейчас default medium/simple).
-- Flash LLM router (Phase 2).
+- `TaskProfile.complexity` wiring (Phase 2 — сделано через RoutingDecision).
+- Flash LLM router (Phase 2 — см. `docs/FLASH_ROUTER.md`).
 - GenerationEvaluator (extension decision).

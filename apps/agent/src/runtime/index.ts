@@ -35,3 +35,4 @@ export function createAgentKernel(engines: RuntimeEngine[]): AgentKernel {
 }
 
 export * from "./generation/index.js";
+export * from "./routing/index.js";
