@@ -36,6 +36,13 @@ import { sanitizeDirSegment } from "./session-key.js";
 import { preparePoolRouting, type PoolRoutingResult } from "./pool-routing.js";
 import { flashDepsFromConfig } from "./pool-call-flash.js";
 import { applyBudgetToModel } from "./pool-apply-budget.js";
+import {
+  emit,
+  emitGenerationBudget,
+  emitGenerationFinish,
+  emitTurnEnd,
+  emitTurnStart,
+} from "@griha/observability";
 
 /**
  * Inline extension for isolated Telegram sub-sessions: registers the provider
@@ -318,6 +325,9 @@ export class TelegramSessionPool {
     // Phase 2.3: модель для восстановления после apply budget (STRATEGY B).
     let modelToRestore: Parameters<AgentSession["setModel"]>[0] | undefined;
     let budgetApplyStrategy: "set_model" | "none" = "none";
+    // Obs v2: terminal status хода (для turn.end / generation.finish).
+    let turnOk = true;
+    let turnCode = "ok";
 
     // Объявлены до finish, чтобы cleanup не падал по TDZ.
     let unsubscribe: () => void = () => {};
@@ -349,12 +359,44 @@ export class TelegramSessionPool {
         modelToRestore = undefined;
         session.setModel(restore).catch(() => {});
       }
+      // Obs v2: terminal state — один turn.end + generation.finish.
+      emitTurnEnd({
+        correlationId,
+        chatId,
+        threadId,
+        userId,
+        updateId,
+        sessionKey: sessionId,
+        ok: turnOk,
+        code: turnCode,
+        durationMs: Date.now() - startedAt,
+        data: { hadReply: !!(value.text && value.text.trim()), hadFile: !!value.filePath },
+      });
+      emitGenerationFinish({
+        correlationId,
+        chatId,
+        sessionKey: sessionId,
+        ok: turnOk,
+        code: turnOk ? "unknown" : "error",
+        data: { usageAvailable: false },
+      });
       resolveReply(value);
     };
 
     setSessionContext(sessionId, chatId ? { chatId, userId, threadId, updateId, correlationId } : undefined);
 
     logTelegramEvent({ event: "session.prompt.started", ...baseEvent });
+
+    // Obs v2: turn.start (тот же correlationId до turn.end).
+    emitTurnStart({
+      correlationId,
+      chatId,
+      threadId,
+      userId,
+      updateId,
+      sessionKey: sessionId,
+      data: { chatType, hasImage: !!hasImage, hasVoice: !!hasVoice, textLen: message.length },
+    });
 
     unsubscribe = session.subscribe((event) => {
       // P5: per-tool duration_ms. args/result НЕ логируются (содержимое).
@@ -412,6 +454,8 @@ export class TelegramSessionPool {
         durationMs: Date.now() - startedAt,
         status: "timeout",
       });
+      turnOk = false;
+      turnCode = "timeout";
       finish({ text: PROMPT_TIMEOUT_MESSAGE });
     }, this.promptTimeoutMs);
 
@@ -460,6 +504,47 @@ export class TelegramSessionPool {
       });
     }
 
+    // Obs v2: routing.decision (emit) + generation.budget.
+    if (routed.decision) {
+      emit({
+        level: "info",
+        component: "runtime.routing",
+        event: "routing.decision",
+        correlationId,
+        chatId,
+        threadId,
+        userId,
+        sessionKey: sessionId,
+        data: {
+          role: routed.decision.role,
+          complexity: routed.decision.complexity,
+          kind: routed.decision.kind,
+          confidence: routed.decision.confidence,
+          source: routed.decision.source,
+          reason: routed.decision.reason,
+          flashCalled: routed.decision.source === "flash_llm",
+        },
+      });
+    }
+    if (routed.budget) {
+      emitGenerationBudget({
+        correlationId,
+        chatId,
+        sessionKey: sessionId,
+        data: {
+          policyVersion: routed.budget.policyVersion,
+          complexity: routed.budget.complexity,
+          kind: routed.budget.kind,
+          initialMaxTokens: routed.budget.initialMaxTokens,
+          softMaxTokens: routed.budget.softMaxTokens,
+          hardMaxTokens: routed.budget.hardMaxTokens,
+          temperature: routed.budget.temperature,
+          budgetApplied: budgetApplyStrategy === "set_model",
+          budgetApplyStrategy,
+        },
+      });
+    }
+
     try {
       // R-GR-3: rulesContext — явный per-turn префикс (не только первый ход).
       const fullMessage = rulesContext ? `${rulesContext}\n\n${message}` : message;
@@ -489,6 +574,8 @@ export class TelegramSessionPool {
           status: "failed",
           reason: "prompt-error",
         });
+        turnOk = false;
+        turnCode = "prompt_error";
         finish({ text: "Не удалось получить ответ от Гриши." });
       });
     } catch (err) {
@@ -509,6 +596,8 @@ export class TelegramSessionPool {
         status: "failed",
         reason: "prompt-sync-error",
       });
+      turnOk = false;
+      turnCode = "prompt_error";
       finish({ text: "Не удалось получить ответ от Гриши." });
     }
 

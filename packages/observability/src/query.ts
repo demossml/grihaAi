@@ -8,6 +8,10 @@ export interface QueryFilter {
   component?: string;
   chatId?: string;
   correlationId?: string;
+  /** машинный код ошибки/логики (exact match). */
+  code?: string;
+  /** префикс имени события (event.startsWith). */
+  eventPrefix?: string;
   /** окно в минутах (default 60). */
   sinceMinutes?: number;
   /** default 50, max 200. */
@@ -51,9 +55,11 @@ export function readObsEvents(opts: { dir?: string; filter?: QueryFilter }): Obs
         continue; // битая строка
       }
       if (filter.event !== undefined && e.event !== filter.event) continue;
+      if (filter.eventPrefix !== undefined && !e.event.startsWith(filter.eventPrefix)) continue;
       if (filter.component !== undefined && e.component !== filter.component) continue;
       if (filter.chatId !== undefined && e.chatId !== filter.chatId) continue;
       if (filter.correlationId !== undefined && e.correlationId !== filter.correlationId) continue;
+      if (filter.code !== undefined && e.code !== filter.code) continue;
       if (e.ts) {
         const ts = Date.parse(e.ts);
         if (Number.isFinite(ts) && ts < sinceTs) continue;

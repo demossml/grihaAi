@@ -87,3 +87,11 @@ sampling-параметры, если провайдер поддерживае�
 - `TaskProfile.complexity` wiring (Phase 2 — сделано через RoutingDecision).
 - Flash LLM router (Phase 2 — см. `docs/FLASH_ROUTER.md`).
 - GenerationEvaluator (extension decision).
+
+## Калибровка (вход из observability)
+
+`generation.budget` / `generation.extend*` / `generation.finish` (см.
+`docs/OBSERVABILITY.md`) — вход для ручной или агентной калибровки `profiles.ts`:
+какой профиль выставили (`complexity` + initial/soft/hard), применился ли
+(`budgetApplied`/`budgetApplyStrategy`), расширяли ли (`extend` from→to),
+отказ (`extend_denied` reason), не хватило ли токенов (`finish` truncated/length).

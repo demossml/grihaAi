@@ -34,12 +34,16 @@ export default function obsTools(pi: ExtensionAPI): void {
       "Прочитать журнал наблюдаемости Griha (JSONL, без LLM). " +
       "Используй когда пользователь спрашивает почему бот молчал, не ушёл отчёт, " +
       "или что происходило в системе. Не выдумывай события — только результат tool. " +
+      "Почему молчал: gate.block + chatId (reason). Один ход целиком: correlationId. " +
+      "Бюджет: event generation.budget / generation.finish. Префикс: eventPrefix (например generation.). " +
       "only for operator/owner.",
     parameters: Type.Object({
       event: Type.Optional(Type.String({ description: "exact event name" })),
+      eventPrefix: Type.Optional(Type.String({ description: "event prefix (startsWith)" })),
       component: Type.Optional(Type.String({ description: "exact component" })),
       chatId: Type.Optional(Type.String()),
       correlationId: Type.Optional(Type.String()),
+      code: Type.Optional(Type.String({ description: "машинный код ошибки/логики" })),
       sinceMinutes: Type.Optional(Type.Number({ description: "default 60, min 1, max 1440" })),
       limit: Type.Optional(Type.Number({ description: "default 30, max 100" })),
     }),
@@ -47,9 +51,11 @@ export default function obsTools(pi: ExtensionAPI): void {
       _id: string,
       params: {
         event?: string;
+        eventPrefix?: string;
         component?: string;
         chatId?: string;
         correlationId?: string;
+        code?: string;
         sinceMinutes?: number;
         limit?: number;
       },
@@ -65,9 +71,11 @@ export default function obsTools(pi: ExtensionAPI): void {
       const events = readObsEvents({
         filter: {
           event: params.event,
+          eventPrefix: params.eventPrefix,
           component: params.component,
           chatId: params.chatId,
           correlationId: params.correlationId,
+          code: params.code,
           sinceMinutes,
           limit,
         },

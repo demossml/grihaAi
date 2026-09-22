@@ -3,7 +3,8 @@ const TOKEN_RE = /\d+:[A-Za-z0-9_-]{20,}/g;
 /** Authorization: Bearer … */
 const BEARER_RE = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
 /** Ключи, которые не должны попадать в лог. */
-const SENSITIVE_KEY_RE = /(password|token|authorization|secret|api[-_]?key)/i;
+// "token" — но НЕ счётчики "tokens" (maxTokens/initialMaxTokens/outputTokens и т.п.).
+const SENSITIVE_KEY_RE = /(password|token(?!s)|authorization|secret|api[-_]?key)/i;
 
 export function redactString(s: string): string {
   let out = s.replace(TOKEN_RE, "[REDACTED_TOKEN]");

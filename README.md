@@ -86,6 +86,13 @@ Pool-wire (Phase 2.1) — `preparePoolRouting` перед `session.prompt`, fail
 max_tokens 256) + `ModelRouter.callWithDecision` применяет `initialMaxTokens`/
 `temperature` из бюджета при policy on.
 
+## Observability
+
+`@griha/observability` пишет JSONL-журнал (`~/.grish-ai/obs/`): turn chain
+(`turn.start`/`end`), gate, routing, budget (`generation.budget`/`extend*`/`finish`),
+tools, send, reminder. Один `correlationId` на ход. Флаг `GRIHA_OBS=0` — off.
+Подробнее — [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+
 ## Быстрый старт
 
 ```bash

@@ -106,3 +106,9 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
 
 - Calibration auto-apply (Phase 3).
 - Per-turn maxTokens в pi `session.prompt` (нужен official API в pi SDK).
+
+## Observability
+
+`routing.decision` (role/complexity/kind/confidence/source/flashCalled) + бюджетные
+`generation.budget`/`extend*`/`finish` пишутся в `@griha/observability` JSONL с
+`correlationId` (см. `docs/OBSERVABILITY.md`).

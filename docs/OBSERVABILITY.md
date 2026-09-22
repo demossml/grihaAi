@@ -63,3 +63,44 @@ JSONL, без LLM.
 | `report.render` | `report.render.end` | reportType, bytes / error |
 | `reminder` | `reminder.fire` | skipped=inactive / — |
 | `bot` | `process.uncaught` / `process.unhandledRejection` | message |
+
+## Obs v2 — turn chain, budget, tools
+
+События нового слоя (v2), все через `emit()` из `@griha/observability`,
+один `correlationId` на ход:
+
+| component | event | key data |
+|---|---|---|
+| `telegram.turn` | `turn.start` / `turn.end` | chatType, hasImage, hasVoice, textLen / ok, code, durationMs, hadReply, hadFile |
+| `runtime.routing` | `routing.decision` | role, complexity, kind, confidence, source, reason, flashCalled |
+| `runtime.generation` | `generation.budget` | policyVersion, complexity, kind, initial/soft/hard, temperature, budgetApplied, budgetApplyStrategy |
+| `runtime.generation` | `generation.extend` / `generation.extend_denied` | fromMaxTokens→toMaxTokens / reason |
+| `runtime.generation` | `generation.finish` | ok, code (unknown/error), usageAvailable, inputTokens/outputTokens, truncated |
+| `agent.tool` | `tool.start` / `tool.end` | toolName, durationMs, code |
+
+Поля `ObsEvent` дополнены: `threadId?`, `code?`. `QueryFilter` дополнен:
+`code?`, `eventPrefix?` (event.startsWith).
+
+## Budget analysis (калибровка)
+
+| Вопрос | Где смотреть |
+|---|---|
+| Какой профиль | `generation.budget` complexity, initial/soft/hard |
+| Применился? | `generation.budget` budgetApplied, budgetApplyStrategy |
+| Расширяли? | `generation.extend` from→to |
+| Отказ extend | `generation.extend_denied` reason |
+| Не хватило токенов? | `generation.finish` code=length / truncated=true |
+| Usage | inputTokens/outputTokens если usageAvailable |
+| Провал хода | `turn.end` ok=false + code |
+
+## Debug one turn
+
+`turn.start` → `gate.*` → `routing.decision` → `generation.budget` → [`tool.*`] →
+`generation.finish` → `turn.end` → `telegram.send.*` — всё один `correlationId`.
+
+## Privacy
+
+Никогда: сырой текст user/assistant, тело OCR, caption целиком, apiKey, bot token,
+Authorization, password, base64, session JSONL. В `data` — только textLen/ocrLen/
+toolName/code/counts/flags/reason. `maxTokens`/`initialMaxTokens` и другие
+счётчики токенов НЕ redact-ятся (это числа бюджета, не секреты).

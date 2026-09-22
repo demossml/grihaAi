@@ -461,3 +461,15 @@
 - [x] Тесты `pool-apply-budget.test.ts` (3); turbo 40/40, lint 0
 - [ ] Phase 3 calibration auto-apply (не начат)
 
+## Phase 46 — Observability v2 (turn chain, budget, tools)
+
+- [x] `packages/observability`: `threadId?`/`code?` в ObsEvent/EmitInput; `QueryFilter.code/eventPrefix`
+- [x] `redact.ts`: счётчики `maxTokens`/`initialMaxTokens` не redact-ятся (token → token(?!s))
+- [x] `helpers.ts`: `emitTurnStart/End`, `emitGenerationBudget`, `emitGenerationFinish`
+- [x] `allocator-obs.ts`: `tryExtendBudgetWithObs` (extend / extend_denied)
+- [x] `TelegramSessionPool.runPrompt`: turn.start/end, routing.decision, generation.budget, generation.finish (один correlationId)
+- [x] `obs_query`: code/eventPrefix + описание «почему молчал / бюджет / один ход»
+- [ ] generation.extend runtime wire — в prod multi-pass ещё нет (helper готов, EXTEND_RUNTIME_WIRE: no)
+- [ ] generation.finish usage/finishReason — pi не отдаёт (usageAvailable: false)
+- [x] Тесты: obs helpers (2), allocator-obs (2) + regress; turbo 40/40, lint 0
+

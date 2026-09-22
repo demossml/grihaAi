@@ -8,12 +8,14 @@ export interface EmitInput {
   event: string;
   correlationId?: string;
   chatId?: string;
+  threadId?: string;
   userId?: string;
   messageId?: number;
   updateId?: number;
   sessionKey?: string;
   durationMs?: number;
   ok?: boolean;
+  code?: string;
   data?: Record<string, unknown>;
 }
 
@@ -51,12 +53,14 @@ export function emit(input: EmitInput): void {
     event: input.event,
     correlationId: input.correlationId,
     chatId: input.chatId,
+    threadId: input.threadId,
     userId: input.userId,
     messageId: input.messageId,
     updateId: input.updateId,
     sessionKey: input.sessionKey,
     durationMs: input.durationMs,
     ok: input.ok,
+    code: input.code,
     data: redactData(input.data),
   };
   try {
