@@ -1,8 +1,18 @@
 # Griha Task State
 
 Current phase: R (Post-wiring / production enablement)
-Current item: переименование флага → GRIHA_AGENT_RUNTIME (VERIFIED)
+Current item: Этап 0 — гигиена obs-потока (DONE, commit 96a1ecd)
 Status: готово к финальному включению (shadow mode → prod)
+
+## Этап 0 — гигиена (2026-09-22)
+
+- Причина шума: `system-update.test.ts` вызывал `SystemUpdateService.run/status`,
+  чьи `emit(...)` с фейковыми `beforeSha` ("same"/"old"/"new"/"abc123") писали в
+  реальный `~/.grish-ai/obs/` (GRIHA_OBS не был выключен в тестах).
+- Фикс: `apps/agent/package.json` test-скрипт теперь `GRIHA_OBS=0 tsx --test ...`;
+  `allocator-obs.test.ts` явно включает emit в `beforeEach` (delete GRIHA_OBS).
+- Baseline (flag off): 1415 tests pass, turbo 40/40, lint 0.
+- Etapы 1–11 (включение флагов) — deployment/ops на macmini, не в этом workspace.
 
 Last completed items: глобальное переименование (файлы/текст/флаг) + lint + golden
 Last commits: 41d69be (ссылки), переименование (этот коммит)
