@@ -20,6 +20,9 @@ ExecStart=/home/admingimolost/grihaAi/node_modules/.bin/tsx /home/admingimolost/
 # Telegram из РФ доступен только через локальный прокси (griha-proxy, порт 8089).
 Environment=HTTPS_PROXY=http://127.0.0.1:8089
 Environment=HTTP_PROXY=http://127.0.0.1:8089
+# Agent Runtime: новый runtime-слой (wiring W1–W13) за флагом. Только этот флаг;
+# GRIHA_GENERATION_POLICY и GRIHA_FLASH_ROUTER остаются OFF.
+Environment=GRIHA_AGENT_RUNTIME=1
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
