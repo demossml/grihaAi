@@ -62,9 +62,25 @@ Phase 2 (Flash router / GenerationEngine), не в этом этапе.
 `maxTokens = budget.initialMaxTokens` и `temperature = budget.temperature` в
 `ModelCaller` (параметр `gen`). Флаг off → `gen` не передаётся (1:1).
 
-Telegram-путь использует pi `session.prompt`, который не принимает per-turn
-maxTokens/temperature — там budget пишется в obs (`routing.decision.budgetApplied/
-initialMaxTokens/policyVersion`), а не форсируется в API-запрос.
+## Telegram / pi apply (Phase 2.3)
+
+**Стратегия: `set_model` (STRATEGY B).**
+
+pi `session.prompt` не принимает per-turn maxTokens/temperature (тип
+`PromptOptions` — expandPromptTemplates/images/streamingBehavior/source/
+preflightResult). Поэтому бюджет применяется через `session.setModel`:
+
+- `TelegramSessionPool.runPrompt` (`apps/agent/.pi/extensions/telegram-bot/TelegramSessionPool.ts`):
+  после `preparePoolRouting`, если `budget` есть — `session.setModel(applyBudgetToModel(session.model, budget))`.
+- `applyBudgetToModel` (`pool-apply-budget.ts`) клонирует pi `Model`:
+  `maxTokens = budget.initialMaxTokens`, `samplingParams.temperature = budget.temperature`.
+- Восстановление модели — в `finish` (terminal state хода), fire-and-forget.
+- `budgetApplied: true` в obs ТОЛЬКО когда `setModel` реально применился
+  (`budgetApplyStrategy: "set_model"`), иначе `none`.
+
+Ограничение: `temperature` кладётся в `samplingParams` (pi применяет per-request
+sampling-параметры, если провайдер поддерживает); гарантированно ограничивается
+`maxTokens` через `Model.maxTokens`.
 
 ## Next phases (не сделано)
 

@@ -93,6 +93,8 @@ export interface TelegramEvent {
   initialMaxTokens?: number;
   policyVersion?: string;
   flashCalled?: boolean;
+  /** Phase 2.3: стратегия применения бюджета. */
+  budgetApplyStrategy?: string;
 }
 
 /** Записать структурированное событие lifecycle. Не бросает никогда. */
@@ -122,6 +124,7 @@ export function logTelegramEvent(event: TelegramEvent): void {
     if (event.initialMaxTokens !== undefined) entry.initialMaxTokens = event.initialMaxTokens;
     if (event.policyVersion !== undefined) entry.policyVersion = event.policyVersion;
     if (event.flashCalled !== undefined) entry.flashCalled = event.flashCalled;
+    if (event.budgetApplyStrategy !== undefined) entry.budgetApplyStrategy = event.budgetApplyStrategy;
     console.log(`[telegram-bot] event ${JSON.stringify(entry)}`);
   } catch {
     /* никогда не бросаем из логирования */

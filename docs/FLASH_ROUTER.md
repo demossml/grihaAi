@@ -92,6 +92,16 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
   policyVersion`), а реальное ограничение maxTokens применяется на уровне
   `ModelRouter` (runtime model-call абстракция) и flash-роутера (max_tokens 256).
 
+## Phase 2.3
+
+- Budget на prompt path: `TelegramSessionPool.runPrompt` применяет бюджет через
+  `session.setModel(applyBudgetToModel(session.model, budget))` (STRATEGY B) при
+  `GRIHA_GENERATION_POLICY=1` + non-null budget; restore в `finish`.
+- `pool-apply-budget.ts` — `applyBudgetToModel` (клонирует pi `Model`:
+  `maxTokens = initialMaxTokens`, `samplingParams.temperature = temperature`).
+- obs: `routing.decision.budgetApplied` = true только при реальном `set_model`;
+  добавлен `budgetApplyStrategy` ("set_model" | "none").
+
 ## Next (не сделано)
 
 - Calibration auto-apply (Phase 3).

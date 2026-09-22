@@ -452,3 +452,12 @@
 - [x] Тесты: call-flash (3), pool-routing (10), budget-apply (2); turbo 40/40 (1405 tests), lint 0
 - [x] Флаги `GRIHA_FLASH_ROUTER`/`GRIHA_GENERATION_POLICY` default off
 
+## Phase 45 — GenerationBudget на pi session.prompt (Phase 2.3)
+
+- [x] `pool-apply-budget.ts`: `applyBudgetToModel` (клонирует pi `Model`, maxTokens + samplingParams.temperature)
+- [x] STRATEGY B (set_model): `runPrompt` применяет `session.setModel(...)` при policy on + budget, restore в `finish`
+- [x] obs: `budgetApplied` = true только при реальном `set_model`; поле `budgetApplyStrategy`
+- [x] fail-safe: ошибка apply/setModel не роняет ход; флаг off → ноль накладных (1:1)
+- [x] Тесты `pool-apply-budget.test.ts` (3); turbo 40/40, lint 0
+- [ ] Phase 3 calibration auto-apply (не начат)
+

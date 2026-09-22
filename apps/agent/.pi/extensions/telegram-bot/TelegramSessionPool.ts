@@ -33,8 +33,9 @@ import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
-import { preparePoolRouting } from "./pool-routing.js";
+import { preparePoolRouting, type PoolRoutingResult } from "./pool-routing.js";
 import { flashDepsFromConfig } from "./pool-call-flash.js";
+import { applyBudgetToModel } from "./pool-apply-budget.js";
 
 /**
  * Inline extension for isolated Telegram sub-sessions: registers the provider
@@ -314,6 +315,10 @@ export class TelegramSessionPool {
       resolveReply = resolve;
     });
 
+    // Phase 2.3: модель для восстановления после apply budget (STRATEGY B).
+    let modelToRestore: Parameters<AgentSession["setModel"]>[0] | undefined;
+    let budgetApplyStrategy: "set_model" | "none" = "none";
+
     // Объявлены до finish, чтобы cleanup не падал по TDZ.
     let unsubscribe: () => void = () => {};
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -338,6 +343,12 @@ export class TelegramSessionPool {
       }
       unsubscribe();
       clearSessionContext(sessionId);
+      // Phase 2.3: восстановить модель после prompt (fire-and-forget).
+      if (modelToRestore) {
+        const restore = modelToRestore;
+        modelToRestore = undefined;
+        session.setModel(restore).catch(() => {});
+      }
       resolveReply(value);
     };
 
@@ -404,34 +415,49 @@ export class TelegramSessionPool {
       finish({ text: PROMPT_TIMEOUT_MESSAGE });
     }, this.promptTimeoutMs);
 
-    // Phase 2.1/2.2: маршрутизация + budget перед prompt (fail-safe; флаги off → ноль накладных).
+    // Phase 2.1/2.2/2.3: маршрутизация + budget + apply на модель (fail-safe; флаги off → ноль накладных).
+    let routed: PoolRoutingResult = { decision: null, budget: null };
     try {
       const cfg = loadConfig();
-      const routed = await preparePoolRouting(
+      routed = await preparePoolRouting(
         { text: message, hasImage, hasVoice, chatType },
         {
           env: process.env,
           flash: cfg ? flashDepsFromConfig(cfg) : undefined,
         },
       );
-      if (routed.decision) {
-        logTelegramEvent({
-          event: "routing.decision",
-          ...baseEvent,
-          role: routed.decision.role,
-          complexity: routed.decision.complexity,
-          kind: routed.decision.kind,
-          confidence: routed.decision.confidence,
-          source: routed.decision.source,
-          reason: routed.decision.reason,
-          flashCalled: routed.decision.source === "flash_llm",
-          budgetApplied: routed.budget != null,
-          initialMaxTokens: routed.budget?.initialMaxTokens,
-          policyVersion: routed.budget?.policyVersion,
-        });
-      }
     } catch {
       // fail-safe: routing никогда не роняет ход
+    }
+
+    // Phase 2.3 (STRATEGY B): применить budget к модели (setModel → restore в finish).
+    const previousModel = session.model;
+    if (routed.budget && previousModel) {
+      modelToRestore = previousModel;
+      try {
+        await session.setModel(applyBudgetToModel(previousModel, routed.budget));
+        budgetApplyStrategy = "set_model";
+      } catch {
+        budgetApplyStrategy = "none";
+      }
+    }
+
+    if (routed.decision) {
+      logTelegramEvent({
+        event: "routing.decision",
+        ...baseEvent,
+        role: routed.decision.role,
+        complexity: routed.decision.complexity,
+        kind: routed.decision.kind,
+        confidence: routed.decision.confidence,
+        source: routed.decision.source,
+        reason: routed.decision.reason,
+        flashCalled: routed.decision.source === "flash_llm",
+        budgetApplied: budgetApplyStrategy === "set_model",
+        budgetApplyStrategy,
+        initialMaxTokens: routed.budget?.initialMaxTokens,
+        policyVersion: routed.budget?.policyVersion,
+      });
     }
 
     try {
