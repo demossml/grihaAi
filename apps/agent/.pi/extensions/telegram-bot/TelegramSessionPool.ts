@@ -34,6 +34,7 @@ import { clearSessionContext, setSessionContext } from "../user-rules/context.js
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
 import { preparePoolRouting } from "./pool-routing.js";
+import { flashDepsFromConfig } from "./pool-call-flash.js";
 
 /**
  * Inline extension for isolated Telegram sub-sessions: registers the provider
@@ -403,11 +404,15 @@ export class TelegramSessionPool {
       finish({ text: PROMPT_TIMEOUT_MESSAGE });
     }, this.promptTimeoutMs);
 
-    // Phase 2.1: маршрутизация перед prompt (fail-safe; флаги off → ноль накладных).
+    // Phase 2.1/2.2: маршрутизация + budget перед prompt (fail-safe; флаги off → ноль накладных).
     try {
+      const cfg = loadConfig();
       const routed = await preparePoolRouting(
         { text: message, hasImage, hasVoice, chatType },
-        { env: process.env },
+        {
+          env: process.env,
+          flash: cfg ? flashDepsFromConfig(cfg) : undefined,
+        },
       );
       if (routed.decision) {
         logTelegramEvent({
@@ -419,12 +424,11 @@ export class TelegramSessionPool {
           confidence: routed.decision.confidence,
           source: routed.decision.source,
           reason: routed.decision.reason,
+          flashCalled: routed.decision.source === "flash_llm",
+          budgetApplied: routed.budget != null,
+          initialMaxTokens: routed.budget?.initialMaxTokens,
+          policyVersion: routed.budget?.policyVersion,
         });
-      }
-      if (routed.budget) {
-        console.debug(
-          `[telegram-bot] generation-budget role=${routed.decision?.role ?? "?"} complexity=${routed.budget.complexity} initial=${routed.budget.initialMaxTokens} hard=${routed.budget.hardMaxTokens} temperature=${routed.budget.temperature}`,
-        );
       }
     } catch {
       // fail-safe: routing никогда не роняет ход

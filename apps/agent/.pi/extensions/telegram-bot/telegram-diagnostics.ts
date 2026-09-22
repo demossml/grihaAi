@@ -88,12 +88,17 @@ export interface TelegramEvent {
   kind?: string;
   confidence?: number;
   source?: string;
+  /** Phase 2.2: budget apply + flash call flags */
+  budgetApplied?: boolean;
+  initialMaxTokens?: number;
+  policyVersion?: string;
+  flashCalled?: boolean;
 }
 
 /** Записать структурированное событие lifecycle. Не бросает никогда. */
 export function logTelegramEvent(event: TelegramEvent): void {
   try {
-    const entry: Record<string, string | number> = { event: event.event };
+    const entry: Record<string, string | number | boolean> = { event: event.event };
     if (event.toolName !== undefined) entry.toolName = event.toolName;
     if (event.correlationId !== undefined) entry.correlationId = event.correlationId;
     if (event.chatId !== undefined) entry.chatId = event.chatId;
@@ -113,6 +118,10 @@ export function logTelegramEvent(event: TelegramEvent): void {
     if (event.kind !== undefined) entry.kind = event.kind;
     if (event.confidence !== undefined) entry.confidence = event.confidence;
     if (event.source !== undefined) entry.source = event.source;
+    if (event.budgetApplied !== undefined) entry.budgetApplied = event.budgetApplied;
+    if (event.initialMaxTokens !== undefined) entry.initialMaxTokens = event.initialMaxTokens;
+    if (event.policyVersion !== undefined) entry.policyVersion = event.policyVersion;
+    if (event.flashCalled !== undefined) entry.flashCalled = event.flashCalled;
     console.log(`[telegram-bot] event ${JSON.stringify(entry)}`);
   } catch {
     /* никогда не бросаем из логирования */

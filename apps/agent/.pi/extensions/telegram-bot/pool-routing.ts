@@ -9,6 +9,11 @@ import {
   type RoutingContext,
   type RoutingDecision,
 } from "../../../src/runtime/routing/index.js";
+import {
+  createCallFlash,
+  type CallFlashFn,
+  type FlashCallDeps,
+} from "./pool-call-flash.js";
 
 /**
  * Phase 2.1: сбор RoutingContext для pool. Только короткие поля, без истории.
@@ -42,20 +47,21 @@ export interface PoolRoutingResult {
 }
 
 /**
- * Phase 2.1: маршрутизация перед prompt. Fail-safe — никогда не роняет ход.
+ * Phase 2.1/2.2: маршрутизация перед prompt. Fail-safe — никогда не роняет ход.
  *
  * - оба флага OFF → { null, null } (ноль накладных, старый путь 1:1);
  * - policy on → decision + budget (complexity/kind из decision);
- * - flash on + callFlash → routeMessage (rule → flash_llm → fallback);
+ * - flash on → routeMessage (rule → flash_llm → fallback); callFlash создаётся
+ *   из `flash`-конфига (apiKey) или передаётся явно через opts.callFlash;
  * - любой throw → { null, null } (legacy prompt продолжается).
  */
 export async function preparePoolRouting(
   input: PoolRoutingInput,
   opts?: {
     env?: NodeJS.ProcessEnv;
-    callFlash?: (
-      messages: Array<{ role: "system" | "user"; content: string }>,
-    ) => Promise<string>;
+    callFlash?: CallFlashFn;
+    /** Flash-конфиг (apiKey/baseUrl/model) + инъекция fetch для тестов. */
+    flash?: FlashCallDeps & { fetchFn?: typeof fetch };
   },
 ): Promise<PoolRoutingResult> {
   const env = opts?.env ?? process.env;
@@ -68,7 +74,16 @@ export async function preparePoolRouting(
 
   try {
     const rctx = buildRoutingContext(input);
-    const callFlash = flashOn ? opts?.callFlash : undefined;
+    let callFlash = opts?.callFlash;
+    // Phase 2.2: при флаге on + apiKey строим реальный callFlash (иначе rule+fallback).
+    if (flashOn && !callFlash && opts?.flash?.apiKey) {
+      callFlash = createCallFlash({
+        apiKey: opts.flash.apiKey,
+        baseUrl: opts.flash.baseUrl,
+        model: opts.flash.model,
+        fetchFn: opts.flash.fetchFn,
+      });
+    }
     const decision = await routeMessage(rctx, { env, callFlash });
     const budget = policyOn
       ? resolveGenerationBudget({

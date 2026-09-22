@@ -56,6 +56,16 @@ Phase 2 (Flash router / GenerationEngine), не в этом этапе.
 С Phase 2 (Flash Router) `complexity`/`kind` приходят из `RoutingDecision`
 (`ModelRouter.callWithDecision`), а не из default-констант. См. `docs/FLASH_ROUTER.md`.
 
+## Budget apply (Telegram pool)
+
+При `GRIHA_GENERATION_POLICY=1` `ModelRouter.callWithDecision` передаёт
+`maxTokens = budget.initialMaxTokens` и `temperature = budget.temperature` в
+`ModelCaller` (параметр `gen`). Флаг off → `gen` не передаётся (1:1).
+
+Telegram-путь использует pi `session.prompt`, который не принимает per-turn
+maxTokens/temperature — там budget пишется в obs (`routing.decision.budgetApplied/
+initialMaxTokens/policyVersion`), а не форсируется в API-запрос.
+
 ## Next phases (не сделано)
 
 - `TaskProfile.complexity` wiring (Phase 2 — сделано через RoutingDecision).

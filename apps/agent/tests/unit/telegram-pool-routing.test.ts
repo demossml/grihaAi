@@ -81,4 +81,50 @@ describe("preparePoolRouting", () => {
     assert.equal(r.decision.role, "main");
     assert.equal(r.decision.source, "flash_llm");
   });
+
+  it("flash on + apiKey + mock fetch → source flash_llm (Phase 2.2)", async () => {
+    const r = await preparePoolRouting(
+      { text: NO_KEYWORDS },
+      {
+        env: { GRIHA_FLASH_ROUTER: "1" },
+        flash: {
+          apiKey: "k",
+          fetchFn: async () =>
+            new Response(
+              JSON.stringify({
+                choices: [
+                  {
+                    message: {
+                      content:
+                        '{"role":"main","complexity":"complex","kind":"analysis","confidence":0.9,"reason":"x"}',
+                    },
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+        },
+      },
+    );
+    assert.ok(r.decision);
+    assert.equal(r.decision.source, "flash_llm");
+  });
+
+  it("flash on + no apiKey → no throw, source fallback", async () => {
+    const r = await preparePoolRouting(
+      { text: NO_KEYWORDS },
+      { env: { GRIHA_FLASH_ROUTER: "1" }, flash: {} },
+    );
+    assert.ok(r.decision);
+    assert.equal(r.decision.source, "fallback");
+  });
+
+  it("policy on → budget non-null with initialMaxTokens", async () => {
+    const r = await preparePoolRouting(
+      { text: "привет" },
+      { env: { GRIHA_GENERATION_POLICY: "1" } },
+    );
+    assert.ok(r.budget);
+    assert.ok(r.budget.initialMaxTokens > 0);
+  });
 });

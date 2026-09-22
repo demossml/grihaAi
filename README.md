@@ -82,7 +82,9 @@ LLM/OCR/PDF. Agent-tools: `report_data_expenses`, `report_data_problems`, `docum
 Decision → `resolveGenerationBudget`. Флаг `GRIHA_FLASH_ROUTER` (default off), без
 истории/ACL/сумм в Flash. Подробнее — [docs/FLASH_ROUTER.md](docs/FLASH_ROUTER.md).
 Pool-wire (Phase 2.1) — `preparePoolRouting` перед `session.prompt`, fail-safe,
-флаги off → ноль накладных.
+флаги off → ноль накладных. Phase 2.2 — `createCallFlash` (deepseek-v4-flash,
+max_tokens 256) + `ModelRouter.callWithDecision` применяет `initialMaxTokens`/
+`temperature` из бюджета при policy on.
 
 ## Быстрый старт
 

@@ -74,7 +74,25 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
   работает только rule-route + fallback (LLM-ветка не вызывается без callFlash).
 - obs: событие `routing.decision` (role/complexity/kind/confidence/source/reason, без userText).
 
+## Phase 2.2
+
+- `apps/agent/.pi/extensions/telegram-bot/pool-call-flash.ts`:
+  `createCallFlash` + `flashDepsFromConfig`. Endpoint `{baseUrl}/v1/chat/completions`,
+  `deepseek-v4-flash` (или `config.models.flash`), `max_tokens: 256` (router output — только JSON),
+  `temperature: 0.0`, timeout 8000ms (AbortController).
+- apiKey из того же места, что bot/session (config), не хардкод. Если apiKey отсутствует —
+  callFlash не создаётся → rule-route + fallback (без LLM).
+- Budget apply (D2): `ModelRouter.callWithDecision` передаёт `GenerationParams`
+  (`maxTokens = initialMaxTokens`, `temperature`) в `ModelCaller` при
+  `GRIHA_GENERATION_POLICY=1`. Флаг off → `gen` undefined (1:1).
+- `TelegramSessionPool` использует pi `session.prompt`, который НЕ принимает
+  per-turn maxTokens/temperature (`PromptOptions`: expandPromptTemplates/images/
+  streamingBehavior/source/preflightResult — agent-session.d.ts L148-164). Поэтому
+  для Telegram-пути budget — obs (`routing.decision.budgetApplied/initialMaxTokens/
+  policyVersion`), а реальное ограничение maxTokens применяется на уровне
+  `ModelRouter` (runtime model-call абстракция) и flash-роутера (max_tokens 256).
+
 ## Next (не сделано)
 
 - Calibration auto-apply (Phase 3).
-- callFlash в pool (нужен model caller в контексте пула).
+- Per-turn maxTokens в pi `session.prompt` (нужен official API в pi SDK).

@@ -442,3 +442,13 @@
 - [ ] callFlash в pool (нет прямого model caller) — rule-route + fallback только
 - [x] Тесты `telegram-pool-routing.test.ts` (7) + regress зелёные; флаги всё ещё default off
 
+## Phase 44 — Flash Router callFlash + budget apply (Phase 2.2)
+
+- [x] D1: `pool-call-flash.ts` (`createCallFlash` + `flashDepsFromConfig`) — flash_llm источник
+- [x] D1 wire: `preparePoolRouting` строит callFlash из config apiKey (без apiKey → rule+fallback)
+- [x] D2: `ModelRouter.callWithDecision` передаёт `GenerationParams` (maxTokens/temperature) в caller при policy on
+- [x] obs: `routing.decision` расширен `budgetApplied`/`initialMaxTokens`/`policyVersion`/`flashCalled`
+- [ ] per-turn maxTokens в pi `session.prompt` (нет API) — Telegram-путь budget obs-only
+- [x] Тесты: call-flash (3), pool-routing (10), budget-apply (2); turbo 40/40 (1405 tests), lint 0
+- [x] Флаги `GRIHA_FLASH_ROUTER`/`GRIHA_GENERATION_POLICY` default off
+
