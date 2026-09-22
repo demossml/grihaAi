@@ -68,6 +68,13 @@ LLM/OCR/PDF. Agent-tools: `report_data_expenses`, `report_data_problems`, `docum
 отказ, build упал → без restart, данные `~/.grish-ai` не трогаются. Подробнее —
 [docs/SYSTEM_UPDATE.md](docs/SYSTEM_UPDATE.md).
 
+## Generation Policy
+
+Детерминированные бюджеты генерации (`apps/agent/src/runtime/generation/`, без LLM):
+`resolveGenerationBudget` (профили trivial/simple/medium/complex, hard-cap 8192) +
+`BudgetAllocator` (расширение в пределах hard/maxExtensions). Флаг
+`GRIHA_GENERATION_POLICY` (default off). Подробнее — [docs/GENERATION_POLICY.md](docs/GENERATION_POLICY.md).
+
 ## Быстрый старт
 
 ```bash

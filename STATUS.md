@@ -412,3 +412,11 @@
 - [x] restart через `systemctl --user restart griha-ai` (или `GRIHA_RESTART_CMD`)
 - [ ] авто-update по cron (не в этом этапе)
 
+## Phase 41 — Generation Policy + Budget Allocator (Phase 1)
+
+- [x] `apps/agent/src/runtime/generation/`: `types`/`profiles`/`policy`/`allocator`/`apply-to-config`/`flag`
+- [x] `resolveGenerationBudget` (gp-1.0.0) + `tryExtendBudget` (hard/maxExtensions)
+- [x] feature flag `GRIHA_GENERATION_POLICY` (default off), wire minimal в `ModelRouter.call`
+- [ ] Flash LLM router (Phase 2)
+- [ ] `TaskProfile.complexity` wiring (сейчас default medium/simple)
+

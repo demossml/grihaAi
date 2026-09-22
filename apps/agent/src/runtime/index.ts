@@ -33,3 +33,5 @@ export function createAgentKernel(engines: RuntimeEngine[]): AgentKernel {
   for (const engine of engines) kernel.register(engine);
   return kernel;
 }
+
+export * from "./generation/index.js";

@@ -20,6 +20,13 @@ import {
   FallbackChain,
 } from "../../runtime/model/fallback-chain.js";
 import { modelPolicyFor } from "../../runtime/model/types.js";
+import {
+  budgetToRuntimeParams,
+  DEFAULT_MAIN_COMPLEXITY,
+  DEFAULT_VISION_COMPLEXITY,
+  isGenerationPolicyEnabled,
+  resolveGenerationBudget,
+} from "../../runtime/generation/index.js";
 
 export type ModelRole = "main" | "vision"; // | "voice" later
 
@@ -72,6 +79,17 @@ export class ModelRouter {
   ): Promise<string> {
     if (!this.caller) throw new Error("No model caller configured");
     const config = this.getConfig(role);
+
+    // GenerationPolicy (Phase 1, flag default OFF): вычисляем бюджет; параметры
+    // temp/maxTokens ещё не пробрасываются в ModelCaller — это Phase 2 (Flash).
+    if (isGenerationPolicyEnabled(this.env)) {
+      const budget = resolveGenerationBudget({
+        complexity: role === "vision" ? DEFAULT_VISION_COMPLEXITY : DEFAULT_MAIN_COMPLEXITY,
+        kind: role === "vision" ? "vision_ocr" : "chat_reply",
+      });
+      const params = budgetToRuntimeParams(budget);
+      console.debug(`[generation-policy] role=${role} ${JSON.stringify(params)}`);
+    }
 
     // B3 (post-wiring, §7): FallbackChain по политике роли.
     // Off = прямой вызов (1:1 старое поведение, без fallback).
