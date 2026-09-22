@@ -575,3 +575,13 @@ download → `VisionExtractor` (тот же `createHttpVisionCaller`, что и
   заменой групповому конвейеру не является.
 - Expense-инжест учитывает «useful fields» (total/supplier/rawText>20), а не
   только kind=receipt/invoice — unknown+сумма тоже попадает в expenses.
+
+## Routing, budget, observability (Telegram path)
+
+- `TelegramSessionPool.runPrompt`: `preparePoolRouting` → optional `setModel` budget
+  (`applyBudgetToModel`) → `session.prompt` → restore в `finish`.
+- Флаги `GRIHA_FLASH_ROUTER` / `GRIHA_GENERATION_POLICY` — default OFF (1:1).
+- obs: `turn.start` → `gate.*` → `routing.decision` → `generation.budget` →
+  [`tool.*`] → `generation.finish` → `turn.end` — один `correlationId`.
+- См. [GENERATION_POLICY.md](GENERATION_POLICY.md), [FLASH_ROUTER.md](FLASH_ROUTER.md),
+  [OBSERVABILITY.md](OBSERVABILITY.md).

@@ -104,3 +104,15 @@ JSONL, без LLM.
 Authorization, password, base64, session JSONL. В `data` — только textLen/ocrLen/
 toolName/code/counts/flags/reason. `maxTokens`/`initialMaxTokens` и другие
 счётчики токенов НЕ redact-ятся (это числа бюджета, не секреты).
+
+## Honest limitations
+
+- `generation.extend` runtime wire: **no** (helper `tryExtendBudgetWithObs` есть,
+  multi-pass extend в prod не вызывается).
+- `generation.finish` usageAvailable: **false** (pi не отдаёт usage/finishReason) ⇒
+  нельзя детектить обрезку по длине от провайдера; `truncated` не заполняется.
+
+## Related
+
+- [GENERATION_POLICY.md](GENERATION_POLICY.md)
+- [FLASH_ROUTER.md](FLASH_ROUTER.md)

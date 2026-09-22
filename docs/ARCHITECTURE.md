@@ -491,5 +491,8 @@ restriction, financial policy/limits. Protected skill names:
 - [docs/SKILLS.md](SKILLS.md) — живой каталог skills + workflow graphs.
 - [docs/TELEGRAM-BOT.md](TELEGRAM-BOT.md) — глубокий разбор Telegram-бота и пула изолированных сессий.
 - [docs/SECURITY.md](SECURITY.md) — периметр, модель доверия, gateway, policy, approval и sandbox-слои.
+- [docs/GENERATION_POLICY.md](GENERATION_POLICY.md) — детерминированные бюджеты генерации (gp-1.0.0).
+- [docs/FLASH_ROUTER.md](FLASH_ROUTER.md) — rule + Flash LLM маршрутизация сообщений.
+- [docs/OBSERVABILITY.md](OBSERVABILITY.md) — JSONL-журнал turn/budget/tools.
 - [docs/archive/](archive/) — история: аудиты и отчёты завершённых фаз (не актуальное состояние).
 - [STATUS.md](../STATUS.md) — прогресс по фазам.

@@ -473,3 +473,15 @@
 - [ ] generation.finish usage/finishReason — pi не отдаёт (usageAvailable: false)
 - [x] Тесты: obs helpers (2), allocator-obs (2) + regress; turbo 40/40, lint 0
 
+## Core runtime: Generation Policy + Flash Router + Observability v2
+
+- [x] GenerationPolicy gp-1.0.0 (resolveGenerationBudget, profiles, hard-cap 8192)
+- [x] BudgetAllocator + tryExtendBudgetWithObs helper
+- [x] Telegram set_model budget apply (flag off by default)
+- [x] Flash rule-route + routeMessage (+ callFlash)
+- [x] Pool preparePoolRouting (fail-safe)
+- [x] Obs v2 turn/routing/budget/finish (correlationId chain)
+- [ ] multi-pass extend в TG runtime
+- [ ] generation.finish provider usage/finishReason
+- [ ] Phase 3 auto-calibration (не начат)
+

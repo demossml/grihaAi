@@ -70,8 +70,8 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
   (complexity/kind из decision, только при `GRIHA_GENERATION_POLICY`).
 - `userText` обрезается до 1500; история/JSONL не передаётся; ACL/chatId не решает router.
 - **Fail-safe**: ошибка маршрутизации не роняет ход — prompt всё равно выполняется.
-- **callFlash: НЕ wired** (pool не имеет прямого model caller) — при `GRIHA_FLASH_ROUTER`
-  работает только rule-route + fallback (LLM-ветка не вызывается без callFlash).
+- **callFlash**: до Phase 2.2 не был wired; с 2.2 — `createCallFlash` из config apiKey
+  (см. ниже). Без apiKey — rule-route + fallback (LLM-ветка не вызывается).
 - obs: событие `routing.decision` (role/complexity/kind/confidence/source/reason, без userText).
 
 ## Phase 2.2
@@ -102,6 +102,12 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
 - obs: `routing.decision.budgetApplied` = true только при реальном `set_model`;
   добавлен `budgetApplyStrategy` ("set_model" | "none").
 
+## Model on user prompt
+
+Flash role **не** переключает session model на генерацию: `runPrompt` применяет budget
+(`setModel` с maxTokens/samplingParams) на ТЕКУЩЕЙ модели. `deepseek-v4-flash`
+используется только в `createCallFlash` (роутер), не в generation prompt.
+
 ## Next (не сделано)
 
 - Calibration auto-apply (Phase 3).
@@ -112,3 +118,8 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
 `routing.decision` (role/complexity/kind/confidence/source/flashCalled) + бюджетные
 `generation.budget`/`extend*`/`finish` пишутся в `@griha/observability` JSONL с
 `correlationId` (см. `docs/OBSERVABILITY.md`).
+
+## Related
+
+- [GENERATION_POLICY.md](GENERATION_POLICY.md) — budget apply.
+- [OBSERVABILITY.md](OBSERVABILITY.md) — routing.decision + generation.* события.

@@ -40,6 +40,8 @@ hard выше. `modelMaxTokens` режет hard/soft/initial по потолку
 - `mergeProfile(base, override)` — override только сужает (не поднимает hard выше cap).
 - `createExtensionState` / `tryExtendBudget` / `applyExtension` — расширение бюджета
   (не выше hard, не больше maxExtensions).
+- `tryExtendBudgetWithObs(budget, state, meta?)` — обёртка `tryExtendBudget` с emit
+  `generation.extend` / `generation.extend_denied` (helper готов, runtime multi-pass ещё не вызывает).
 - `budgetToRuntimeParams(budget) -> { temperature, maxTokens, policyVersion }` —
   параметры для вызова модели (`ModelConfig` в shared-types не имеет temp/maxTokens).
 - `applyGenerationBudgetToModelConfig(config, budget)` — shallow copy без мутации.
@@ -95,3 +97,14 @@ sampling-параметры, если провайдер поддерживае�
 какой профиль выставили (`complexity` + initial/soft/hard), применился ли
 (`budgetApplied`/`budgetApplyStrategy`), расширяли ли (`extend` from→to),
 отказ (`extend_denied` reason), не хватило ли токенов (`finish` truncated/length).
+
+## What is NOT done
+
+- multi-pass extend в production path: **no** (helper `tryExtendBudgetWithObs` есть,
+  runtime его не вызывает — Phase 3).
+- auto-calibration: **no** (не начат).
+
+## Related
+
+- [FLASH_ROUTER.md](FLASH_ROUTER.md) — routing.decision → complexity/kind.
+- [OBSERVABILITY.md](OBSERVABILITY.md) — generation.budget/extend*/finish события.
