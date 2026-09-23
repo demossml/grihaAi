@@ -34,8 +34,11 @@ test("kind analysis увеличивает initial vs other (medium), но <= so
   assert.ok(analysis.initialMaxTokens <= analysis.softMaxTokens);
 });
 
-test("kind report_dispatch уменьшает initial", () => {
+test("kind report_dispatch получает floor (initial/soft/hard не ниже минимума)", () => {
   const report = resolveGenerationBudget({ complexity: "medium", kind: "report_dispatch" });
-  const other = resolveGenerationBudget({ complexity: "medium", kind: "other" });
-  assert.ok(report.initialMaxTokens < other.initialMaxTokens);
+  assert.ok(report.initialMaxTokens >= 1024);
+  assert.ok(report.softMaxTokens >= 2048);
+  assert.ok(report.hardMaxTokens >= 4096);
+  assert.ok(report.initialMaxTokens <= report.softMaxTokens);
+  assert.ok(report.softMaxTokens <= report.hardMaxTokens);
 });

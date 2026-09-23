@@ -28,6 +28,11 @@ hard выше. `modelMaxTokens` режет hard/soft/initial по потолку
 Коэффициенты kind (initial only): `analysis ×1.25`, `report_dispatch/compression ×0.5`,
 `tool_orchestration/vision_ocr ×0.75`, `chat_reply/other ×1.0`.
 
+**Floor для `report_dispatch`** (Phase 2.4): после применения коэффициента
+`initial/soft/hard` поднимаются до минимума `1024/2048/4096` (с clamp к
+`CODE_HARD_CAP_OUTPUT_TOKENS`) — tool-calling отчётам нужен запас на вызовы
+инструментов, `trivial × 0.5 → 128` больше не применяется.
+
 ## Invariants
 
 - `initialMaxTokens <= softMaxTokens <= hardMaxTokens`

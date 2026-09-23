@@ -103,7 +103,10 @@ export async function preparePoolRouting(
  * брать данные из tools/БД, а не выдумывать суммы/строки отчёта.
  */
 export const REPORT_DISPATCH_GUIDANCE =
-  "[ROUTE] report_dispatch: use expense/report tools from DB; do not invent totals or line items.";
+  "[ROUTE] report_dispatch: this is a data/report request. Call the report tools " +
+  "(report_data_expenses / report_data_problems) to read real data from the DB. " +
+  "Do NOT invent totals, line items or numbers — only report what the tools return. " +
+  "If there is no data, say so plainly.";
 
 export function applyRouteGuidance(
   message: string,

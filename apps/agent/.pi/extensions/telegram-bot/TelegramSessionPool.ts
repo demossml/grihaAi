@@ -461,25 +461,33 @@ export class TelegramSessionPool {
 
     // Phase 2.1/2.2/2.3: маршрутизация + budget + apply на модель (fail-safe; флаги off → ноль накладных).
     let routed: PoolRoutingResult = { decision: null, budget: null };
+    let flashModelId: string | undefined;
     try {
       const cfg = loadConfig();
+      const flashDeps = cfg ? flashDepsFromConfig(cfg) : undefined;
+      flashModelId = flashDeps?.model ?? undefined;
       routed = await preparePoolRouting(
         { text: message, hasImage, hasVoice, chatType },
         {
           env: process.env,
-          flash: cfg ? flashDepsFromConfig(cfg) : undefined,
+          flash: flashDeps,
         },
       );
     } catch {
       // fail-safe: routing никогда не роняет ход
     }
 
-    // Phase 2.3 (STRATEGY B): применить budget к модели (setModel → restore в finish).
+    // Phase 2.3 (STRATEGY B): применить budget + flash-модель к session (setModel → restore в finish).
     const previousModel = session.model;
     if (routed.budget && previousModel) {
       modelToRestore = previousModel;
       try {
-        await session.setModel(applyBudgetToModel(previousModel, routed.budget));
+        // A) role=flash → deepseek-v4-flash; main/vision → текущая модель (не переключаем вслепую).
+        const baseModel =
+          routed.decision?.role === "flash" && flashModelId
+            ? { ...previousModel, id: flashModelId, name: flashModelId }
+            : previousModel;
+        await session.setModel(applyBudgetToModel(baseModel, routed.budget));
         budgetApplyStrategy = "set_model";
       } catch {
         budgetApplyStrategy = "none";

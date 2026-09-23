@@ -65,6 +65,25 @@ export function resolveGenerationBudget(input: GenerationPolicyInput): Generatio
   );
   profile = { ...profile, initialMaxTokens: adjustedInitial };
 
+  // report_dispatch — tool-calling reports need headroom; не даём trivial 128.
+  if (kind === "report_dispatch") {
+    const minInitial = 1024;
+    const minSoft = 2048;
+    const minHard = 4096;
+    let hard = Math.max(profile.hardMaxTokens, minHard);
+    hard = Math.min(hard, CODE_HARD_CAP_OUTPUT_TOKENS);
+    let soft = Math.max(profile.softMaxTokens, minSoft);
+    soft = Math.min(soft, hard);
+    let initial = Math.max(profile.initialMaxTokens, minInitial);
+    initial = Math.min(initial, soft);
+    profile = {
+      ...profile,
+      initialMaxTokens: initial,
+      softMaxTokens: soft,
+      hardMaxTokens: hard,
+    };
+  }
+
   // model max tokens ceiling
   if (typeof input.modelMaxTokens === "number" && input.modelMaxTokens > 0) {
     const modelCap = Math.floor(input.modelMaxTokens);

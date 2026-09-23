@@ -102,11 +102,17 @@ Flash **не решает** ACL / chatId / доступ к группам и **�
 - obs: `routing.decision.budgetApplied` = true только при реальном `set_model`;
   добавлен `budgetApplyStrategy` ("set_model" | "none").
 
-## Model on user prompt
+## Model on user prompt (Phase 2.4)
 
-Flash role **не** переключает session model на генерацию: `runPrompt` применяет budget
-(`setModel` с maxTokens/samplingParams) на ТЕКУЩЕЙ модели. `deepseek-v4-flash`
-используется только в `createCallFlash` (роутер), не в generation prompt.
+`TelegramSessionPool.runPrompt` при `decision.role === "flash"` переключает
+session-модель на flash (`deepseek-v4-flash`, из `flashDepsFromConfig(cfg).model`)
+перед `session.prompt`, а budget применяется поверх выбранной модели
+(`applyBudgetToModel`). `role === "main"` / `"vision"` оставляет текущую модель
+без переключения. Restore в `finish`, как и прежде.
+
+- role=flash → `deepseek-v4-flash` (+ budget).
+- role=main → текущая main-модель (+ budget).
+- role=vision → vision path не трогаем.
 
 ## Next (не сделано)
 
@@ -134,7 +140,10 @@ Pipeline:
 2. if unsure and `GRIHA_FLASH_ROUTER=1` and apiKey → `deepseek-v4-flash` JSON classify.
 3. else `fallback`.
 4. complexity → GenerationPolicy if `GRIHA_GENERATION_POLICY=1`.
-5. kind `report_dispatch` → inject `[ROUTE]` guidance so the agent calls DB tools.
+5. kind `report_dispatch` → inject `[ROUTE]` guidance (`REPORT_DISPATCH_GUIDANCE`)
+   so the agent calls `report_data_expenses` / `report_data_problems` and never
+   invents totals/line items. role=flash → `session.setModel(deepseek-v4-flash)`
+   before `session.prompt`.
 
 RoutingContext fields only: `userText` (max 1500), `hasImage`, `hasVoice`, `hostHint`, `chatType`.
 
