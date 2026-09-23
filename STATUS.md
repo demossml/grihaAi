@@ -382,7 +382,7 @@
 - [x] DM `/groups` + `/group <chatId>` (archive/reactivate/scenario, canManage)
 - [x] ACL matrix (membership ≠ management) + `groups_compare` + `group_report`
 - [x] `GroupReminderService` (additive `group_reminders`; low-confidence → needs_confirmation; archived-чат не шлёт)
-- [ ] Wire `fireDue` в cron-tick (follow-up)
+- [x] Wire `fireDue` в tick 30с (Phase 38 P0-3) — `sendNotify` в ту же группу, `message_thread_id`
 - [x] Tests green (turbo 31/31), docs/TELEGRAM-BOT.md обновлён
 
 ## Phase 38 — Secretary P0 follow-up (UX + reminders wire + skills)
@@ -485,4 +485,18 @@
 - [ ] multi-pass extend в TG runtime
 - [ ] generation.finish provider usage/finishReason
 - [ ] Phase 3 auto-calibration (не начат)
+
+## Secretary S1+S2 (silent listener + group reminders)
+
+- [x] S1 contract tests (`tests/unit/secretary-contract.test.ts`, R-S1-1…R-S1-4)
+- [x] S2 `auto_reminders` flag (`user-rules/auto-reminders.ts`: `setAutoReminders`/
+      `isAutoRemindersEnabled`, structured rule, default ON) + `upsertStructuredRule`
+- [x] S2 `fireDue` skip по `auto_reminders_off`/`chat_inactive` + obs `reminder.skip`
+- [x] S2 `detectExplicitReminder` (regex, без LLM) + wire в inbound (scenario `secretary`)
+- [x] S2 obs `reminder.create` / `reminder.fire` / `reminder.skip`
+- [x] docs/SECRETARY.md + ссылки (TELEGRAM-BOT, FLASH_ROUTER, OBSERVABILITY, README)
+- [ ] roles S4 (пользователи) — later
+- [ ] явные поручения «Гриша, запиши расход» (S3) — later
+- [ ] UI-toggle `auto_reminders` (функция есть, команды/кнопки нет)
+- [ ] `sendNotify` в DM при `needs_confirmation` (follow-up)
 

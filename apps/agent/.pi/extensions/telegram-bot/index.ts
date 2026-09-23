@@ -70,6 +70,8 @@ import { transcribeVoice } from "@griha/stt";
 import { logTelegramError } from "./telegram-diagnostics.js";
 import { emit } from "@griha/observability";
 import { getGroupReminderService } from "../../../src/services/reminders/GroupReminderService.js";
+import { detectExplicitReminder } from "../../../src/services/reminders/detect-reminder.js";
+import { isAutoRemindersEnabled } from "../user-rules/auto-reminders.js";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
 // Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
@@ -319,6 +321,24 @@ function getController(): TelegramBotController {
             // S4: scenario → belt listen_only в prepareGroupTurn.
             getScenario: (chatId) => setup.getScenarioSync(chatId),
           }),
+        // S2: тихий детект напоминаний из входящего текста (secretary scenario).
+        detectReminder: async (input) => {
+          if (!input.isGroup) return;
+          try {
+            if (setup.getScenarioSync(input.chatId) !== "secretary") return;
+            const detected = detectExplicitReminder({ text: input.text });
+            if (!detected) return;
+            getGroupReminderService().add({
+              chatId: input.chatId,
+              threadId: input.threadId,
+              dueAt: detected.dueAt.toISOString(),
+              text: detected.text,
+              confidence: detected.confidence,
+            });
+          } catch {
+            // тихий детект — не роняем ход
+          }
+        },
         rulesHandler: makeGuardedRulesHandler({
           run: (args, ctx) => telegramRulesHandler(args, ctx),
           users,
@@ -731,6 +751,7 @@ async function fireDueReminders(): Promise<void> {
   const setup = getChatSetupService();
   await getGroupReminderService().fireDue(new Date(), {
     isChatActive: (chatId) => setup.isConfiguredSync(chatId),
+    isAutoRemindersEnabled: (chatId) => isAutoRemindersEnabled(chatId),
     send: async (chatId, text, threadId) => {
       const ctl = getController();
       await ctl.sendNotify(

@@ -406,6 +406,14 @@ export class TelegramBridge {
       approvalHandler?: TelegramApprovalHandler;
       /** Fired right before the agent is asked to reply (chat action signal). */
       beforeAgent?: (chatId: number) => void;
+      /** S2: тихий детект явных напоминаний (без LLM). Не пишет в чат. */
+      detectReminder?: (input: {
+        chatId: string;
+        userId: string;
+        text: string;
+        threadId?: string;
+        isGroup: boolean;
+      }) => void | Promise<void>;
       /** Реакция на исходное сообщение (лёгкое подтверждение «принято»). */
       react?: (chatId: number, messageId: number, emoji: string) => void;
       /** Early ACL: вызывается ДО prefilter/агента. false → deny (см. §3 политики). */
@@ -1159,6 +1167,19 @@ export class TelegramBridge {
     if (!text) return { handled: false, reason: "empty" };
 
     const gate = this.evaluateInput(text, userId, chatId, msg, chatType);
+
+    // S2: тихий детект напоминаний (не требует mention, не пишет в группу).
+    if ((gate.process || gate.archive) && this.options?.detectReminder) {
+      void Promise.resolve(
+        this.options.detectReminder({
+          chatId: String(chatId),
+          userId: String(userId),
+          text,
+          threadId: msg.threadId,
+          isGroup: chatType === "group" || chatType === "supergroup",
+        }),
+      ).catch(() => {});
+    }
 
     // L1: listen_only без обращения — агент заблокирован; текст всё равно тихо
     // архивируется (если archive=true), индикатор «печатает» не включается.

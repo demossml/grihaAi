@@ -114,6 +114,14 @@ session-модель на flash (`deepseek-v4-flash`, из `flashDepsFromConfig(
 - role=main → текущая main-модель (+ budget).
 - role=vision → vision path не трогаем.
 
+## Secretary inbound
+
+Inbound сообщения секретаря (scenario `secretary`, тихий архив) всё равно проходят
+Layer-1 gate (`prefilter`). Router (`routing.decision` → flash/vision/main) и generation
+budget применяются только когда reply path разрешён (mention/reply). Тихий детект
+напоминаний (`detectExplicitReminder`) не вызывает Flash и не пишет в группу —
+см. [docs/SECRETARY.md](SECRETARY.md).
+
 ## Next (не сделано)
 
 - Calibration auto-apply (Phase 3).

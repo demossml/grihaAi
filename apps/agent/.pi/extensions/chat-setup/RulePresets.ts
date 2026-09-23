@@ -22,7 +22,8 @@ export type RuleKey =
   | "archive_media"
   | "archive_ocr_ingest"
   | "notify_poor_ocr"
-  | "notify_expense_brief";
+  | "notify_expense_brief"
+  | "auto_reminders";
 
 export type RuleValue = boolean | string;
 

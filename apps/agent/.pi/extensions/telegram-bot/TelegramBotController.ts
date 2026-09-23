@@ -262,6 +262,14 @@ export interface TelegramBotControllerOptions {
   prepareTurn?: (
     input: import("./group-runtime.js").PrepareTurnInput,
   ) => import("./group-runtime.js").PrepareTurnResult;
+  /** S2: тихий детект явных напоминаний (без LLM). Не пишет в чат. */
+  detectReminder?: (input: {
+    chatId: string;
+    userId: string;
+    text: string;
+    threadId?: string;
+    isGroup: boolean;
+  }) => void | Promise<void>;
   /** self-инфо бота (id/username) для расчёта mention/reply флагов. */
   getBotSelf?: () => { id: number; username?: string } | undefined;
   /** R1: false → pending-группа silent (ChatSetupService.isConfiguredSync). */
@@ -471,6 +479,7 @@ export class TelegramBotController {
           botUsername: this.options?.botUsername,
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,
+          detectReminder: this.options?.detectReminder,
           // PROMPT 6: idempotency gate + метрики (duplicates/reclaim/agent).
           updateGate: this.options?.updateGate,
           onMetric: (name) => incMetric(name),

@@ -346,7 +346,11 @@ configured И (canManage ИЛИ isAllowed)), `groups_compare` (fail-closed по 
 **Напоминания** (`GroupReminderService`, `~/.grish-ai/group-reminders.sqlite`): additive
 таблица `group_reminders` (chat_id/thread_id/source_message_id/due_at/text/status);
 low-confidence → `needs_confirmation` (без авто-спама); `fireDue` пропускает
-archived/pending-чаты. **Wire в cron-tick — follow-up (не сделано).**
+archived/pending-чаты и чаты с `auto_reminders=false`. Wire в tick готов:
+`startReminderTick()` (30s) → `fireDue` → `sendNotify` (та же группа, `message_thread_id`).
+Детект из входящего: `detectExplicitReminder` (без LLM) для scenario `secretary` создаёт
+reminder молча (не пишет в группу). Флаг `auto_reminders` (structured rule, default ON) —
+см. [docs/SECRETARY.md](SECRETARY.md).
 
 ### Документы / расходы (MVP)
 

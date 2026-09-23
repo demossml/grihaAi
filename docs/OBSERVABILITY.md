@@ -106,7 +106,9 @@ JSONL, без LLM.
 | `telegram.send` | `telegram.send.document` | bytes |
 | `report.render` | `report.render.start` | reportType |
 | `report.render` | `report.render.end` | reportType, bytes / error |
-| `reminder` | `reminder.fire` | skipped=inactive / — |
+| `reminder` | `reminder.create` | status (pending/needs_confirmation), confidence |
+| `reminder` | `reminder.fire` | ok |
+| `reminder` | `reminder.skip` | reason (chat_inactive / auto_reminders_off) |
 | `bot` | `process.uncaught` / `process.unhandledRejection` | message |
 
 ## Obs v2 — turn chain, budget, tools

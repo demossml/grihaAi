@@ -93,6 +93,8 @@ function rowToReminder(row: ReminderRow): GroupReminder {
 export interface FireReminderDeps {
   /** true → чат active (слушает); archived/pending → false → пропустить. */
   isChatActive: (chatId: string) => boolean;
+  /** S2: false → флаг auto_reminders off → пропустить (default true). */
+  isAutoRemindersEnabled?: (chatId: string) => boolean;
   /** Доставка напоминания (telegram send с threadId). */
   send: (chatId: string, text: string, threadId?: string) => Promise<void>;
 }
@@ -148,7 +150,15 @@ export class GroupReminderService {
       now,
       now,
     );
-    return this.get(id)!;
+    const created = this.get(id)!;
+    emit({
+      component: "reminder",
+      event: "reminder.create",
+      chatId: input.chatId,
+      ok: true,
+      data: { status: created.status, confidence: created.confidence },
+    });
+    return created;
   }
 
   get(id: string): GroupReminder | undefined {
@@ -180,12 +190,21 @@ export class GroupReminderService {
         skipped++;
         emit({
           component: "reminder",
-          event: "reminder.fire",
+          event: "reminder.skip",
           chatId: r.chatId,
-          ok: false,
-          data: { skipped: "inactive" },
+          data: { reason: "chat_inactive" },
         });
         continue; // archived/pending — не шлём напоминание.
+      }
+      if (deps.isAutoRemindersEnabled && !deps.isAutoRemindersEnabled(r.chatId)) {
+        skipped++;
+        emit({
+          component: "reminder",
+          event: "reminder.skip",
+          chatId: r.chatId,
+          data: { reason: "auto_reminders_off" },
+        });
+        continue; // флаг auto_reminders off — не шлём.
       }
       await deps.send(r.chatId, r.text, r.threadId);
       this.markFired(r.id);

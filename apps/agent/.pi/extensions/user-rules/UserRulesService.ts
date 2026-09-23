@@ -337,6 +337,40 @@ export class UserRulesService {
     }
     this.rebuildCache();
   }
+
+  /**
+   * Upsert одного structured-правила чата (key/value). Удаляет прежние правила
+   * с тем же ключом для chat, затем вставляет новое (S2: auto_reminders toggle).
+   */
+  upsertStructuredRule(
+    chatId: string,
+    key: string,
+    value: string | boolean | number,
+    meta: { source: string; actorId?: string },
+  ): void {
+    const db = this.requireDb();
+    const now = new Date().toISOString();
+    db.prepare(`DELETE FROM user_rules WHERE scope = 'chat' AND chat_id = ? AND rule_key = ?`).run(
+      chatId,
+      key,
+    );
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO user_rules (id, scope, chat_id, text, kind, rule_class, rule_key, rule_value, source, created_by, priority, enabled, created_at, updated_at)
+       VALUES (?, 'chat', ?, ?, 'soft', 'preference', ?, ?, ?, ?, 100, 1, ?, ?)`,
+    ).run(
+      id,
+      chatId,
+      `${key} = ${String(value)}`,
+      key,
+      JSON.stringify(value),
+      meta.source,
+      meta.actorId ?? null,
+      now,
+      now,
+    );
+    this.rebuildCache();
+  }
 }
 
 /** Intent class default: hard → restriction, soft → preference. */
