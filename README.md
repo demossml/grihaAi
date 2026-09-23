@@ -41,17 +41,93 @@ node apps/telegram-cli/dist/bin.js doctor # диагностика окруже�
 ## Наблюдаемость
 
 Журнал работы Griha **без LLM** — JSONL в `~/.grish-ai/obs/` (пакет
-`packages/observability`). CLI `griha-obs` для терминала/ssh и agent-tools
-`obs_summary`/`obs_query` для операторского агента на Mac Mini.
+`packages/observability`). Один файл в день: `events-YYYY-MM-DD.jsonl`.
+`GRIHA_OBS=0` выключает запись; `GRIHA_OBS_DIR` меняет каталог.
+
+### Что где лежит
+
+| Источник | Путь / команда |
+|---|---|
+| JSONL-журнал | `~/.grish-ai/obs/events-YYYY-MM-DD.jsonl` |
+| Лог сервиса (systemd) | `journalctl --user -u griha-ai` |
+| Agent-tools (из Telegram DM) | `obs_summary`, `obs_query` (owner/admin) |
+
+### CLI `griha-obs` — локально на сервере (macmini)
+
+Сборка + запуск из корня репозитория (`~/.grihaAi`):
 
 ```bash
-npm run obs                                   # build CLI + запуск bin.js
-node apps/obs-cli/dist/bin.js tail --lines 100
-node apps/obs-cli/dist/bin.js query --event gate.block --limit 20
+npm run obs                                     # build CLI + запуск bin.js (пустой = справка)
+npm run obs -- tail --lines 100                 # последние 100 сырых JSONL-строк
+npm run obs -- query --event gate.block --limit 20
+npm run obs -- query --component runtime.generation --limit 50
+npm run obs -- query --event routing.decision --limit 50
+npm run obs -- query --chat-id -100123456789 --limit 30
+npm run obs -- path                             # показать каталог obs
 ```
 
-`GRIHA_OBS=0` выключает запись; `GRIHA_OBS_DIR` меняет каталог. Подробности —
-[docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+То же самое напрямую (без `npm run obs`):
+
+```bash
+node apps/obs-cli/dist/bin.js tail --lines 100
+node apps/obs-cli/dist/bin.js query --event gate.block --limit 20
+node apps/obs-cli/dist/bin.js query --component runtime.generation --limit 50
+node apps/obs-cli/dist/bin.js query --chat-id -100123456789
+node apps/obs-cli/dist/bin.js path
+```
+
+Полные опции CLI:
+
+```
+griha-obs tail  [--dir <path>] [--lines <N>]                 # последние N строк (default 50)
+griha-obs query --event <name> [--component <c>] [--chat-id <id>] [--dir <path>] [--limit <N>]   # фильтр, свежие первыми (default 50)
+griha-obs path                                               # показать defaultObsDir()
+```
+
+### Удалённо по SSH (с любой машины)
+
+```bash
+# сырые последние строки
+ssh admingimolost@macmini "cd ~/grihaAi && node apps/obs-cli/dist/bin.js tail --lines 100"
+
+# фильтр по событию
+ssh admingimolost@macmini "cd ~/grihaAi && node apps/obs-cli/dist/bin.js query --event routing.decision --limit 50"
+
+# логи сервиса
+ssh admingimolost@macmini "journalctl --user -u griha-ai -n 100 --no-pager"
+ssh admingimolost@macmini "journalctl --user -u griha-ai --since '10 minutes ago' --no-pager"
+```
+
+### Скопировать журнал себе (scp)
+
+```bash
+# сегодняшний файл
+scp admingimolost@macmini:~/.grish-ai/obs/events-$(date +%F).jsonl ./obs-today.jsonl
+
+# все файлы за последние дни (в локальную папку)
+mkdir -p ./obs && scp "admingimolost@macmini:~/.grish-ai/obs/events-*.jsonl" ./obs/
+```
+
+### Agent-tools (из Telegram DM, owner/admin)
+
+- `obs_summary` — сводка за период: счётчики `event`/`component` + последние ошибки.
+  Параметры: `sinceMinutes` (default 60), `chatId`.
+- `obs_query` — чтение с фильтрами. Параметры:
+  `event`, `eventPrefix` (startsWith), `component`, `chatId`, `correlationId`,
+  `code`, `sinceMinutes` (1–1440, default 60), `limit` (1–100, default 30).
+
+### Как смотреть под конкретный вопрос
+
+| Вопрос | Команда / событие |
+|---|---|
+| Почему бот молчал? | `query --event gate.block --chat-id <id>` → `reason` |
+| Один ход целиком | `query --event turn.start` → взять `correlationId`, затем `obs_query correlationId=…` |
+| Какая модель/роль выбрана? | `query --event routing.decision` → `role`/`complexity`/`kind` |
+| Бюджет/калибровка | `query --component runtime.generation` → `generation.budget`/`finish`/`extend*` |
+| Не хватило токенов? | `generation.finish` → `code=length`/`truncated` |
+| Ошибки за период | `obs_summary sinceMinutes=60` → `lastErrors` |
+
+Полный каталог событий и схема — [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
 
 ## Отчётные данные (расходы)
 

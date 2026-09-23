@@ -16,6 +16,20 @@
 
 ## CLI (`griha-obs`)
 
+Сборка + запуск из корня репозитория (`~/.grihaAi`):
+
+```bash
+npm run obs                                     # build CLI + запуск bin.js (пустой = справка)
+npm run obs -- tail --lines 100                 # последние 100 сырых JSONL-строк
+npm run obs -- query --event gate.block --limit 20
+npm run obs -- query --component runtime.generation --limit 50
+npm run obs -- query --event routing.decision --limit 50
+npm run obs -- query --chat-id -100123456789 --limit 30
+npm run obs -- path                             # показать каталог obs
+```
+
+То же самое напрямую:
+
 ```bash
 node apps/obs-cli/dist/bin.js tail --lines 100
 node apps/obs-cli/dist/bin.js query --event gate.block --limit 20
@@ -23,16 +37,47 @@ node apps/obs-cli/dist/bin.js query --component report.render --chat-id -100
 node apps/obs-cli/dist/bin.js path
 ```
 
-Команды: `tail` (последние N сырых JSONL), `query` (фильтр по event/component/
-chat-id, свежие первыми), `path` (каталог), `--help`.
+Полные опции:
+
+```
+griha-obs tail  [--dir <path>] [--lines <N>]     # последние N строк (default 50)
+griha-obs query --event <name> [--component <c>] [--chat-id <id>] [--dir <path>] [--limit <N>]
+                                                 # фильтр, свежие первыми (default 50)
+griha-obs path                                   # показать defaultObsDir()
+```
+
+### Удалённо по SSH (с любой машины)
+
+```bash
+# сырые последние строки
+ssh admingimolost@macmini "cd ~/grihaAi && node apps/obs-cli/dist/bin.js tail --lines 100"
+
+# фильтр по событию
+ssh admingimolost@macmini "cd ~/grihaAi && node apps/obs-cli/dist/bin.js query --event routing.decision --limit 50"
+
+# логи сервиса (systemd)
+ssh admingimolost@macmini "journalctl --user -u griha-ai -n 100 --no-pager"
+ssh admingimolost@macmini "journalctl --user -u griha-ai --since '10 minutes ago' --no-pager"
+```
+
+### Скопировать журнал себе (scp)
+
+```bash
+# сегодняшний файл
+scp admingimolost@macmini:~/.grish-ai/obs/events-$(date +%F).jsonl ./obs-today.jsonl
+
+# все файлы за последние дни (в локальную папку)
+mkdir -p ./obs && scp "admingimolost@macmini:~/.grish-ai/obs/events-*.jsonl" ./obs/
+```
 
 ## Agent tools (операторский агент на Mini)
 
 Агент (TUI `pi` или Telegram DM) может вызвать tool'ы:
 
 - `obs_summary` — сводка за период (счётчики event/component + последние ошибки).
-- `obs_query` — чтение журнала с фильтрами (`event`, `component`, `chatId`,
-  `correlationId`, `sinceMinutes`, `limit`).
+  Параметры: `sinceMinutes` (default 60), `chatId`.
+- `obs_query` — чтение журнала с фильтрами (`event`, `eventPrefix` (startsWith),
+  `component`, `chatId`, `correlationId`, `code`, `sinceMinutes`, `limit`).
 
 Доступны только `owner`/`admin` (`canManage`). Внутри tool'а — только чтение
 JSONL, без LLM.
