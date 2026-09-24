@@ -1,106 +1,15 @@
-# Security — изоляция и периметр
+# Security
 
-## 1. Периметр (что может выполнять недоверенный код или обрабатывать внешний ввод)
+## execute_code
+- Production: only **runsc** sandbox; if unavailable → refuse (`SANDBOX_UNAVAILABLE`).
+- Local host exec only if `GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1` and `NODE_ENV !== production`.
+- Never map classifyCodeRisk `"safe"` → host exec automatically.
 
-| Поверхность | Что делает | Риск |
-|---|---|---|
-| **Субагенты** (`createRealSubAgentRunner`) | Изолированный `AgentSession` с инструментами pi (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) | LLM может вызвать `bash`/`edit`/`write` — code-execution / файловая мутация |
-| **Cron-задачи** (`createRealCronRunner`) | Тот же `SubAgentRunner`-путь + автономность по расписанию | То же + выполнение без человека в цикле |
-| **Входящие файлы от Telegram** | Фото → vision (base64), документ → описание (`file_id`), голос → заглушка в Telegram (STT — отдельный HTTP-эндпоинт `apps/api` `/transcribe`) | Данные, не исполняемый код; риск — имена файлов/декодирование/будущие файловые тулзы |
-| **Будущие инструменты** с shell/code-execution | TBD | Выполнение произвольного кода |
+## Environment scrub
+`buildSandboxEnv()` allowlist only; strip keys matching token/key/secret/password/auth/bot.
 
-## 2. Модель доверия
+## Prompt injection
+OCR/document text scanned (`scanForInjection`, source document) before agent prompt. On block — do not inject raw OCR as instructions.
 
-- **`trusted`** — основная интерактивная сессия (владелец в UI) и Telegram-сессии владельца. Инструменты pi работают как обычно.
-- **`untrusted`** — сессии субагентов и cron (создаются через `createRealSubAgentRunner`; помечаются в `src/sandbox/gateway-context.ts` сразу после `bindExtensions`). Для них gateway запрещает shell и мутацию файлов.
-
-## 3. Слои защиты (defense-in-depth)
-
-Каждый слой — дополнение, а не замена предыдущего:
-
-1. **Whitelist Telegram** — `allowedUserIds` (`TelegramBridge.isAllowed`): входящие сообщения принимаются только от разрешённых `user_id`.
-2. **Prefilter user-rules** — `shouldProcessMessage` (hard rules): «отвечай только мне»-правила блокируют сообщение ещё до LLM (0 токенов).
-3. **Gateway** — единая точка проверки side-effect tool-calls (см. §4).
-4. **Policy** — финансовые пороги и `ruleClass` (см. §3.1).
-5. **Approval** — действующее явное подтверждение с scope и expiration (см. §3.1).
-6. **Sandbox** — изоляция исполнения кода, когда оно разрешено (см. §5).
-
-> Примечание: отдельного rate-limiter в коде сейчас нет (whitelist + prefilter — это текущие ограничители). Если он появится, это будет ещё один слой между whitelist и gateway.
-
-## 3.1. Три уровня: Gateway / Policy / Approval
-
-Поток решения: **Agent → Capability Check → Policy Check → Approval Check →
-Execute / Reject / Ask User**.
-
-- **Gateway** (техническая граница) — `tool_call` + trust level: может ли tool/session
-  выполнить side effect вообще.
-- **Policy** (разрешено ли действие в контексте) — `src/utils/finance/approval-policy.ts`:
-  финансовые пороги (`autoApproveBelow`/`alwaysConfirmAbove`/
-  `categoriesAlwaysConfirm`) и `ruleClass` user-rules
-  (`preference|policy|permission|restriction`).
-- **Approval** (существует ли явное подтверждение) — `approval-gate`:
-  `scope: ONCE|SESSION|WORKFLOW`, статусы `pending|approved|rejected|expired|cancelled`,
-  TTL. Одно подтверждение покрывает одно действие + аргументы + target + сессию.
-
-**Capability Registry** (`src/utils/capabilities.ts`) — единый источник возможностей
-(`AVAILABLE|UNAVAILABLE|REQUIRES_CONNECTION|REQUIRES_APPROVAL`). Недоступная
-capability не даёт fake success. Субагенты имеют явный allowlist
-(`src/capabilities/subagent-capabilities.ts`).
-
-**Learning guard** (`isProtectedSkillContent`) — авто-дообучение не меняет
-financial limits, permissions, restrictions, approval/security policies.
-
-## 4. Gateway (`apps/agent/.pi/extensions/gateway`)
-
-Единственный chokepoint для tool-calls с side-effects. Слушает `pi.on("tool_call")` (до выполнения) и применяет политику из `src/utils/security/gateway-policy.ts` — **не** встраивается в каждый extension.
-
-| Инструмент | trusted | untrusted |
-|---|---|---|
-| `read`, `grep`, `find`, `ls` | ✅ | ✅ |
-| `bash`, `powershell` | ✅ | ❌ «shell execution is disabled» |
-| `edit`, `write` | ✅ | ❌ «file mutation is disabled» |
-| кастомные (safe) | ✅ | ✅ (в саб-сессиях биндятся только безопасные расширения) |
-
-SDK позволяет заблокировать вызов: обработчик возвращает `{ block: true, reason }` (`ToolCallEventResult`). Контекст доверия берётся из `ctx.sessionManager.getSessionId()` → `getSessionTrust()`.
-
-## 5. Sandbox (`src/sandbox`)
-
-`SandboxProvider` — DI-интерфейс (§7 ARCHITECTURE.md) для реального выполнения кода, если оно появится в будущих инструментах:
-
-```ts
-interface SandboxProvider {
-  readonly kind: "dev" | "runsc";
-  run(options: SandboxRunOptions): Promise<SandboxResult>;
-}
-```
-
-- **`dev`** (`LocalSandboxProvider`) — обычный `child_process`, только для локальной разработки.
-- **`runsc`** (`RunscSandboxProvider`) — **gVisor** (userspace-ядро): `runsc do --rootless --network=none -- <cmd>`. Сильнее обычного контейнера (своё ядро-эмуляция), дешевле microVM. Выбор согласован с пользователем (gVisor/runsc); путь и network-политика конфигурируемы, без привязки к облачному вендору.
-
-Выбор бэкенда — через `createSandboxProvider("dev" | "runsc", options)`, не зашит в инструменты.
-
-**Env scrub (P0):** sandbox-процесс (`spawnToResult`, `src/sandbox/process.ts`) **НЕ
-наследует host-окружение**. Передаётся только allowlist runtime-переменных
-(`PATH/HOME/TMPDIR/LANG/LC_ALL/TZ/TERM/NODE_ENV/…`, `src/sandbox/env-scrub.ts`) +
-явные overrides. `TELEGRAM_BOT_TOKEN`, `*_API_KEY`, `*_PASSWORD`, proxy-пароли и пр.
-в исполняемый код не попадают.
-
-**Injection на OCR/STT (P0):** распознанный текст из фото/документов/голоса
-(`TelegramBridge.buildMediaAgentMessage`) сканируется `scanForInjection(…, "document")`
-до передачи агенту; при подозрении на prompt-инъекцию сырой текст **не** инжектится —
-вместо него предупреждение.
-
-**execute_code → runsc (P0-1):** LLM-код НИКОГДА не исполняется на хосте.
-`runExecuteCode` (`core-agent/execute-code.ts`) всегда выбирает runsc; без runsc →
-refuse (`SANDBOX_UNAVAILABLE`). Local (`dev`) — только явный dev-флаг
-`GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1` + `NODE_ENV != production`.
-
-## 6. Почему не обычный контейнер
-
-Контейнер делит ядро хоста; эксплойт ядра = побег из контейнера. Поэтому для по-настоящему недоверенного кода берут microVM (Firecracker/Kata) или, как компромисс по стоимости/скорости, gVisor (userspace-ядро). В griha-ai субагенты сейчас **вообще не исполняют shell** (gateway блокирует), а `runsc`-бэкенд — готовый задел для будущих code-execution-инструментов.
-
-## 7. Известные ограничения
-
-- Telegram-сессии пока `trusted` (bash доступен). При необходимости их можно пометить `untrusted` тем же механизмом.
-- `runsc`-бэкенд требует установленного gVisor (`https://gvisor.dev`); без него `execute_code` отвечает `SANDBOX_UNAVAILABLE` (не падает на host).
-- Rate-limiting не реализован.
+## Limitations
+Legacy voice path may still lack scan — see STATUS.

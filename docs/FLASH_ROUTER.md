@@ -1,49 +1,77 @@
-# Flash Router
+# Flash Router — principles and behavior
 
-Маршрутизация сообщения → `RoutingDecision` (role + complexity + kind) → GenerationPolicy.
+## 1. What it is
 
-## Flags
+The **Model Router** chooses:
+- `role`: `flash` | `main` | `vision`
+- `complexity`: `trivial` | `simple` | `medium` | `complex`
+- `kind`: `chat_reply` | `report_dispatch` | `analysis` | `vision_ocr` | …
 
-| Flag | Default | Effect |
-|---|---|---|
-| `GRIHA_FLASH_ROUTER` | OFF | rule → flash_llm → fallback (маршрутизация) |
-| `GRIHA_GENERATION_POLICY` | OFF | budget через `session.setModel` |
+It does **not** compute expenses, does **not** assign ACL, does **not** set maxTokens by itself (Generation Policy does, using `complexity`/`kind`).
 
-## Pipeline
+## 2. Pipeline
 
 ```
-message → buildRoutingContext (userText≤1500, hasImage, hasVoice, hostHint, chatType)
-  → tryRuleRoute (детерминированный, без LLM)
-  → если rule неуверенный И flag И apiKey → callFlash (deepseek-v4-flash, max_tokens 256)
-  → иначе fallbackRoute
-  → resolveGenerationBudget(complexity, kind) при GRIHA_GENERATION_POLICY
-  → applyRouteGuidance если kind=report_dispatch
-  → session.setModel(applyBudgetToModel(...)) при budget; role=flash → deepseek-v4-flash
-  → session.prompt
+RoutingContext userText (≤1500 chars) hasImage, hasVoice, hostHint, chatType
+  │
+  ▼
+tryRuleRoute()  ← pure TS, no LLM
+  │
+  ├─ confidence ≥ 0.8 → Decision (source=rule, flashCalled=false)
+  ▼
+if GRIHA_FLASH_ROUTER && apiKey
+  ▼
+callFlash(deepseek-v4-flash)  ← JSON only, max_tokens≈256
+  │
+  ├─ parse OK → Decision (source=flash_llm)
+  └─ fail → fallbackRoute (source=fallback)
+  │
+  ▼
+resolveGenerationBudget(complexity, kind)  if GRIHA_GENERATION_POLICY
+  │
+  ▼
+applyRouteGuidance  if kind=report_dispatch
+  │
+  ▼
+session.prompt (generation model — see Generation Policy / pool)
 ```
 
-## Rule table (rule-route.ts — 1:1)
+## 3. Why rules first
 
-| Condition | role | kind | complexity |
-|---|---|---|---|
-| hasImage / hostHint=ocr | vision | vision_ocr | simple |
-| hostHint=analysis или `проанализируй/сравни/почему/динамика/анализ/analysis/compare/why` | main | analysis | complex |
-| hostHint=report или `отчёт/отчет/расход/закупк/итог/сумм/expenses/report/total` | flash | report_dispatch | trivial |
-| текст 1–40 символов (без изображения) | flash | chat_reply | trivial |
-| иначе (rule null) | fallback: main | chat_reply | medium |
+Calling Flash on every message wastes money. Obvious cases (photo, «отчёт/закупки», «почему», short «ок») are handled by keywords/length/image flags.
 
-Приоритет: analysis проверяется ДО report (`«Почему выросли расходы?»` → analysis).
+## 4. Rule table (must match `rule-route.ts`)
 
-Rule с confidence ≥ 0.8 → Flash LLM НЕ вызывается. Иначе (`GRIHA_FLASH_ROUTER=1` + apiKey)
-→ LLM Flash; без apiKey → fallback (`main`/medium).
+| Condition | role | kind | complexity | reason |
+|-----------|------|------|------------|--------|
+| hasImage / ocr hint | vision | vision_ocr | simple | has_image |
+| keywords report/expense/закупк/итог/сумм | flash | report_dispatch | trivial/simple | report_keywords |
+| keywords анализ/почему/сравни | main | analysis | complex | analysis_keywords |
+| text length ≤ 40 | flash | chat_reply | trivial | short_text |
+| else | null → Flash or fallback | | | |
 
-## report_dispatch guidance
+**Order matters:** analysis keywords checked before report keywords so «Почему выросли расходы?» → analysis, not report_dispatch.
 
-Константа `REPORT_DISPATCH_GUIDANCE` инжектится в prompt (`applyRouteGuidance`): агент обязан
-звать `report_data_expenses` / `report_data_problems`, не выдумывать суммы/позиции.
+## 5. Flash LLM contract
 
-## Not done / limitations
+System: return **only JSON** keys role, complexity, kind, confidence, reason.
+Never invent chat ids or access rights. Never invent money amounts.
+User payload: short fields only — **no full chat history**.
 
-- `flashCalled=false` когда rule-route сработал (Flash LLM не вызывается) — obs-поле.
-- Calibration auto-apply (Phase 3) — не начат.
-- `fallbackRoute` для неизвестного: `main`/medium (без LLM-переклассификации).
+## 6. report_dispatch
+
+Means: host/agent should use **DB tools**, not invent tables.
+Pool injects:
+
+`[ROUTE] report_dispatch: ... use expense/report tools... do not invent totals...`
+
+## 7. Flags
+
+| Env | Default | Meaning |
+|-----|---------|---------|
+| GRIHA_FLASH_ROUTER | OFF | enable routeMessage Flash branch |
+| GRIHA_GENERATION_POLICY | OFF | apply token budget after decision |
+
+## 8. Observability
+
+Event `routing.decision` with role, complexity, kind, confidence, source, flashCalled.

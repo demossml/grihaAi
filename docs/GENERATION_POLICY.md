@@ -1,115 +1,62 @@
-# Generation Policy (Phase 1)
+# Generation Policy — token budget & temperature
 
-Детерминированный слой бюджетов генерации: **без LLM, без сети**.
+## 1. Purpose
 
-## Purpose (Phase 1)
+Programmatic limits on **output** size and temperature so simple chats stay cheap and analysis may use more tokens. No LLM inside the policy module.
 
-`TaskComplexity + TaskKind → GenerationPolicy.resolve → GenerationBudget →
-BudgetAllocator.allocate/canExtend/nextExtension`. Чистые функции + тонкий сервис.
-Модуль не вызывает LLM и не ходит в сеть.
+## 2. Does this "train" the model?
 
-## Env
+**No.** Griha does not fine-tune weights in this path. "Learning" in product sense =
+- structured memory in SQLite (expenses, archive, reminders),
+- user rules / group setup,
+- optional future calibration proposals from obs (not auto-applied).
 
-- `GRIHA_GENERATION_POLICY=1|true|yes` — включить (по умолчанию **OFF** = старое
-  поведение 1:1). Флаг OFF обязателен тестом `flag-off-compat`.
+Token budget is **runtime control**, not training.
 
-## Profiles (gp-1.0.0)
+## 3. Profiles
 
-| complexity | temperature | initial | soft | hard | step | maxExtensions |
-|---|---|---|---|---|---|---|
-| trivial | 0.2 | 256 | 512 | 1024 | 256 | 1 |
-| simple | 0.3 | 512 | 1024 | 2048 | 512 | 2 |
-| medium | 0.5 | 1024 | 2048 | 4096 | 512 | 2 |
-| complex | 0.6 | 2048 | 4096 | 8192 | 1024 | 3 |
+Complexity comes from the Router decision.
 
-`CODE_HARD_CAP_OUTPUT_TOKENS = 8192` — code-level ceiling; config/env не поднимают
-hard выше. `modelMaxTokens` режет hard/soft/initial по потолку модели.
+| complexity | intent | initial | soft | hard | temperature (typical) |
+|------------|--------|---------|------|------|------------------------|
+| trivial | short ack | low | mid | mid | low (~0.2) |
+| simple | simple Q&A | | | | |
+| medium | default | | | | |
+| complex | analysis | high | higher | higher | higher (~0.6) |
 
-Коэффициенты kind (initial only): `analysis ×1.25`, `report_dispatch/compression ×0.5`,
-`tool_orchestration/vision_ocr ×0.75`, `chat_reply/other ×1.0`.
+Exact numbers: see `apps/agent/src/runtime/generation/profiles.ts` (source of truth).
 
-**Floor для `report_dispatch`** (Phase 2.4): после применения коэффициента
-`initial/soft/hard` поднимаются до минимума `1024/2048/4096` (с clamp к
-`CODE_HARD_CAP_OUTPUT_TOKENS`) — tool-calling отчётам нужен запас на вызовы
-инструментов, `trivial × 0.5 → 128` больше не применяется.
+## 4. Kind coefficients
 
-## Invariants
+Some kinds scale **initial** tokens (e.g. `report_dispatch` may use a floor so tool-calling is not starved at 128).
+Invariant always: `initial ≤ soft ≤ hard ≤ CODE_HARD_CAP`.
 
-- `initialMaxTokens <= softMaxTokens <= hardMaxTokens`
-- `hardMaxTokens <= CODE_HARD_CAP_OUTPUT_TOKENS`
-- `extensionStepTokens > 0`, `maxExtensions >= 0`
+## 5. Apply path (Telegram)
 
-## API
+```
+preparePoolRouting → budget
+  │
+  ▼
+applyBudgetToModel(model, budget)   // clone Model, set maxTokens + temperature
+  │
+  ▼
+session.setModel(...)
+  │
+  ▼
+session.prompt(...)
+  │
+  ▼
+finish → restore previous model
+```
 
-- `resolveGenerationBudget(input) -> GenerationBudget` — главная чистая функция.
-- `mergeProfile(base, override)` — override только сужает (не поднимает hard выше cap).
-- `createExtensionState` / `tryExtendBudget` / `applyExtension` — расширение бюджета
-  (не выше hard, не больше maxExtensions).
-- `tryExtendBudgetWithObs(budget, state, meta?)` — обёртка `tryExtendBudget` с emit
-  `generation.extend` / `generation.extend_denied` (helper готов, runtime multi-pass ещё не вызывает).
-- `budgetToRuntimeParams(budget) -> { temperature, maxTokens, policyVersion }` —
-  параметры для вызова модели (`ModelConfig` в shared-types не имеет temp/maxTokens).
-- `applyGenerationBudgetToModelConfig(config, budget)` — shallow copy без мутации.
-- `isGenerationPolicyEnabled(env)` — feature flag.
+Flag `GRIHA_GENERATION_POLICY=1` required. Obs: `generation.budget` with `budgetApplied`, `budgetApplyStrategy=set_model`.
 
-## Wire (minimal)
+## 6. Extensions (tryExtendBudget)
 
-`ModelRouter.call` под флагом вычисляет бюджет (`main → medium`, `vision → simple`)
-и логирует `budgetToRuntimeParams`. Проброс temp/maxTokens в фактический API-вызов —
-Phase 2 (Flash router / GenerationEngine), не в этом этапе.
+Allocator can raise toward hard max in multi-pass designs. Telegram multi-pass extend may be **not wired** — check STATUS. Helper `tryExtendBudgetWithObs` emits `generation.extend` / `extend_denied`.
 
-## complexity теперь из router
+## 7. What budget does NOT do
 
-С Phase 2 (Flash Router) `complexity`/`kind` приходят из `RoutingDecision`
-(`ModelRouter.callWithDecision`), а не из default-констант. См. `docs/FLASH_ROUTER.md`.
-
-## Budget apply (Telegram pool)
-
-При `GRIHA_GENERATION_POLICY=1` `ModelRouter.callWithDecision` передаёт
-`maxTokens = budget.initialMaxTokens` и `temperature = budget.temperature` в
-`ModelCaller` (параметр `gen`). Флаг off → `gen` не передаётся (1:1).
-
-## Telegram / pi apply (Phase 2.3)
-
-**Стратегия: `set_model` (STRATEGY B).**
-
-pi `session.prompt` не принимает per-turn maxTokens/temperature (тип
-`PromptOptions` — expandPromptTemplates/images/streamingBehavior/source/
-preflightResult). Поэтому бюджет применяется через `session.setModel`:
-
-- `TelegramSessionPool.runPrompt` (`apps/agent/.pi/extensions/telegram-bot/TelegramSessionPool.ts`):
-  после `preparePoolRouting`, если `budget` есть — `session.setModel(applyBudgetToModel(session.model, budget))`.
-- `applyBudgetToModel` (`pool-apply-budget.ts`) клонирует pi `Model`:
-  `maxTokens = budget.initialMaxTokens`, `samplingParams.temperature = budget.temperature`.
-- Восстановление модели — в `finish` (terminal state хода), fire-and-forget.
-- `budgetApplied: true` в obs ТОЛЬКО когда `setModel` реально применился
-  (`budgetApplyStrategy: "set_model"`), иначе `none`.
-
-Ограничение: `temperature` кладётся в `samplingParams` (pi применяет per-request
-sampling-параметры, если провайдер поддерживает); гарантированно ограничивается
-`maxTokens` через `Model.maxTokens`.
-
-## Next phases (не сделано)
-
-- `TaskProfile.complexity` wiring (Phase 2 — сделано через RoutingDecision).
-- Flash LLM router (Phase 2 — см. `docs/FLASH_ROUTER.md`).
-- GenerationEvaluator (extension decision).
-
-## Калибровка (вход из observability)
-
-`generation.budget` / `generation.extend*` / `generation.finish` (см.
-`docs/OBSERVABILITY.md`) — вход для ручной или агентной калибровки `profiles.ts`:
-какой профиль выставили (`complexity` + initial/soft/hard), применился ли
-(`budgetApplied`/`budgetApplyStrategy`), расширяли ли (`extend` from→to),
-отказ (`extend_denied` reason), не хватило ли токенов (`finish` truncated/length).
-
-## What is NOT done
-
-- multi-pass extend в production path: **no** (helper `tryExtendBudgetWithObs` есть,
-  runtime его не вызывает — Phase 3).
-- auto-calibration: **no** (не начат).
-
-## Related
-
-- [FLASH_ROUTER.md](FLASH_ROUTER.md) — routing.decision → complexity/kind.
-- [OBSERVABILITY.md](OBSERVABILITY.md) — generation.budget/extend*/finish события.
+- Does not choose which API vendor key to use.
+- Does not replace Flash routing.
+- Does not guarantee `finishReason=length` visibility if pi does not expose usage (`generation.finish` may have `usageAvailable: false`).

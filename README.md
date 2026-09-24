@@ -455,6 +455,21 @@ GRIHA_AGENT_RUNTIME=1 npx tsx --test "tests/unit/**/*.test.ts"  # on — 1127
 - Хранилище: только sqlite-rag / sqlite.ai (better-sqlite3 + FTS5).
 - Исключено: биллинг, монетизация, платёжный трекинг, генерация траекторий для обучения/продажи.
 
+## Documentation (canon)
+
+| Doc | Topic |
+|-----|-------|
+| docs/ARCHITECTURE.md | Principles, diagrams, disk layout |
+| docs/TELEGRAM-BOT.md | Telegram pipeline |
+| docs/SECRETARY.md | Secretary mode |
+| docs/FLASH_ROUTER.md | Routing rules + Flash |
+| docs/GENERATION_POLICY.md | Token budgets |
+| docs/OBSERVABILITY.md | JSONL events |
+| docs/SECURITY.md | Sandbox & injection |
+| STATUS.md | Current checklist |
+
+Phase `*_REPORT.md` files are historical; removed from tree — use git history.
+
 ## Документация для передачи другому агенту
 
 Рекомендуемый порядок чтения:

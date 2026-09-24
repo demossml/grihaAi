@@ -1,5 +1,22 @@
 # Telegram-бот: глубокий разбор
 
+## Current pipeline (source of truth)
+
+```
+getUpdates → claim processed_updates (idempotency) → toTgUpdate / title meta →
+gate: ACL + groupConfigured + listen_only + require_mention →
+if media: download → OCR (injection scan) → archive → optional expense →
+if secretary: detectReminder (auto_reminders) silent →
+if agent allowed: SessionPool.runPrompt → routing + budget (flags) → pi agent + tools →
+send message/document → mark update done
+```
+
+Flags: `GRIHA_FLASH_ROUTER`, `GRIHA_GENERATION_POLICY`, `GRIHA_AGENT_RUNTIME`, `GRIHA_OBS`, `GRIHA_TZ`, `GRIHA_EXECUTE_CODE_ALLOW_LOCAL`.
+
+See also: ARCHITECTURE.md, SECRETARY.md, FLASH_ROUTER.md, GENERATION_POLICY.md.
+
+---
+
 Здесь — всё, что касается встроенного Telegram-бота: как он устроен, почему работал как «EchoBot», и как устроена изоляция сессий на пользователя.
 
 Оглавление:
