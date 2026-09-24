@@ -116,4 +116,63 @@ describe("approval service", () => {
     assert.equal(svc.grant(req.id), true);
     assert.equal(svc.get(req.id)?.userId, "u1");
   });
+
+  it("actor binding: stranger (allowed globally, not an approver) cannot grant", () => {
+    const svc = freshService();
+    const req = svc.createRequest({
+      userId: "u1",
+      sessionId: "s1",
+      action: "payment.send",
+      actionClass: "HIGH_RISK_IRREVERSIBLE",
+      // owner-only: только u1
+      authorizedApproverIds: ["u1"],
+    });
+
+    // u2 — легитимный участник группы (ACL его пропускает), но не approver.
+    const res = svc.approve(req.id, "u2");
+    assert.equal(res.ok, false);
+    assert.equal(res.code, "FORBIDDEN");
+    assert.equal(svc.get(req.id)?.status, "pending", "запрос остался pending");
+
+    const denyRes = svc.reject(req.id, "u2");
+    assert.equal(denyRes.ok, false);
+    assert.equal(denyRes.code, "FORBIDDEN");
+    assert.equal(svc.get(req.id)?.status, "pending");
+  });
+
+  it("actor binding: authorized approver grants", () => {
+    const svc = freshService();
+    const req = svc.createRequest({
+      userId: "u1",
+      sessionId: "s1",
+      action: "book_flight",
+      actionClass: "HIGH_RISK_IRREVERSIBLE",
+      authorizedApproverIds: ["u1", "u2"],
+    });
+
+    assert.equal(svc.approve(req.id, "u2").ok, true);
+    assert.equal(svc.get(req.id)?.status, "approved");
+  });
+
+  it("actor binding: requester self-approve allowed by default, blocked when disabled", () => {
+    const svc = freshService();
+    const self = svc.createRequest({
+      userId: "u1",
+      sessionId: "s1",
+      action: "email.send",
+      actionClass: "SIDE_EFFECT",
+    });
+    assert.equal(svc.approve(self.id, "u1").ok, true);
+
+    const noSelf = svc.createRequest({
+      userId: "u1",
+      sessionId: "s1",
+      action: "payment.send",
+      actionClass: "HIGH_RISK_IRREVERSIBLE",
+      allowSelfApprove: false,
+      authorizedApproverIds: ["u2"],
+    });
+    assert.equal(svc.approve(noSelf.id, "u1").code, "FORBIDDEN");
+    assert.equal(svc.get(noSelf.id)?.status, "pending");
+  });
 });

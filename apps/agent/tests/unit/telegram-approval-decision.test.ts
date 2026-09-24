@@ -44,20 +44,33 @@ describe("applyApprovalDecision (shared approve/deny path)", () => {
         actionClass: "SIDE_EFFECT",
       });
 
-      const approved = applyApprovalDecision("approve", approveReq.id);
+      const approved = applyApprovalDecision("approve", approveReq.id, "u1");
       assert.equal(approved.ok, true);
       assert.equal(approved.message, "Одобрено.");
       assert.equal(svc.get(approveReq.id)?.status, "approved");
 
-      const denied = applyApprovalDecision("deny", denyReq.id);
+      const denied = applyApprovalDecision("deny", denyReq.id, "u1");
       assert.equal(denied.ok, true);
       assert.equal(denied.message, "Отклонено.");
       assert.equal(svc.get(denyReq.id)?.status, "rejected");
 
       // Неизвестный id — не падаем, отдаём понятное сообщение.
-      const unknown = applyApprovalDecision("approve", "no-such-id");
+      const unknown = applyApprovalDecision("approve", "no-such-id", "u1");
       assert.equal(unknown.ok, false);
       assert.equal(unknown.message, "Запрос не найден или уже решён.");
+
+      // Чужой actor (даже если ACL его в целом пропускает) — FORBIDDEN.
+      const strangerReq = svc.createRequest({
+        userId: "owner-user",
+        sessionId: "s1",
+        action: "payment.send",
+        actionClass: "HIGH_RISK_IRREVERSIBLE",
+        authorizedApproverIds: ["owner-user"],
+      });
+      const forbidden = applyApprovalDecision("approve", strangerReq.id, "stranger");
+      assert.equal(forbidden.ok, false);
+      assert.match(forbidden.message, /нет прав/);
+      assert.equal(svc.get(strangerReq.id)?.status, "pending");
 
       svc.close();
     } finally {

@@ -186,7 +186,7 @@ export interface TelegramUpdateGate {
 
 /** Shared approval decision (approve/deny by id) — business logic lives in approval-gate. */
 export interface TelegramApprovalHandler {
-  (action: "approve" | "deny", id: string): string;
+  (action: "approve" | "deny", id: string, actorId: string): string;
 }
 
 /** Extra payload attached to a Telegram reply. */
@@ -912,7 +912,7 @@ export class TelegramBridge {
       }
       const id = approvalMatch[2]?.trim();
       const reply = id
-        ? handler(approvalMatch[1] as "approve" | "deny", id)
+        ? handler(approvalMatch[1] as "approve" | "deny", id, String(userId))
         : `Укажите id: /${approvalMatch[1]} <id>`;
       await send(chatId, reply);
       return { handled: true };

@@ -291,6 +291,7 @@ export type ApprovalScope = "ONCE" | "SESSION" | "WORKFLOW";
 
 export interface ApprovalRequestRecord {
   id: string;
+  /** Requester (owner) of the approval — the user who initiated the action. */
   userId: string;
   sessionId: string;
   action: string;
@@ -302,6 +303,10 @@ export interface ApprovalRequestRecord {
   expiresAt?: string;
   createdAt: string;
   resolvedAt?: string;
+  /** Users allowed to grant/deny this request (owner-only by default). */
+  authorizedApproverIds?: string[];
+  /** Whether the requester may approve their own request. */
+  allowSelfApprove?: boolean;
 }
 
 export type CommitmentStatus = "open" | "due_soon" | "overdue" | "completed" | "cancelled";

@@ -53,17 +53,22 @@ function formatRequest(r: ApprovalRequestRecord): string {
 export function applyApprovalDecision(
   action: "approve" | "deny",
   id: string,
+  actorId?: string,
 ): { ok: boolean; message: string } {
   const service = getService();
-  const ok = action === "approve" ? service.grant(id) : service.deny(id);
-  return {
-    ok,
-    message: ok
-      ? action === "approve"
-        ? "Одобрено."
-        : "Отклонено."
-      : "Запрос не найден или уже решён.",
-  };
+  // CLI / не-Telegram пути: actor = "owner". Telegram передаёт actorId явно.
+  const actor = actorId ?? "owner";
+  const result = action === "approve" ? service.approve(id, actor) : service.reject(id, actor);
+  if (result.ok) {
+    return {
+      ok: true,
+      message: action === "approve" ? "Одобрено." : "Отклонено.",
+    };
+  }
+  if (result.code === "FORBIDDEN") {
+    return { ok: false, message: "У вас нет прав подтверждать этот запрос." };
+  }
+  return { ok: false, message: "Запрос не найден или уже решён." };
 }
 
 export default function approvalGate(pi: ExtensionAPI): void {
@@ -323,7 +328,8 @@ export default function approvalGate(pi: ExtensionAPI): void {
         pi.sendMessage({ customType: "approve", content: [{ type: "text", text: "Укажите id: /approve <id>" }], display: true });
         return;
       }
-      const { message } = applyApprovalDecision("approve", id);
+      const { userId } = resolveIdentity(ctx);
+      const { message } = applyApprovalDecision("approve", id, userId);
       pi.sendMessage({
         customType: "approve",
         content: [{ type: "text", text: message }],
@@ -340,7 +346,8 @@ export default function approvalGate(pi: ExtensionAPI): void {
         pi.sendMessage({ customType: "deny", content: [{ type: "text", text: "Укажите id: /deny <id>" }], display: true });
         return;
       }
-      const { message } = applyApprovalDecision("deny", id);
+      const { userId } = resolveIdentity(ctx);
+      const { message } = applyApprovalDecision("deny", id, userId);
       pi.sendMessage({
         customType: "deny",
         content: [{ type: "text", text: message }],

@@ -364,7 +364,8 @@ function getController(): TelegramBotController {
           users,
         }),
         resetHandler: (sessionKey) => pool?.reset(sessionKey),
-        approvalHandler: (action, id) => applyApprovalDecision(action, id).message,
+        approvalHandler: (action, id, actorId) =>
+          applyApprovalDecision(action, id, actorId).message,
         aclCheck: (userId, chatId) => users.isAllowed(userId, chatId),
         // PROMPT 6: claim-and-lease idempotency (TELEGRAM_UPDATE_DEDUP=0 — bypass).
         updateGate: createUpdateDedup(),

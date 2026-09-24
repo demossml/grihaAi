@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS approval_requests (
   status       TEXT NOT NULL DEFAULT 'pending',
   expires_at   TEXT,
   created_at   TEXT NOT NULL,
-  resolved_at  TEXT
+  resolved_at  TEXT,
+  authorized_approver_ids TEXT,
+  allow_self_approve INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS idx_approval_policies_user ON approval_policies(user_id);
@@ -62,6 +64,8 @@ interface RequestRow {
   expires_at: string | null;
   created_at: string;
   resolved_at: string | null;
+  authorized_approver_ids: string | null;
+  allow_self_approve: number;
 }
 
 export interface SetPolicyInput {
@@ -80,6 +84,17 @@ export interface CreateRequestInput {
   args?: Record<string, unknown>;
   scope?: ApprovalScope;
   expiresAt?: string;
+  /** Users allowed to grant/deny this request (owner-only by default). */
+  authorizedApproverIds?: string[];
+  /** Whether the requester may approve their own request (default true). */
+  allowSelfApprove?: boolean;
+}
+
+export type ApprovalDecisionCode = "NOT_FOUND" | "EXPIRED" | "FORBIDDEN";
+
+export interface ApprovalDecisionResult {
+  ok: boolean;
+  code?: ApprovalDecisionCode;
 }
 
 function rowToPolicy(row: PolicyRow): ApprovalPolicyRecord {
@@ -110,7 +125,23 @@ function rowToRequest(row: RequestRow): ApprovalRequestRecord {
     expiresAt: row.expires_at ?? undefined,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at ?? undefined,
+    authorizedApproverIds: row.authorized_approver_ids
+      ? (JSON.parse(row.authorized_approver_ids) as string[])
+      : undefined,
+    allowSelfApprove: row.allow_self_approve !== 0,
   };
+}
+
+/**
+ * Единственный источник истины для «кто может подтвердить/отклонить запрос».
+ * Член группы, которому ACL в целом разрешает общаться (isAllowed), не обязан
+ * иметь право подтверждать ЧУЖОЙ запрос — здесь это проверяется явно.
+ */
+export function isAuthorizedApprover(req: ApprovalRequestRecord, actorId: string): boolean {
+  if (!actorId) return false;
+  if (req.authorizedApproverIds?.includes(actorId)) return true;
+  if (req.userId === actorId && req.allowSelfApprove !== false) return true;
+  return false;
 }
 
 /**
@@ -137,7 +168,7 @@ export class ApprovalService {
     this.migrate();
   }
 
-  /** Add scope column onto older approval DBs. */
+  /** Add scope + actor-binding columns onto older approval DBs. */
   private migrate(): void {
     const db = this.requireDb();
     const columns = new Set(
@@ -145,6 +176,12 @@ export class ApprovalService {
     );
     if (!columns.has("scope")) {
       db.exec(`ALTER TABLE approval_requests ADD COLUMN scope TEXT NOT NULL DEFAULT 'ONCE'`);
+    }
+    if (!columns.has("authorized_approver_ids")) {
+      db.exec(`ALTER TABLE approval_requests ADD COLUMN authorized_approver_ids TEXT`);
+    }
+    if (!columns.has("allow_self_approve")) {
+      db.exec(`ALTER TABLE approval_requests ADD COLUMN allow_self_approve INTEGER NOT NULL DEFAULT 1`);
     }
   }
 
@@ -196,6 +233,8 @@ export class ApprovalService {
 
   createRequest(input: CreateRequestInput): ApprovalRequestRecord {
     const db = this.requireDb();
+    const authorizedApproverIds = input.authorizedApproverIds ?? [input.userId];
+    const allowSelfApprove = input.allowSelfApprove ?? true;
     const record: ApprovalRequestRecord = {
       id: randomUUID(),
       userId: input.userId,
@@ -208,11 +247,13 @@ export class ApprovalService {
       status: "pending",
       expiresAt: input.expiresAt,
       createdAt: new Date().toISOString(),
+      authorizedApproverIds,
+      allowSelfApprove,
     };
     db.prepare(
       `INSERT INTO approval_requests
-       (id, user_id, session_id, action, action_class, target, args_json, scope, status, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, session_id, action, action_class, target, args_json, scope, status, expires_at, created_at, authorized_approver_ids, allow_self_approve)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       record.id,
       record.userId,
@@ -225,6 +266,8 @@ export class ApprovalService {
       record.status,
       record.expiresAt ?? null,
       record.createdAt,
+      JSON.stringify(authorizedApproverIds),
+      allowSelfApprove ? 1 : 0,
     );
     return record;
   }
@@ -254,6 +297,34 @@ export class ApprovalService {
 
   cancel(id: string): boolean {
     return this.resolve(id, "cancelled");
+  }
+
+  private isExpired(req: ApprovalRequestRecord): boolean {
+    if (!req.expiresAt) return false;
+    return new Date(req.expiresAt).getTime() <= Date.now();
+  }
+
+  /**
+   * Actor-bound grant: разрешает только тому, кто в authorizedApproverIds
+   * (или requester при allowSelfApprove). Чужой член группы — FORBIDDEN.
+   */
+  approve(id: string, actorId: string): ApprovalDecisionResult {
+    const req = this.get(id);
+    if (!req || req.status !== "pending") return { ok: false, code: "NOT_FOUND" };
+    if (this.isExpired(req)) return { ok: false, code: "EXPIRED" };
+    if (!isAuthorizedApprover(req, actorId)) return { ok: false, code: "FORBIDDEN" };
+    this.resolve(id, "approved");
+    return { ok: true };
+  }
+
+  /** Actor-bound deny — те же правила, что и approve. */
+  reject(id: string, actorId: string): ApprovalDecisionResult {
+    const req = this.get(id);
+    if (!req || req.status !== "pending") return { ok: false, code: "NOT_FOUND" };
+    if (this.isExpired(req)) return { ok: false, code: "EXPIRED" };
+    if (!isAuthorizedApprover(req, actorId)) return { ok: false, code: "FORBIDDEN" };
+    this.resolve(id, "rejected");
+    return { ok: true };
   }
 
   private resolve(id: string, status: "approved" | "rejected" | "cancelled"): boolean {

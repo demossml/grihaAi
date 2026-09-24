@@ -653,7 +653,11 @@ export class TelegramBotController {
       await ctx.answerCallbackQuery("Неизвестное действие.").catch(() => undefined);
       return;
     }
-    const message = this.options.approvalHandler(match[1] as "approve" | "deny", match[2]);
+    const message = this.options.approvalHandler(
+      match[1] as "approve" | "deny",
+      match[2],
+      String(userId),
+    );
     await ctx.answerCallbackQuery(message).catch(() => undefined);
     const original = ctx.message?.text?.trim() ?? "";
     await ctx
