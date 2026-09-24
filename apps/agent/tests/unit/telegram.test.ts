@@ -46,7 +46,8 @@ describe("telegram bridge", () => {
     });
 
     assert.equal(res.handled, true);
-    assert.equal(calls[0].message, "привет");
+    assert.ok(calls[0].message.includes("<external_content"), "user text wrapped");
+    assert.ok(calls[0].message.includes("привет"), "user text present");
     assert.equal(calls[0].sessionKey, "tg:123:999");
     assert.equal(sent[0].text, "ответ Гриши");
     assert.equal(sent[0].chatId, 999);
@@ -327,7 +328,8 @@ describe("telegram bridge", () => {
 
     assert.equal(res.handled, true);
     assert.equal(calls.length, 1, "голосовое должно дойти до агента");
-    assert.equal(calls[0].message, "послушай это сообщение", "агенту идёт транскрипция, не file_id");
+    assert.ok(calls[0].message.includes("<external_content"), "транскрипция обёрнута");
+    assert.ok(calls[0].message.includes("послушай это сообщение"), "агенту идёт транскрипция, не file_id");
     // D2: sessionKey = tg:{userId}:{chatId}
     assert.equal(calls[0].sessionKey, "tg:123:999");
     assert.equal(sent[0], "транскрипция: ...");

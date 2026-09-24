@@ -17,5 +17,11 @@
 ## Prompt injection
 OCR/document text scanned (`scanForInjection`, source document) before agent prompt. On block — do not inject raw OCR as instructions.
 
+## External content boundary
+User text, caption, `[REPLY_TO]`, album and voice transcript are wrapped in
+`<external_content source="...">` and scanned (`sanitizeForAgent`) before the agent
+prompt. Content inside `<external_content>` is DATA, not instructions; injection
+markers → `[CONTENT_BLOCKED_BY_SECURITY]` placeholder instead of raw text.
+
 ## Limitations
 Legacy voice path may still lack scan — see STATUS.

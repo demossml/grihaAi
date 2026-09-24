@@ -5,7 +5,7 @@
 
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import type { UpdateClaimResult } from "../../../src/services/documents/DocumentsRepository.js";
-import { scanForInjection } from "../../../src/runtime/security/injection.js";
+import { sanitizeForAgent } from "../../../src/utils/security/external-content.js";
 import { buildTelegramSessionKey } from "./session-key.js";
 import { buildTelegramCorrelationId, logTelegramError } from "./telegram-diagnostics.js";
 import { startTypingHeartbeat } from "./typing-heartbeat.js";
@@ -252,10 +252,11 @@ function buildMediaAgentMessage(
   media: ProcessMediaResult | null,
 ): string {
   const base = mediaBaseText(kind);
+  const caption = msg.caption ? sanitizeForAgent(msg.caption, "external-message").text : null;
   if (media?.failed) {
     return [
       base,
-      msg.caption ? `Подпись: ${msg.caption}` : null,
+      caption ? `Подпись: ${caption}` : null,
       kind === "voice" || kind === "audio" || kind === "video_note"
         ? "Не удалось распознать голос."
         : "Не удалось распознать изображение.",
@@ -265,9 +266,8 @@ function buildMediaAgentMessage(
       .join("\n");
   }
   const ocrText = media?.rawText?.trim();
-  // P0: injection-scan распознанного текста (OCR/STT) — недоверенный источник.
-  const ocrScan = ocrText ? scanForInjection(ocrText, "document") : null;
-  const ocrBlocked = ocrScan?.verdict === "block";
+  // P0/P2: scan + wrap распознанного текста (OCR/STT) — недоверенный источник.
+  const ocrSanitized = ocrText ? sanitizeForAgent(ocrText, "document") : null;
   const mime = msg.document?.mime_type ?? "";
   const fileName = msg.document?.file_name ?? "";
   const isPdf = kind === "document" && (/pdf/i.test(mime) || /\.pdf$/i.test(fileName));
@@ -275,11 +275,9 @@ function buildMediaAgentMessage(
   const textLabel = isAudioLike ? "Распознанный текст (STT):" : "Распознанный текст (OCR):";
   return [
     base,
-    msg.caption ? `Подпись: ${msg.caption}` : null,
-    ocrText
-      ? ocrBlocked
-        ? `${textLabel}\n[Текст заблокирован: подозрение на prompt-инъекцию]`
-        : `${textLabel}\n${ocrText}`
+    caption ? `Подпись: ${caption}` : null,
+    ocrSanitized
+      ? `${textLabel}\n${ocrSanitized.text}`
       : isPdf
         ? "OCR: PDF не поддерживается vision-моделью — нужна ручная проверка документа."
         : isAudioLike
@@ -349,14 +347,14 @@ export function buildAlbumAgentMessage(
   const lines: string[] = [
     `Пользователь прислал альбом из ${batch.items.length} файлов.`,
   ];
-  if (batch.caption) lines.push(`Подпись: ${batch.caption}`);
+  if (batch.caption) lines.push(`Подпись: ${sanitizeForAgent(batch.caption, "external-message").text}`);
   const texts = (media?.rawText ?? "")
     .split(/\n?={3,}\n?|\n?---\n?/)
     .map((t) => t.trim())
     .filter(Boolean);
   if (texts.length > 0) {
     lines.push("Распознанный текст (OCR) по файлам:");
-    texts.forEach((t, i) => lines.push(`[файл ${i + 1}]\n${t}`));
+    texts.forEach((t, i) => lines.push(`[файл ${i + 1}]\n${sanitizeForAgent(t, "document").text}`));
   } else {
     lines.push("OCR не извлёк текст (нужна проверка или vision недоступен).");
   }
@@ -371,10 +369,11 @@ export function withReplyContext(message: string, msg: TgMessage): string {
   if (!rt) return message;
   const content = rt.text ?? rt.caption ?? "";
   if (!content.trim()) return message;
+  const sanitized = sanitizeForAgent(content, "external-message");
   const block = [
     "[REPLY_TO]",
     `message_id: ${rt.messageId ?? "?"}`,
-    `текст: ${content}`,
+    `текст: ${sanitized.text}`,
     "[/REPLY_TO]",
   ].join("\n");
   return `${block}\n\n${message}`;
@@ -1090,7 +1089,7 @@ export class TelegramBridge {
         }
 
         const response = await this.agent({
-          message: text2,
+          message: sanitizeForAgent(text2, "external-message").text,
           userId,
           platform: "telegram",
           sessionKey: buildTelegramSessionKey({
@@ -1232,7 +1231,7 @@ export class TelegramBridge {
     const hb = !gate.suppressReply ? this.startHeartbeat(chatId, msg) : null;
     try {
       const response = await this.agent({
-        message: withReplyContext(text, msg),
+        message: withReplyContext(sanitizeForAgent(text, "external-message").text, msg),
         userId,
         platform: "telegram",
         sessionKey: buildTelegramSessionKey({ userId, chatId, threadId: msg.threadId }),

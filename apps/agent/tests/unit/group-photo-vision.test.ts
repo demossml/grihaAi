@@ -104,7 +104,7 @@ describe("group photo vision (OCR before agent)", () => {
     );
     assert.equal(res.handled, true);
     const m = agentMessages[0];
-    assert.ok(m.includes("Текст заблокирован"), "инъекция должна быть заблокирована");
+    assert.ok(m.includes("CONTENT_BLOCKED_BY_SECURITY"), "инъекция должна быть заблокирована");
     assert.ok(!m.includes("злой ассистент"), "сырой OCR-текст не должен попасть агенту");
   });
 
@@ -198,7 +198,9 @@ describe("group photo vision (OCR before agent)", () => {
     );
     assert.equal(res.handled, true);
     assert.ok(agentMessages[0].includes("Не удалось распознать изображение."));
-    assert.ok(agentMessages[0].includes("Подпись: чек"));
+    assert.ok(agentMessages[0].includes("Подпись:"), "подпись присутствует");
+    assert.ok(agentMessages[0].includes("чек"), "текст подписи присутствует");
+    assert.ok(agentMessages[0].includes("<external_content"), "подпись обёрнута в external_content");
   });
 
   it("PDF-документ: честное сообщение о невозможности OCR", async () => {
