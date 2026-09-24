@@ -517,3 +517,11 @@
 - [ ] `sendNotify` в DM при `needs_confirmation` (follow-up)
 - [ ] `reply_to` на source-сообщение в напоминании (follow-up)
 
+## Security hardening (P0): execute_code env scrub + injection on OCR
+
+- [x] `src/sandbox/env-scrub.ts` — `scrubEnv` (allowlist PATH/HOME/TMPDIR/LANG/TZ/…) + `isSensitiveEnvKey`
+- [x] `src/sandbox/process.ts` — `spawnToResult` больше не наследует `process.env` (только allowlist + overrides); закрывает execute_code И cron script-jobs
+- [x] Injection на OCR/STT: `TelegramBridge.buildMediaAgentMessage` сканирует `media.rawText` (`scanForInjection` source=document) → сырой текст не инжектится при подозрении на prompt-инъекцию
+- [x] Тесты: `env-scrub.test.ts` (4), `group-photo-vision.test.ts` (+1 P0 injection); docs/SECURITY.md §5
+- [ ] legacy voice-path (transcribeVoice → агент) без injection-scan — follow-up
+

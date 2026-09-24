@@ -79,6 +79,17 @@ interface SandboxProvider {
 
 Выбор бэкенда — через `createSandboxProvider("dev" | "runsc", options)`, не зашит в инструменты.
 
+**Env scrub (P0):** sandbox-процесс (`spawnToResult`, `src/sandbox/process.ts`) **НЕ
+наследует host-окружение**. Передаётся только allowlist runtime-переменных
+(`PATH/HOME/TMPDIR/LANG/LC_ALL/TZ/TERM/NODE_ENV/…`, `src/sandbox/env-scrub.ts`) +
+явные overrides. `TELEGRAM_BOT_TOKEN`, `*_API_KEY`, `*_PASSWORD`, proxy-пароли и пр.
+в исполняемый код не попадают.
+
+**Injection на OCR/STT (P0):** распознанный текст из фото/документов/голоса
+(`TelegramBridge.buildMediaAgentMessage`) сканируется `scanForInjection(…, "document")`
+до передачи агенту; при подозрении на prompt-инъекцию сырой текст **не** инжектится —
+вместо него предупреждение.
+
 ## 6. Почему не обычный контейнер
 
 Контейнер делит ядро хоста; эксплойт ядра = побег из контейнера. Поэтому для по-настоящему недоверенного кода берут microVM (Firecracker/Kata) или, как компромисс по стоимости/скорости, gVisor (userspace-ядро). В griha-ai субагенты сейчас **вообще не исполняют shell** (gateway блокирует), а `runsc`-бэкенд — готовый задел для будущих code-execution-инструментов.

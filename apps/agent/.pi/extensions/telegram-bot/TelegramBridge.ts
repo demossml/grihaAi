@@ -5,6 +5,7 @@
 
 import type { InlineButton } from "../../../src/utils/telegram/session-files.js";
 import type { UpdateClaimResult } from "../../../src/services/documents/DocumentsRepository.js";
+import { scanForInjection } from "../../../src/runtime/security/injection.js";
 import { buildTelegramSessionKey } from "./session-key.js";
 import { buildTelegramCorrelationId, logTelegramError } from "./telegram-diagnostics.js";
 import { startTypingHeartbeat } from "./typing-heartbeat.js";
@@ -264,6 +265,9 @@ function buildMediaAgentMessage(
       .join("\n");
   }
   const ocrText = media?.rawText?.trim();
+  // P0: injection-scan распознанного текста (OCR/STT) — недоверенный источник.
+  const ocrScan = ocrText ? scanForInjection(ocrText, "document") : null;
+  const ocrBlocked = ocrScan?.verdict === "block";
   const mime = msg.document?.mime_type ?? "";
   const fileName = msg.document?.file_name ?? "";
   const isPdf = kind === "document" && (/pdf/i.test(mime) || /\.pdf$/i.test(fileName));
@@ -273,7 +277,9 @@ function buildMediaAgentMessage(
     base,
     msg.caption ? `Подпись: ${msg.caption}` : null,
     ocrText
-      ? `${textLabel}\n${ocrText}`
+      ? ocrBlocked
+        ? `${textLabel}\n[Текст заблокирован: подозрение на prompt-инъекцию]`
+        : `${textLabel}\n${ocrText}`
       : isPdf
         ? "OCR: PDF не поддерживается vision-моделью — нужна ручная проверка документа."
         : isAudioLike
