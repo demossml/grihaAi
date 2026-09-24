@@ -193,7 +193,7 @@ cd apps/agent
 # В pi при первом запуске откроется мастер настройки:
 #   провайдер → модель → API-ключ (или /setup повторно)
 
-# Включение Griha Agent Runtime (все подсистемы из docs/GRIHA_PARITY_MATRIX.md):
+# Включение Griha Agent Runtime (все подсистемы):
 GRIHA_AGENT_RUNTIME=1 ../../node_modules/.bin/pi
 ```
 
@@ -270,9 +270,8 @@ flowchart TB
 ## Griha Agent Runtime (за флагом)
 
 Поверх pi.dev-расширений работает нативный TS-runtime в `apps/agent/src/runtime/`
-(17 подсистем + ядро `kernel.ts`). Каждая подсистема — чистые функции и классы,
-подключённые к прод-путям за флагом; эталонная матрица — `docs/GRIHA_PARITY_MATRIX.md`
-(44 COMPLETE / 24 PARTIAL / 0 MISSING, 22 post-wiring подключения VERIFIED).
+(подсистемы + ядро `kernel.ts`). Каждая подсистема — чистые функции и классы,
+подключённые к прод-путям за флагом.
 
 ```bash
 GRIHA_AGENT_RUNTIME=1  # off (дефолт) = старое поведение 1:1
@@ -366,9 +365,7 @@ secretary/researcher/travel): persona, modelRole, toolsets, политики; bo
 **Observability** (`runtime/observability/`) — structured telemetry с correlation
 ID на каждый run, cost/token accounting по ролям, дашборд `/observability`.
 
-Статус: **матрица закрыта**, DoD закрыт — тесты 1127/1127 (off и on),
-typecheck/build 12/12, lint 0/0. Подробности: `docs/GRIHA_FINAL_EVALUATION.md`,
-`docs/GRIHA_TASK_STATE.md`, `docs/GRIHA_MIGRATION_CHANGELOG.md`.
+Статус: тесты (off и on) и typecheck/build/lint — зелёные.
 
 ## Структура (Turborepo + Hono)
 
@@ -389,15 +386,17 @@ grihaAi/
 │   └── tsconfig/             # общие base/node tsconfig (@griha/tsconfig)
 ├── package.json              # private: true, npm workspaces
 ├── turbo.json
-├── docs/                     # документация
-│   ├── ARCHITECTURE.md       # общая картина, платформа, «мелочи»
+├── docs/                     # документация (канон)
+│   ├── ARCHITECTURE.md       # общая картина, платформа
 │   ├── EXTENSIONS.md         # пофайловый справочник
 │   ├── TELEGRAM-BOT.md       # глубокий разбор бота
-│   ├── SECURITY.md           # периметр, модель доверия, gateway, sandbox
-│   ├── GRIHA_PARITY_MATRIX.md      # матрица соответствия (62 строки)
-│   ├── GRIHA_MIGRATION_CHANGELOG.md # журнал post-wiring подключений
-│   ├── GRIHA_TASK_STATE.md         # текущее состояние фаз
-│   └── GRIHA_FINAL_EVALUATION.md   # финальная оценка + план включения
+│   ├── SECRETARY.md          # режим «Секретарь»
+│   ├── FLASH_ROUTER.md       # маршрутизация rule→flash→fallback
+│   ├── GENERATION_POLICY.md  # бюджеты генерации
+│   ├── OBSERVABILITY.md      # события/CLI
+│   ├── SECURITY.md           # периметр, sandbox, injection
+│   ├── SYSTEM_UPDATE.md / REPORT_DATA.md / PDF_REPORTS.md / SKILLS.md / EXTERNAL-TOOLS.md
+│   └── archive/              # исторические отчёты
 └── README.md / STATUS.md
 ```
 
@@ -460,14 +459,15 @@ GRIHA_AGENT_RUNTIME=1 npx tsx --test "tests/unit/**/*.test.ts"  # on — 1127
 
 Рекомендуемый порядок чтения:
 
-1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — как устроено, платформа, события, конфиг, секреты, все «мелочи».
-2. [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — пофайловый справочник (типы, утилиты, каждое расширение, все инструменты и команды).
-3. [docs/GRIHA_PARITY_MATRIX.md](docs/GRIHA_PARITY_MATRIX.md) — матрица соответствия runtime-подсистем (62 строки, статусы и доказательства).
-4. [docs/GRIHA_TASK_STATE.md](docs/GRIHA_TASK_STATE.md) — текущая фаза и завершённые пункты.
-5. [docs/GRIHA_FINAL_EVALUATION.md](docs/GRIHA_FINAL_EVALUATION.md) — итоговая оценка и план включения в production.
-6. [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — бот и изоляция сессий.
-7. [docs/SECURITY.md](docs/SECURITY.md) — периметр, модель доверия, gateway и sandbox-слои.
-8. [docs/SKILLS.md](docs/SKILLS.md) — живой каталог skills + workflow graphs.
+1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — как устроено, платформа, события, конфиг, секреты.
+2. [docs/EXTENSIONS.md](docs/EXTENSIONS.md) — пофайловый справочник (типы, утилиты, расширения, инструменты).
+3. [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — бот, пайплайн сообщений, изоляция сессий.
+4. [docs/SECRETARY.md](docs/SECRETARY.md) — режим «Секретарь» (тишина/напоминания/роли/расходы).
+5. [docs/FLASH_ROUTER.md](docs/FLASH_ROUTER.md) — маршрутизация rule→flash→fallback.
+6. [docs/GENERATION_POLICY.md](docs/GENERATION_POLICY.md) — бюджеты генерации.
+7. [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — события и CLI.
+8. [docs/SECURITY.md](docs/SECURITY.md) — периметр, sandbox, env scrub, injection.
+9. [docs/SKILLS.md](docs/SKILLS.md) — каталог skills.
 9. [STATUS.md](STATUS.md) — прогресс по фазам.
 
 История (аудиты, планы и отчёты завершённых фаз) — в [docs/archive/](docs/archive/); это не актуальное состояние.

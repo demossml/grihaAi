@@ -401,7 +401,7 @@ policy per topic — это отдельный проект (PROMPT 8, вари�
 
 ### Hardening P0+P1 (D1–D10)
 
-Патч устойчивости/безопасности бота (см. `TELEGRAM_HARDENING_REPORT.md`). Не меняет
+Патч устойчивости/безопасности бота. Не меняет
 silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
 
 - **D1 Mentions**: `mentions.ts` — `collectMentionFlags(text, entities, self?)` учитывает
@@ -429,8 +429,7 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
 - **D8 Reload**: `ChatSetupService.loadSync(force)`/`reload()` — повторное чтение
   `chat-setup.json` без рестарта.
 - **D9 `/start` hint**: в DM добавляет строку про pending-группы (`pendingGroupsHint`).
-- **D10 Tests/docs**: 420 unit-тестов, обновлены `docs/TELEGRAM-BOT.md`, `STATUS.md`,
-  `README.md`, `TELEGRAM_HARDENING_REPORT.md`.
+- **D10 Tests/docs**: 420 unit-тестов, обновлены `docs/TELEGRAM-BOT.md`, `STATUS.md`, `README.md`.
 
 ### Send reliability (Пакет A)
 
@@ -589,6 +588,9 @@ download → `VisionExtractor` (тот же `createHttpVisionCaller`, что и
 
 - `TelegramSessionPool.runPrompt`: `preparePoolRouting` → optional `setModel` budget
   (`applyBudgetToModel`) → `session.prompt` → restore в `finish`.
+- `role=flash` → session-модель переключается на `deepseek-v4-flash` (из config);
+  `main`/`vision` — текущая модель.
+- `kind=report_dispatch` → в prompt инжектится `REPORT_DISPATCH_GUIDANCE` (звать report tools).
 - Флаги `GRIHA_FLASH_ROUTER` / `GRIHA_GENERATION_POLICY` — default OFF (1:1).
 - obs: `turn.start` → `gate.*` → `routing.decision` → `generation.budget` →
   [`tool.*`] → `generation.finish` → `turn.end` — один `correlationId`.

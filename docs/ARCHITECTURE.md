@@ -136,25 +136,18 @@ pi вызывает before_agent_start всех расширений
 ответ ассистента рендерится в TUI
 ```
 
-### Telegram-сообщение
+### Telegram-сообщение (current)
 
 ```
-Telegram update
-        │
-        ▼
-TelegramBotController (grammy, long polling)
-        │
-        ▼
-TelegramBridge (whitelist-проверка, команды, фото/документ/текст)
-        │
-        ▼
-TelegramSessionPool.handleMessage(userId, text)
-        │   └─ изолированный AgentSession на tg:<userId>
-        ▼
-agent_end → getLastAssistantText() + takeSessionFile(sessionId)
-        │   └─ ответ { text, filePath? }
-        ▼
-sender(chatId, text, filePath?) → sendMessage + (filePath ? sendDocument : ничего)
+Telegram → telegram-bot extension (normalize → update-dedup claim → bridge)
+         → group-runtime / prefilter (groupConfigured, listen_only, require_mention)
+         → documents (archive, OCR/STT, expenses)
+         → secretary (participants, reminders, record expense)
+         → TelegramSessionPool
+              → routing (rule → flash → fallback)
+              → generation policy (setModel budget)
+              → pi session / tools
+         → observability jsonl (turn/routing/budget/reminder.*)
 ```
 
 Сгенерированные файлы (`generate_report`/`generate_presentation`) доходят до пользователя как документ: инструмент регистрирует путь в per-session registry (`src/utils/telegram/session-files.ts`), пул забирает его на `agent_end`.
