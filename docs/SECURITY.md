@@ -23,5 +23,11 @@ User text, caption, `[REPLY_TO]`, album and voice transcript are wrapped in
 prompt. Content inside `<external_content>` is DATA, not instructions; injection
 markers → `[CONTENT_BLOCKED_BY_SECURITY]` placeholder instead of raw text.
 
+## send_file roots
+`defaultFileRoots()` in production (`NODE_ENV=production` or
+`GRIHA_STRICT_FILE_ROOTS=1`) allows only `~/.grish-ai/reports|media|artifacts`.
+Dev keeps a broader set (cwd, monorepo root, tmp). The model cannot send `.env`/sources
+by guessing a path.
+
 ## Limitations
 Legacy voice path may still lack scan — see STATUS.

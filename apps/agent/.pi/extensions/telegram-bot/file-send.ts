@@ -15,17 +15,34 @@ export type SendFileValidation =
   | { ok: false; error: string };
 
 /**
- * Пути по умолчанию, из которых разрешено отправлять файлы (B2):
- * cwd, корень монорепо (если cwd — apps/agent), tmp, ~/.grish-ai и media-стор.
+ * Пути по умолчанию, из которых разрешено отправлять файлы (B2).
+ *
+ * Production (NODE_ENV=production или GRIHA_STRICT_FILE_ROOTS=1) — строгий
+ * набор: только `~/.grish-ai/reports`, `~/.grish-ai/media`,
+ * `~/.grish-ai/artifacts` (не cwd/монорепо/tmp — модель не должна угадать
+ * `.env`/исходники).
+ *
+ * Dev — прежний широкий набор: cwd, корень монорепо, tmp, config dir, media-стор.
  */
-export function defaultFileRoots(): string[] {
-  const configDir = path.resolve(getConfigDir());
+export function defaultFileRoots(env: NodeJS.ProcessEnv = process.env): string[] {
+  const base = path.resolve(getConfigDir());
+  const strict =
+    env.GRIHA_STRICT_FILE_ROOTS === "1" || env.NODE_ENV === "production";
+
+  if (strict) {
+    return [
+      path.join(base, "reports"),
+      path.join(base, "media"),
+      path.join(base, "artifacts"),
+    ].map((p) => path.resolve(p));
+  }
+
   return [
     path.resolve(process.cwd()),
     path.resolve(process.cwd(), "../.."), // корень монорепо (cwd = apps/agent)
     os.tmpdir(),
-    configDir,
-    path.join(configDir, "media"), // постоянное MediaStorage
+    base,
+    path.join(base, "media"), // постоянное MediaStorage
   ];
 }
 
