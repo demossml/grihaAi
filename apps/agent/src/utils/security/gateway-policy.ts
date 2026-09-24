@@ -20,10 +20,10 @@ const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
 export function evaluateToolCall(toolName: string, trust: TrustLevel): GatewayDecision {
   if (trust === "trusted") return { allow: true };
 
-  if (toolName === "bash" || toolName === "powershell") {
+  if (toolName === "bash" || toolName === "powershell" || toolName === "execute_code") {
     return {
       allow: false,
-      reason: "shell execution is disabled for untrusted sessions (sub-agents/cron)",
+      reason: "shell/execute_code is disabled for untrusted sessions (sub-agents/telegram/cron)",
     };
   }
   if (toolName === "edit" || toolName === "write") {

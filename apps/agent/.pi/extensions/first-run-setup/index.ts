@@ -15,6 +15,7 @@ import {
   saveConfig,
 } from "@griha/config";
 import { getModelsForProvider } from "../../../src/utils/routing/model-catalog.js";
+import { setSessionTrust } from "../../../src/sandbox/gateway-context.js";
 
 interface ProviderDef {
   id: GrishAiProvider;
@@ -275,6 +276,9 @@ async function persistModel(
 
 export default function firstRunSetup(pi: ExtensionAPI): void {
   pi.on("session_start", async (event, ctx) => {
+    // Main (TUI/headless bot) session is trusted; Telegram/sub-agent sessions
+    // are created by other factories and mark themselves untrusted.
+    setSessionTrust(ctx.sessionManager.getSessionId(), "trusted");
     if (event.reason !== "startup") return;
 
     if (!configExists()) {

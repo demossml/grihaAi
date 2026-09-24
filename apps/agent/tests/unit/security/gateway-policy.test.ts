@@ -12,6 +12,7 @@ describe("gateway policy", () => {
   it("blocks shell execution in untrusted sessions", () => {
     assert.equal(evaluateToolCall("bash", "untrusted").allow, false);
     assert.equal(evaluateToolCall("powershell", "untrusted").allow, false);
+    assert.equal(evaluateToolCall("execute_code", "untrusted").allow, false);
   });
 
   it("blocks file mutation in untrusted sessions", () => {

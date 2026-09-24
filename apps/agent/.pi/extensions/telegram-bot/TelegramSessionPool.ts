@@ -31,6 +31,7 @@ import groupMemory from "../group-memory/index.js";
 import obsTools from "../obs-tools/index.js";
 import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
+import { clearSessionTrust, setSessionTrust } from "../../../src/sandbox/gateway-context.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
 import { preparePoolRouting, applyRouteGuidance, type PoolRoutingResult } from "./pool-routing.js";
@@ -200,6 +201,8 @@ export class TelegramSessionPool {
       sessionStartEvent: { type: "session_start", reason: "startup" },
     });
     await session.bindExtensions({ mode: "json" });
+    // P1: Telegram-сессии — untrusted (gateway режет shell/execute_code/file mutation).
+    setSessionTrust(session.sessionId, "untrusted");
     return session;
   }
 
@@ -272,6 +275,7 @@ export class TelegramSessionPool {
       return null;
     });
     if (session) {
+      clearSessionTrust(session.sessionId);
       session.dispose();
     }
   }
@@ -628,6 +632,7 @@ export class TelegramSessionPool {
         return null;
       });
       if (session) {
+        clearSessionTrust(session.sessionId);
         session.dispose();
       }
     }
