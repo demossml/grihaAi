@@ -8,6 +8,8 @@ import {
   createSandboxProvider,
   type SandboxProvider,
 } from "../../../src/sandbox/index.js";
+import { runscAvailable } from "../../../src/runtime/mcp/runsc-spawn.js";
+import { buildSandboxEnv } from "../../../src/sandbox/env-scrub.js";
 
 /**
  * I1 (post-wiring, §20) — инструмент execute_code за флагом.
@@ -33,6 +35,7 @@ export interface ExecuteCodeOutcome {
   exitCode?: number;
   sandbox?: string;
   error?: string;
+  code?: string;
 }
 
 export type SandboxProviderFactory = (
@@ -43,6 +46,7 @@ export async function runExecuteCode(
   params: ExecuteCodeToolParams,
   env: NodeJS.ProcessEnv,
   providerFactory: SandboxProviderFactory = createSandboxProvider,
+  runscAvailableFn: () => boolean = () => runscAvailable(),
 ): Promise<ExecuteCodeOutcome> {
   if (!isAgentRuntimeEnabled(env)) {
     return {
@@ -68,9 +72,30 @@ export async function runExecuteCode(
     return { ok: false, text: `execute_code rejected: ${pre.reason}`, error: pre.reason };
   }
 
+  // P0-1: НИКОГДА не выполняем LLM-код на хосте. runsc обязателен; local —
+  // только явный dev-флаг (GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1 + NODE_ENV != production).
+  const useLocal =
+    env.GRIHA_EXECUTE_CODE_ALLOW_LOCAL === "1" && env.NODE_ENV !== "production";
+  const runscOk = runscAvailableFn();
+  let backend: "runsc" | "dev";
+  if (runscOk) {
+    backend = "runsc";
+  } else if (useLocal) {
+    backend = "dev";
+  } else {
+    return {
+      ok: false,
+      text:
+        "execute_code unavailable: runsc (gVisor) не сконфигурирован. " +
+        "Локальное исполнение — только для dev (GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1 + NODE_ENV != production).",
+      error: "SANDBOX_UNAVAILABLE",
+      code: "SANDBOX_UNAVAILABLE",
+    };
+  }
+
   let provider: SandboxProvider;
   try {
-    provider = providerFactory(pre.sandbox === "runsc" ? "runsc" : "dev");
+    provider = providerFactory(backend);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -85,6 +110,7 @@ export async function runExecuteCode(
     command: "node",
     args: ["-e", request.code],
     timeoutMs: DEFAULT_EXECUTION_POLICY.timeoutMs,
+    env: buildSandboxEnv(),
   });
   const durationMs = Date.now() - startedAt;
 
@@ -108,6 +134,6 @@ export async function runExecuteCode(
     stdout: result.stdout,
     stderr: result.stderr,
     exitCode: result.exitCode ?? undefined,
-    sandbox: pre.sandbox,
+    sandbox: backend === "runsc" ? "runsc" : "local",
   };
 }

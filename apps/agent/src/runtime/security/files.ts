@@ -4,6 +4,7 @@
  * Проверка путей перед файловыми операциями: без `..`, без абсолютных путей
  * вне разрешённых корней, классификация операций для approval (K2).
  */
+import { isAbsolute, normalize, resolve } from "node:path";
 import { classifyAction, type ActionRisk } from "./risk.js";
 
 export interface FileOperationSpec {
@@ -11,16 +12,17 @@ export interface FileOperationSpec {
   path: string;
 }
 
-const TRAVERSAL = /(^|\/)\.\.(\/|$)/;
-const ABSOLUTE = /^\/|^[A-Za-z]:[\\/]/;
-
-/** Безопасен ли путь относительно разрешённых корней. */
+/** Безопасен ли путь относительно разрешённых корней (resolve+normalize). */
 export function isSafePath(path: string, allowedRoots: readonly string[]): boolean {
-  if (TRAVERSAL.test(path)) return false;
-  if (!ABSOLUTE.test(path)) return true; // относительный путь
+  const p = path.trim();
+  if (!p) return false;
+  if (p.startsWith("~")) return false; // home — не считаем safe
+  if (p.startsWith("\\\\") || p.startsWith("//")) return false; // UNC/сетевой путь
+  const abs = isAbsolute(p) ? p : resolve(process.cwd(), p);
+  const normalized = normalize(abs);
   return allowedRoots.some((root) => {
-    const normalized = root.endsWith("/") ? root : `${root}/`;
-    return path.startsWith(normalized) || path === root;
+    const r = normalize(root);
+    return normalized === r || normalized.startsWith(r.endsWith("/") ? r : r + "/");
   });
 }
 

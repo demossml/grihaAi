@@ -6,7 +6,7 @@
  */
 
 export interface MemoryScanIssue {
-  kind: "zero-width" | "control" | "injection" | "homoglyph";
+  kind: "zero-width" | "control" | "injection";
   offset: number;
   detail: string;
 }
@@ -14,8 +14,6 @@ export interface MemoryScanIssue {
 const ZERO_WIDTH = /[\u200b-\u200f\ufeff\u00ad\u2060]/g;
 const CONTROL = /[\u0000-\u0008\u000e-\u001f\u007f]/g;
 const INJECTION = /(ignore (all )?(previous|prior) instructions|disregard .* instructions|system:\s*you are|ты теперь|забудь все инструкции)/ig;
-/** Кириллица/латиница-подобные омоглифы (а/о/е/с/р/х/у). */
-const HOMOGLYPH = /[а-яА-Я]/;
 
 /** Проверка контента перед записью в память. Пусто = чисто. */
 export function scanMemoryContent(content: string): MemoryScanIssue[] {
@@ -45,13 +43,6 @@ export function scanMemoryContent(content: string): MemoryScanIssue[] {
       detail: `маркер инъекции: ${match[0].slice(0, 40)}`,
     });
   }
-  if (HOMOGLYPH.test(content)) {
-    issues.push({
-      kind: "homoglyph",
-      offset: 0,
-      detail: "кириллические символы в контенте памяти (омоглиф-риск)",
-    });
-  }
   return issues;
 }
 
@@ -61,7 +52,7 @@ export function scanDecision(
 ): { allowed: boolean; issues: MemoryScanIssue[] } {
   const issues = scanMemoryContent(content);
   return {
-    allowed: issues.every((i) => i.kind === "homoglyph"),
+    allowed: issues.length === 0,
     issues,
   };
 }

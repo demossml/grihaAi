@@ -525,3 +525,14 @@
 - [x] Тесты: `env-scrub.test.ts` (4), `group-photo-vision.test.ts` (+1 P0 injection); docs/SECURITY.md §5
 - [ ] legacy voice-path (transcribeVoice → агент) без injection-scan — follow-up
 
+## Code review fixes (P0–P2)
+
+- [x] P0-1: `runExecuteCode` больше не исполняет «safe» код на хосте — runsc всегда, refuse (`SANDBOX_UNAVAILABLE`) без runsc, local только `GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1` + `NODE_ENV != production`
+- [x] P0-1: `buildSandboxEnv` (allowlist + фильтр секретных extra-ключей) в `spawnToResult` и `runExecuteCode`
+- [x] P0-2: injection scan на OCR/STT (document) — `buildMediaAgentMessage` (блокирует сырой текст)
+- [x] P1: reminders tz Moscow (`GRIHA_TZ`), auto_reminders до add, overdue 24h → expired, sourceMessageId (уже было, зафиксировано)
+- [x] P2-1: `isSafePath` — resolve/normalize, reject `~`/UNC/пустой; `../etc/passwd` → false
+- [x] P2-2: homoglyph убран из `scanMemoryContent` (ложная «любая кириллица»)
+- [x] P2-3: `applyGenerationBudgetToModelConfig` — @deprecated (реальный apply — `applyBudgetToModel`)
+- [x] P2-4: docs SECRETARY (auto_reminders/tz), SECURITY (runsc/env/injection), STATUS
+

@@ -32,13 +32,11 @@ describe("scanMemoryContent (Item 5.3)", () => {
     assert.equal(issues[0].kind, "injection");
   });
 
-  it("кириллица → homoglyph-предупреждение", () => {
-    const issues = scanMemoryContent("клиент любит чай");
-    assert.equal(issues.length, 1);
-    assert.equal(issues[0].kind, "homoglyph");
+  it("чистая кириллица → нет issues (homoglyph убран)", () => {
+    assert.deepEqual(scanMemoryContent("клиент любит чай"), []);
   });
 
-  it("scanDecision: zero-width/injection запрещают, homoglyph — нет", () => {
+  it("scanDecision: zero-width/injection запрещают, чистая кириллица — нет", () => {
     assert.equal(scanDecision("plain text").allowed, true);
     assert.equal(scanDecision("клиент").allowed, true);
     assert.equal(scanDecision("a\u200bb").allowed, false);

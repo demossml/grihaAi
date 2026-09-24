@@ -51,8 +51,9 @@
 - Детект явного времени+обязательства regex-сначала (`detect-reminder.ts`, без Pro).
   - «через N минут/часов» → confidence 0.4 → `needs_confirmation`.
   - «в 14:00» → 0.9; «завтра» (date only) → 0.7, default 09:00.
-- Timezone: Europe/Moscow (UTC+3, фикс., без DST для v1); `dueAt` — UTC-Instant.
-- `auto_reminders=false` → НЕ add И НЕ fire (проверка **до** add).
+- Timezone: Europe/Moscow (UTC+3, фикс., без DST для v1); `dueAt` — UTC-Instant;
+  override через `GRIHA_TZ` (пока фиксированный offset).
+- `auto_reminders=false` → НЕ add И НЕ fire (проверка **до** add, не только в `fireDue`).
 - `fireDue` шлёт в ту же группу (+ `threadId`), НЕ в личку участникам.
 - Overdue старше 24ч → `expired` (не спамим при re-enable); `sourceMessageId` хранится.
 

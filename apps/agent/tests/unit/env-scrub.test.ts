@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isSensitiveEnvKey, scrubEnv } from "../../src/sandbox/env-scrub.js";
+import { buildSandboxEnv, isSensitiveEnvKey, scrubEnv } from "../../src/sandbox/env-scrub.js";
 import { createSandboxProvider } from "../../src/sandbox/index.js";
 
 test("scrubEnv: keep allowlist, strip secrets", () => {
@@ -29,6 +29,18 @@ test("isSensitiveEnvKey: token/key/secret/password → true; PATH → false", ()
   assert.equal(isSensitiveEnvKey("AWS_SECRET_ACCESS_KEY"), true);
   assert.equal(isSensitiveEnvKey("PATH"), false);
   assert.equal(isSensitiveEnvKey("NODE_ENV"), false);
+});
+
+test("buildSandboxEnv: allowlist + extra, но секретные extra-ключи отбрасываются", () => {
+  const out = buildSandboxEnv({
+    MY_FLAG: "1",
+    TELEGRAM_BOT_TOKEN: "leak",
+    CUSTOM_API_KEY: "leak2",
+  });
+  assert.equal(out.MY_FLAG, "1");
+  assert.equal(out.TELEGRAM_BOT_TOKEN, undefined, "secret extra не пропускается");
+  assert.equal(out.CUSTOM_API_KEY, undefined, "api key extra не пропускается");
+  assert.ok(out.PATH, "allowlist PATH присутствует");
 });
 
 test("P0: sandbox spawn не наследует host-секреты", async () => {

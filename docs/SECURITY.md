@@ -90,6 +90,11 @@ interface SandboxProvider {
 до передачи агенту; при подозрении на prompt-инъекцию сырой текст **не** инжектится —
 вместо него предупреждение.
 
+**execute_code → runsc (P0-1):** LLM-код НИКОГДА не исполняется на хосте.
+`runExecuteCode` (`core-agent/execute-code.ts`) всегда выбирает runsc; без runsc →
+refuse (`SANDBOX_UNAVAILABLE`). Local (`dev`) — только явный dev-флаг
+`GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1` + `NODE_ENV != production`.
+
 ## 6. Почему не обычный контейнер
 
 Контейнер делит ядро хоста; эксплойт ядра = побег из контейнера. Поэтому для по-настоящему недоверенного кода берут microVM (Firecracker/Kata) или, как компромисс по стоимости/скорости, gVisor (userspace-ядро). В griha-ai субагенты сейчас **вообще не исполняют shell** (gateway блокирует), а `runsc`-бэкенд — готовый задел для будущих code-execution-инструментов.
@@ -97,6 +102,5 @@ interface SandboxProvider {
 ## 7. Известные ограничения
 
 - Telegram-сессии пока `trusted` (bash доступен). При необходимости их можно пометить `untrusted` тем же механизмом.
-- `runsc`-бэкенд требует установленного gVisor (`https://gvisor.dev`); без него возвращает ошибку spawn.
+- `runsc`-бэкенд требует установленного gVisor (`https://gvisor.dev`); без него `execute_code` отвечает `SANDBOX_UNAVAILABLE` (не падает на host).
 - Rate-limiting не реализован.
-- Это архитектурный задел: сейчас нет инструмента, который реально выполняет произвольный код через `SandboxProvider`.

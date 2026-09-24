@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { SandboxResult } from "./types.js";
-import { scrubEnv } from "./env-scrub.js";
+import { buildSandboxEnv } from "./env-scrub.js";
 
 export interface SpawnProcessOptions {
   cwd?: string;
@@ -25,10 +25,10 @@ export function spawnToResult(
 
     let child;
     try {
-      // P0: НЕ наследуем host-секреты — только allowlist + явные overrides.
+      // P0: НЕ наследуем host-секреты — только allowlist + фильтрованные overrides.
       child = spawn(command, args, {
         cwd: options.cwd,
-        env: { ...scrubEnv(), ...options.env },
+        env: buildSandboxEnv(options.env),
       });
     } catch (error) {
       finish({ exitCode: null, stdout: "", stderr: "", error: String(error) });

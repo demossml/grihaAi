@@ -5,9 +5,10 @@ import type { SandboxProvider, SandboxRunOptions } from "../../src/sandbox/types
 
 /**
  * I1 (§20) — execute_code за флагом.
- * Off → disabled (исполнения нет). On → безопасный код в локальном sandbox,
- * опасный (child_process/fs) → runsc обязателен; python запрещён;
- * sandbox-missing → ошибка без падения агента.
+ * Off → disabled. On → код НИКОГДА не исполняется на хосте: runsc обязателен,
+ * иначе refuse (SANDBOX_UNAVAILABLE); local — только dev-флаг
+ * (GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1 + NODE_ENV != production).
+ * python запрещён; sandbox-missing → ошибка без падения агента.
  */
 
 const ON = { GRIHA_AGENT_RUNTIME: "1" };
@@ -54,32 +55,61 @@ describe("runExecuteCode (I1/§20)", () => {
     assert.match(res.error ?? "", /python forbidden/);
   });
 
-  it("безопасный код → локальный sandbox, compact-результат", async () => {
+  it("безопасный код → runsc (НЕ host), compact-результат", async () => {
     const log: Array<{ backend: string; opts: SandboxRunOptions }> = [];
     const res = await runExecuteCode(
       { language: "javascript", code: "console.log(42)" },
       ON,
       fakeProvider(log),
+      () => true,
     );
     assert.equal(res.ok, true);
-    assert.equal(res.sandbox, "local");
+    assert.equal(res.sandbox, "runsc");
     assert.match(res.text, /exitCode: 0/);
     assert.match(res.text, /stdout:\n42/);
     assert.equal(log.length, 1);
-    assert.equal(log[0].backend, "dev");
+    assert.equal(log[0].backend, "runsc");
     assert.deepEqual(log[0].opts.args, ["-e", "console.log(42)"]);
+    assert.ok(log[0].opts.env, "sandbox получает scrub-окружение");
   });
 
-  it("опасный код (child_process) → runsc обязателен", async () => {
+  it("опасный код (child_process) → runsc (та же песочница)", async () => {
     const log: Array<{ backend: string; opts: SandboxRunOptions }> = [];
     const res = await runExecuteCode(
       { language: "javascript", code: "require('child_process').execSync('ls')" },
       ON,
       fakeProvider(log),
+      () => true,
     );
     assert.equal(res.ok, true);
     assert.equal(res.sandbox, "runsc");
     assert.equal(log[0].backend, "runsc");
+  });
+
+  it("runsc недоступен + без dev-флага → refuse (SANDBOX_UNAVAILABLE), host exec нет", async () => {
+    const log: Array<{ backend: string; opts: SandboxRunOptions }> = [];
+    const res = await runExecuteCode(
+      { language: "javascript", code: "1+1" },
+      ON,
+      fakeProvider(log),
+      () => false,
+    );
+    assert.equal(res.ok, false);
+    assert.equal(res.code, "SANDBOX_UNAVAILABLE");
+    assert.equal(log.length, 0, "фабрика sandbox не вызывается");
+  });
+
+  it("runsc недоступен + dev-флаг → local (только dev)", async () => {
+    const log: Array<{ backend: string; opts: SandboxRunOptions }> = [];
+    const res = await runExecuteCode(
+      { language: "javascript", code: "1+1" },
+      { ...ON, GRIHA_EXECUTE_CODE_ALLOW_LOCAL: "1", NODE_ENV: "development" },
+      fakeProvider(log),
+      () => false,
+    );
+    assert.equal(res.ok, true);
+    assert.equal(res.sandbox, "local");
+    assert.equal(log[0].backend, "dev");
   });
 
   it("sandbox missing → ошибка без падения", async () => {
@@ -87,6 +117,7 @@ describe("runExecuteCode (I1/§20)", () => {
       { language: "javascript", code: "1+1" },
       ON,
       fakeProvider([], { error: "runsc binary not found" }),
+      () => true,
     );
     assert.equal(res.ok, false);
     assert.match(res.error ?? "", /sandbox-missing/);
@@ -97,6 +128,7 @@ describe("runExecuteCode (I1/§20)", () => {
       { language: "javascript", code: "throw new Error('boom')" },
       ON,
       fakeProvider([], { exitCode: 1, stdout: "", stderr: "boom" }),
+      () => true,
     );
     assert.equal(res.ok, true);
     assert.match(res.text, /exitCode: 1/);

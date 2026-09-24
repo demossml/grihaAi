@@ -40,5 +40,20 @@ export function scrubEnv(
 
 /** Имена переменных, которые гарантированно вычищаются (для тестов/доков). */
 export function isSensitiveEnvKey(key: string): boolean {
-  return /(token|key|secret|password|passwd|credential|api[_-]?key|private)/i.test(key);
+  return /(token|key|secret|password|passwd|credential|api[_-]?key|private|auth|bot)/i.test(key);
+}
+
+/**
+ * P0 — env для sandbox-процесса: allowlist из process.env + явные overrides,
+ * из которых отфильтрованы секретные ключи (никогда не пропускаем token/key/…).
+ */
+export function buildSandboxEnv(extra?: Record<string, string>): Record<string, string> {
+  const out = scrubEnv();
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) {
+      if (isSensitiveEnvKey(k)) continue;
+      out[k] = v;
+    }
+  }
+  return out;
 }

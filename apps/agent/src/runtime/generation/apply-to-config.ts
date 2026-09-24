@@ -25,9 +25,9 @@ export function budgetToRuntimeParams(
 }
 
 /**
- * Вернуть копию ModelConfig (без мутации). ModelConfig не имеет полей
- * temperature/maxTokens, поэтому здесь — только shallow copy; реальные
- * параметры генерации берутся из budgetToRuntimeParams.
+ * @deprecated Реальное применение бюджета — `pool-apply-budget.applyBudgetToModel`
+ * (Phase 2.3, pi `Model`). ModelConfig не несёт temperature/maxTokens, поэтому
+ * здесь — только passthrough-copy; параметры генерации — из `budgetToRuntimeParams`.
  */
 export function applyGenerationBudgetToModelConfig(
   config: ModelConfig,
