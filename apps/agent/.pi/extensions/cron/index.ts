@@ -7,7 +7,9 @@ import { createRealCronChangeDetector, createRealCronRunner } from "./real-cron.
 import { createRealSubAgentRunner } from "../multi-agent/RealSubAgentRunner.js";
 import type { CronJob, CronRunRecord } from "../../../src/types/index.js";
 import type { ScriptJobSpec, ScriptRunResult } from "../../../src/runtime/automation/script.js";
-import { spawnToResult } from "../../../src/sandbox/process.js";
+import { createSandboxProvider } from "../../../src/sandbox/index.js";
+import { runScriptSandboxed } from "../../../src/sandbox/script-executor.js";
+import { runscAvailable } from "../../../src/runtime/mcp/runsc-spawn.js";
 import { deliverCronResult } from "./delivery-wiring.js";
 
 const DB_PATH = path.join(homedir(), ".grish-ai", "memory.sqlite");
@@ -22,22 +24,18 @@ const emulatedRunner: CronRunner = async (job, prompt) => ({
 });
 
 /**
- * W7 (J4): исполнение script-job через существующий sandbox-слой процесса
- * (тот же spawn-путь, что и LocalSandboxProvider). Выполняется только за
- * флагом GRIHA_AGENT_RUNTIME внутри CronService.
+ * W7 (J4): исполнение script-job через sandbox (runsc или refuse) — не на хосте.
+ * Та же политика изоляции, что у execute_code: runsc обязателен; local — только
+ * GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1 + non-production; иначе SANDBOX_UNAVAILABLE.
  */
-const scriptExecutor = async (spec: ScriptJobSpec): Promise<ScriptRunResult> => {
-  const startedAt = Date.now();
-  const result = await spawnToResult(spec.command, spec.args ?? [], {
-    timeoutMs: spec.timeoutMs,
+const scriptExecutor = async (spec: ScriptJobSpec): Promise<ScriptRunResult> =>
+  runScriptSandboxed(spec, {
+    runscAvailable: () => runscAvailable(),
+    allowLocal:
+      process.env.GRIHA_EXECUTE_CODE_ALLOW_LOCAL === "1" &&
+      process.env.NODE_ENV !== "production",
+    providerFactory: createSandboxProvider,
   });
-  return {
-    exitCode: result.exitCode ?? 1,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    durationMs: Date.now() - startedAt,
-  };
-};
 
 async function getService(): Promise<CronService> {
   if (!service) {

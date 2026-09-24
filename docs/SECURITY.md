@@ -29,5 +29,10 @@ markers → `[CONTENT_BLOCKED_BY_SECURITY]` placeholder instead of raw text.
 Dev keeps a broader set (cwd, monorepo root, tmp). The model cannot send `.env`/sources
 by guessing a path.
 
+## Cron script jobs
+`runScriptSandboxed` runs script-jobs in runsc (or refuse `SANDBOX_UNAVAILABLE`); local
+exec only via `GRIHA_EXECUTE_CODE_ALLOW_LOCAL=1` + non-production. Env scrubbed
+(`buildSandboxEnv`). No host spawn for automation without a user in the loop.
+
 ## Limitations
 Legacy voice path may still lack scan — see STATUS.
