@@ -51,9 +51,17 @@ export interface ExpensesQuery {
 
 export interface ExpensesQueryResult {
   ok: true;
+  /** Количество документов на странице (после LIMIT). */
   count: number;
+  /** Полное число совпавших документов (без LIMIT). */
+  totalCount: number;
+  /** Legacy: сумма только при одной валюте; иначе 0 (см. totalsByCurrency). */
   totalSum: number;
   currency: string;
+  /** Суммы по каждой валюте — никогда не смешиваем USD+RUB в одно число. */
+  totalsByCurrency: Record<string, number>;
+  /** true когда totalCount > размер страницы. */
+  truncated: boolean;
   /** true когда fromDate/toDate не применялись */
   fullHistory: boolean;
   documents: Array<{

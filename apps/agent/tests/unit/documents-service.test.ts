@@ -243,3 +243,46 @@ describe("expenses tool handlers", () => {
     assert.ok(wholeGroup.includes("600"), "scope=chat — по всей группе");
   });
 });
+
+describe("finance totals truth (PROMPT 6)", () => {
+  it("totals считаются по ВСЕМ строкам, а не по странице (250 > limit 200)", async () => {
+    const { repo } = makeRepo();
+    for (let i = 0; i < 250; i++) {
+      const day = String((i % 28) + 1).padStart(2, "0");
+      await repo.insert(doc({ total: 1, currency: "RUB", docDate: `2026-01-${day}` }));
+    }
+    const r = await repo.query({ chatId: "-100", limit: 200 });
+    assert.equal(r.totalCount, 250);
+    assert.equal(r.count, 200, "страница ограничена 200");
+    assert.equal(r.truncated, true);
+    assert.deepEqual(r.totalsByCurrency, { RUB: 250 });
+    assert.equal(r.totalSum, 250);
+  });
+
+  it("supplier за пределами страницы (row 201+) находится в totals", async () => {
+    const { repo } = makeRepo();
+    for (let i = 0; i < 249; i++) {
+      await repo.insert(doc({ supplier: "Обычный", total: 10, docDate: "2026-12-01" }));
+    }
+    // Самый старый → в DESC-порядке последний (не попадает в первые 200).
+    await repo.insert(doc({ supplier: "УникальныйПоставщик", total: 777, docDate: "2020-01-01" }));
+
+    const r = await repo.query({ chatId: "-100", supplier: "уникальныйпоставщик", limit: 200 });
+    assert.equal(r.totalCount, 1, "supplier-фильтр в SQL, а не после LIMIT");
+    assert.equal(r.count, 1);
+    assert.equal(r.totalSum, 777);
+    assert.deepEqual(r.totalsByCurrency, { RUB: 777 });
+  });
+
+  it("две валюты → totalsByCurrency оба ключа, totalSum не смешивает", async () => {
+    const { repo } = makeRepo();
+    await repo.insert(doc({ currency: "RUB", total: 100, docDate: "2026-01-01" }));
+    await repo.insert(doc({ currency: "USD", total: 50, docDate: "2026-01-02" }));
+
+    const r = await repo.query({ chatId: "-100" });
+    assert.deepEqual(r.totalsByCurrency, { RUB: 100, USD: 50 });
+    assert.equal(r.totalSum, 0, "смешанные валюты не складываются в одно число");
+    assert.equal(r.currency, "RUB");
+    assert.equal(r.note, "mixed currencies");
+  });
+});

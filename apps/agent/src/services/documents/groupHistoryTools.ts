@@ -286,10 +286,15 @@ export async function groupReportHandler(
   const fromDate = args.dateFrom !== undefined && args.dateFrom !== "" ? args.dateFrom : undefined;
   const toDate = args.dateTo !== undefined && args.dateTo !== "" ? args.dateTo : undefined;
 
-  // Сообщения (текст) vs файлы (медиа). Практический кап 1000 строк на отчёт.
-  const rows = repo.listMessages({ chatId, threadId, fromDate, toDate, limit: 1000 });
-  const messageCount = rows.filter((r) => r.kind === "text").length;
-  const fileCount = rows.filter((r) => FILE_KINDS.has(r.kind)).length;
+  // Сообщения (текст) vs файлы (медиа). COUNT(*) в SQL — без LIMIT-искажений.
+  const messageCount = repo.countMessages({ chatId, threadId, fromDate, toDate, kinds: ["text"] });
+  const fileCount = repo.countMessages({
+    chatId,
+    threadId,
+    fromDate,
+    toDate,
+    kinds: [...FILE_KINDS],
+  });
 
   const expenses = await repo.query({ chatId, threadId, fromDate, toDate });
 

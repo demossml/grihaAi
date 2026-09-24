@@ -106,15 +106,10 @@ export default function reportGenerator(
       let renderData: Record<string, unknown> = params.data;
       if (params.reportType === "expense-report") {
         const expenseData = params.data as ExpenseReportData;
-        if (!hasExpenseReportData(expenseData)) {
-          const sessionCtx = getSessionContext(ctx.sessionManager.getSessionId());
-          // Без чата сессии наполнять не из чего — ошибка без открытия БД.
-          if (!sessionCtx?.chatId) {
-            return {
-              content: [{ type: "text", text: EXPENSE_REPORT_EMPTY_MESSAGE }],
-              details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
-            };
-          }
+        const sessionCtx = getSessionContext(ctx.sessionManager.getSessionId());
+        // Правда сумм — из БД, а не из придуманных LLM totals. При наличии scope
+        // чата пересчитываем totalAmount/categories/items из БД (период — от LLM).
+        if (sessionCtx?.chatId) {
           const repo = deps?.documentsRepo ?? getDocumentsRepository();
           // R6: rich-вход ExpenseReportInput (group title + поставщики + чеки с
           // позициями) — тот же тип, что рисует @griha/render-tools.
@@ -127,13 +122,22 @@ export default function reportGenerator(
             },
             { getChatTitle: (chatId) => getChatSetupService().getChatTitleSync(chatId) },
           );
-          if (!built.ok) {
+          if (built.ok) {
+            renderData = built.data as unknown as Record<string, unknown>;
+          } else if (!hasExpenseReportData(expenseData)) {
+            // БД пуста И LLM не дал валидных данных — явная ошибка.
             return {
               content: [{ type: "text", text: built.error }],
               details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
             };
           }
-          renderData = built.data as unknown as Record<string, unknown>;
+          // БД пуста, но LLM дал валидные данные (ручной отчёт) — оставляем их.
+        } else if (!hasExpenseReportData(expenseData)) {
+          // Без чата сессии наполнять не из чего — ошибка без открытия БД.
+          return {
+            content: [{ type: "text", text: EXPENSE_REPORT_EMPTY_MESSAGE }],
+            details: { error: "EXPENSE_REPORT_EMPTY: no rows and no total" },
+          };
         }
       }
 

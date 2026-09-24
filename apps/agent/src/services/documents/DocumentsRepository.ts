@@ -317,6 +317,9 @@ export class DocumentsRepository {
   constructor(private readonly dbPath: string) {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
+    // supplier-фильтр в SQL должен быть case-insensitive и понимать кириллицу —
+    // встроенный lower() в sqlite умеет только ASCII, поэтому регистрируем JS-функцию.
+    this.db.function("lower_utf8", (s: unknown) => (s == null ? "" : String(s).toLowerCase()));
     this.db.exec(SCHEMA_SQL);
     // Миграция: forum topics (thread_id) для баз документов MVP.
     const columns = new Set(
@@ -612,6 +615,38 @@ export class DocumentsRepository {
     return rows.map(archiveRowToRecord);
   }
 
+  /** COUNT(*) по архиву чата БЕЗ LIMIT — для group_report (не rows.length). */
+  countMessages(q: {
+    chatId: string;
+    threadId?: string;
+    fromDate?: string;
+    toDate?: string;
+    kinds?: string[];
+  }): number {
+    const conds = ["chat_id = ?"];
+    const params: Array<string | number> = [q.chatId];
+    if (q.threadId !== undefined) {
+      conds.push("thread_id = ?");
+      params.push(q.threadId);
+    }
+    if (q.kinds && q.kinds.length > 0) {
+      conds.push(`kind IN (${q.kinds.map(() => "?").join(", ")})`);
+      params.push(...q.kinds);
+    }
+    if (q.fromDate) {
+      conds.push("created_at >= ?");
+      params.push(q.fromDate);
+    }
+    if (q.toDate) {
+      conds.push("created_at <= ?");
+      params.push(`${q.toDate}T23:59:59.999Z`);
+    }
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM chat_archive WHERE ${conds.join(" AND ")}`)
+      .get(...params) as { c: number };
+    return Number(row.c) || 0;
+  }
+
   /** Недавние события по списку чатов (group_recent): created_at >= sinceIso. */
   listRecent(q: { chatIds: string[]; sinceIso: string; limit: number }): ChatArchiveRecord[] {
     if (q.chatIds.length === 0) return [];
@@ -811,6 +846,11 @@ export class DocumentsRepository {
 
   /**
    * Полная история по умолчанию: fromDate/toDate фильтруют только если заданы.
+   *
+   * PROMPT 6 (finance totals truth): фильтры (chat/thread/date/supplier) — в
+   * SQL, агрегаты SUM/COUNT считаются БЕЗ LIMIT (иначе «итого за период» ложно),
+   * а список страницы — отдельным запросом с LIMIT. Суммы разложены по валютам
+   * (totalsByCurrency) — USD и RUB никогда не смешиваются в одно число.
    */
   async query(q: ExpensesQuery): Promise<ExpensesQueryResult> {
     const chatId = q.chatId;
@@ -818,8 +858,11 @@ export class DocumentsRepository {
       return {
         ok: true,
         count: 0,
+        totalCount: 0,
         totalSum: 0,
         currency: "RUB",
+        totalsByCurrency: {},
+        truncated: false,
         fullHistory: !q.fromDate && !q.toDate,
         documents: [],
       };
@@ -827,39 +870,74 @@ export class DocumentsRepository {
     const fromDate = q.fromDate ?? null;
     const toDate = q.toDate ?? null;
     const threadId = q.threadId ?? null;
-    const supplierNeedle = q.supplier?.trim() ? q.supplier.trim().toLowerCase() : null;
+    const supplierNeedle = q.supplier?.trim() ? q.supplier.trim() : null;
     const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
 
-    // supplier-фильтр — в JS: sqlite lower() не умеет кириллицу.
+    // Общий WHERE: supplier-фильтр в SQL (lower_utf8 → кириллица тоже).
+    const where = `
+      WHERE chat_id = ?
+        AND (? IS NULL OR thread_id = ?)
+        AND (? IS NULL OR doc_date >= ?)
+        AND (? IS NULL OR doc_date <= ?)
+        AND (? IS NULL OR instr(lower_utf8(COALESCE(supplier, '')), lower_utf8(?)) > 0)
+    `;
+    const whereParams = [
+      chatId,
+      threadId,
+      threadId,
+      fromDate,
+      fromDate,
+      toDate,
+      toDate,
+      supplierNeedle,
+      supplierNeedle,
+    ];
+
+    // Totals БЕЗ LIMIT: SUM(total)/COUNT(*) по валютам.
+    const totalsRows = this.db
+      .prepare(
+        `SELECT COALESCE(NULLIF(currency, ''), 'RUB') AS currency,
+                SUM(total) AS s, COUNT(*) AS c
+         FROM expense_documents
+         ${where}
+         GROUP BY COALESCE(NULLIF(currency, ''), 'RUB')`,
+      )
+      .all(...whereParams) as Array<{ currency: string; s: number | null; c: number }>;
+
+    const totalsByCurrency: Record<string, number> = {};
+    let totalCount = 0;
+    for (const r of totalsRows) {
+      totalsByCurrency[r.currency] = Number(r.s) || 0;
+      totalCount += Number(r.c) || 0;
+    }
+
+    // Страница (тот же WHERE, отдельный LIMIT).
     const rows = this.db
       .prepare(
         `SELECT * FROM expense_documents
-         WHERE chat_id = ?
-           AND (? IS NULL OR thread_id = ?)
-           AND (? IS NULL OR doc_date >= ?)
-           AND (? IS NULL OR doc_date <= ?)
+         ${where}
          ORDER BY doc_date DESC, created_at DESC
          LIMIT ?`,
       )
-      .all(chatId, threadId, threadId, fromDate, fromDate, toDate, toDate, limit) as DocRow[];
+      .all(...whereParams, limit) as DocRow[];
 
-    const docs = rows
-      .map(rowToDoc)
-      .filter((d) =>
-        supplierNeedle ? (d.supplier ?? "").toLowerCase().includes(supplierNeedle) : true,
-      );
-    const withTotal = docs.filter((d) => d.total !== undefined);
-    const totalSum = withTotal.reduce((acc, d) => acc + (d.total ?? 0), 0);
+    const docs = rows.map(rowToDoc);
 
-    const currencies = new Set(withTotal.map((d) => d.currency || "RUB"));
-    const currency = currencies.size === 1 ? [...currencies][0] : "RUB";
-    const note = currencies.size > 1 ? "mixed currencies" : undefined;
+    // Legacy totalSum/currency: только при одной валюте; иначе 0 + mixed-флаг.
+    const currencyKeys = Object.keys(totalsByCurrency);
+    const single = currencyKeys.length === 1;
+    const currency = single ? currencyKeys[0] : "RUB";
+    const totalSum = single ? (totalsByCurrency[currencyKeys[0]] ?? 0) : 0;
+    const note = single ? undefined : "mixed currencies";
 
     return {
       ok: true,
       count: docs.length,
+      totalCount,
       totalSum,
       currency,
+      totalsByCurrency,
+      truncated: totalCount > docs.length,
       fullHistory: !q.fromDate && !q.toDate,
       documents: docs.map((d) => {
         let items: Array<{ name: string; qty?: number; sum?: number }> | undefined;
