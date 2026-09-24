@@ -135,4 +135,23 @@ describe("GroupReminderService (S12)", () => {
     assert.equal(r.status, "pending");
     assert.equal(svc.confirm(r.id), undefined);
   });
+
+  it("R6: overdue старше 24ч → expired (не шлём)", async () => {
+    const { svc } = makeService();
+    const oldDue = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+    svc.add({ chatId: "-100", dueAt: oldDue, text: "старое" });
+
+    const sent: string[] = [];
+    const deps: FireReminderDeps = {
+      isChatActive: () => true,
+      send: async (_c, text) => {
+        sent.push(text);
+      },
+    };
+    const res = await svc.fireDue(new Date(), deps);
+    assert.equal(res.fired, 0);
+    assert.equal(res.expired, 1);
+    assert.equal(sent.length, 0, "overdue старше 24ч не рассылается");
+    assert.equal(svc.get(svc.list("-100")[0].id)?.status ?? "?", "expired");
+  });
 });

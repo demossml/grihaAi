@@ -412,6 +412,15 @@ export class TelegramBridge {
         userId: string;
         text: string;
         threadId?: string;
+        messageId?: string;
+        displayName?: string;
+        isGroup: boolean;
+      }) => void | Promise<void>;
+      /** R7: upsert участника группы (после gate, каждый group message). */
+      participantUpsert?: (input: {
+        chatId: string;
+        userId: string;
+        displayName?: string;
         isGroup: boolean;
       }) => void | Promise<void>;
       /** Реакция на исходное сообщение (лёгкое подтверждение «принято»). */
@@ -1169,6 +1178,8 @@ export class TelegramBridge {
     const gate = this.evaluateInput(text, userId, chatId, msg, chatType);
 
     // S2: тихий детект напоминаний (не требует mention, не пишет в группу).
+    // R7: upsert участника группы.
+    const isGroupHere = chatType === "group" || chatType === "supergroup";
     if ((gate.process || gate.archive) && this.options?.detectReminder) {
       void Promise.resolve(
         this.options.detectReminder({
@@ -1176,7 +1187,19 @@ export class TelegramBridge {
           userId: String(userId),
           text,
           threadId: msg.threadId,
-          isGroup: chatType === "group" || chatType === "supergroup",
+          messageId: msg.messageId !== undefined ? String(msg.messageId) : undefined,
+          displayName: msg.from?.firstName ?? String(userId),
+          isGroup: isGroupHere,
+        }),
+      ).catch(() => {});
+    }
+    if (isGroupHere && this.options?.participantUpsert) {
+      void Promise.resolve(
+        this.options.participantUpsert({
+          chatId: String(chatId),
+          userId: String(userId),
+          displayName: msg.from?.firstName ?? String(userId),
+          isGroup: true,
         }),
       ).catch(() => {});
     }
@@ -1380,6 +1403,16 @@ export class TelegramBridge {
     const gate = this.evaluateInput(message, userId, chatId, msg, chatType);
 
     const isGroup = chatType === "group" || chatType === "supergroup";
+    if (isGroup && this.options?.participantUpsert) {
+      void Promise.resolve(
+        this.options.participantUpsert({
+          chatId: String(chatId),
+          userId: String(userId),
+          displayName: msg.from?.firstName ?? String(userId),
+          isGroup: true,
+        }),
+      ).catch(() => {});
+    }
     const isManaged = isGroup || chatType === "channel";
     // R1: pending (group/supergroup/channel) → тишина, без OCR и без агента.
     const pendingManaged = isManaged && msg.groupConfigured === false;

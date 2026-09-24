@@ -21,6 +21,8 @@ import { resolveReportDataScope, type ReportChatType } from "../../../src/servic
 import { resolveGroupQuery, type GroupTitleRecord } from "../../../src/services/documents/resolveGroupQuery.js";
 import { assertCanReadChat, type GroupAccessDeps } from "../../../src/services/documents/groupHistoryTools.js";
 import { fillExpenseDocumentService } from "../../../src/services/documents/documentFill.js";
+import { recordSecretaryExpense } from "../../../src/services/secretary/secretary-record-expense.js";
+import { emit } from "@griha/observability";
 
 const PERIOD = Type.Optional(Type.Union([Type.Literal("7d"), Type.Literal("14d"), Type.Literal("30d"), Type.Literal("month")]));
 
@@ -230,6 +232,83 @@ export default function documents(
     ): Promise<AgentToolResult<{ result: string }>> {
       const text = await expensesListHandler(params, toolContext(ctx), getDocumentsRepository());
       return { content: [{ type: "text", text }], details: { result: text } };
+    },
+  });
+
+  const SecretaryExpenseSchema = Type.Object({
+    chatId: Type.Optional(Type.String({ description: "Только в личке; в группе — из контекста сессии." })),
+    amount: Type.Optional(Type.Number({ description: "Сумма (число)." })),
+    currency: Type.Optional(Type.String({ description: "Default RUB." })),
+    supplier: Type.Optional(Type.String({ description: "Поставщик/контрагент." })),
+    paymentPurpose: Type.String({ description: "Назначение платежа (materials/equipment/services/rent/utilities/taxes/collection/salary/household/transport/repair/advertising/refund/accountable/other)." }),
+    note: Type.Optional(Type.String({ description: "Свободное примечание." })),
+    sourceMessageId: Type.Optional(Type.String({ description: "id исходного сообщения." })),
+  });
+
+  pi.registerTool({
+    name: "secretary_record_expense",
+    label: "Record expense (secretary)",
+    description:
+      "Явная запись расхода «Гриша, запиши…» (R5). В группе chatId берётся из сессии; " +
+      "в личке — args.chatId с ACL. paymentPurpose из словаря; needs_review=false.",
+    parameters: SecretaryExpenseSchema,
+    async execute(
+      _id: string,
+      params: {
+        chatId?: string;
+        amount?: number;
+        currency?: string;
+        supplier?: string;
+        paymentPurpose: string;
+        note?: string;
+        sourceMessageId?: string;
+      },
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<{ id: string; paymentPurpose: string }>> {
+      const tctx = getSessionContext(ctx.sessionManager.getSessionId());
+      const userId = tctx?.userId;
+      if (!userId) {
+        return { content: [{ type: "text", text: "Не определён пользователь сессии." }], details: { id: "", paymentPurpose: "other" } };
+      }
+      const ctxChatId = tctx?.chatId;
+      let chatId: string;
+      if (isGroupLikeChatId(ctxChatId)) {
+        chatId = ctxChatId!;
+      } else {
+        if (!params.chatId?.trim()) {
+          return { content: [{ type: "text", text: "В личке укажите chatId группы." }], details: { id: "", paymentPurpose: "other" } };
+        }
+        chatId = params.chatId.trim();
+      }
+      if (!(await assertCanReadChat(userId, chatId, aclDeps))) {
+        return { content: [{ type: "text", text: "Чат не настроен или нет доступа." }], details: { id: "", paymentPurpose: "other" } };
+      }
+      const doc = await recordSecretaryExpense(
+        getDocumentsRepository(),
+        {
+          chatId,
+          amount: params.amount,
+          currency: params.currency,
+          supplier: params.supplier,
+          paymentPurpose: params.paymentPurpose,
+          note: params.note,
+          sourceMessageId: params.sourceMessageId,
+        },
+        userId,
+      );
+      emit({
+        component: "secretary",
+        event: "secretary.expense.write",
+        chatId,
+        ok: true,
+        data: { id: doc.id, paymentPurpose: doc.paymentPurpose },
+      });
+      return {
+        content: [{ type: "text", text: `Записал расход ${doc.id} (${doc.paymentPurpose ?? "other"}).` }],
+        details: { id: doc.id, paymentPurpose: doc.paymentPurpose ?? "other" },
+      };
     },
   });
 

@@ -72,6 +72,7 @@ import { emit } from "@griha/observability";
 import { getGroupReminderService } from "../../../src/services/reminders/GroupReminderService.js";
 import { detectExplicitReminder } from "../../../src/services/reminders/detect-reminder.js";
 import { isAutoRemindersEnabled } from "../user-rules/auto-reminders.js";
+import { getGroupParticipantService } from "../../../src/services/secretary/participants.js";
 
 // Один раз на процесс: первичное обнаружение IP + периодическое (10 минут).
 // Не должно повторяться на каждом реконнекте бота (иначе плодятся таймеры).
@@ -326,17 +327,36 @@ function getController(): TelegramBotController {
           if (!input.isGroup) return;
           try {
             if (setup.getScenarioSync(input.chatId) !== "secretary") return;
+            if (!isAutoRemindersEnabled(input.chatId)) return; // R6: auto_reminders BEFORE add
             const detected = detectExplicitReminder({ text: input.text });
             if (!detected) return;
             getGroupReminderService().add({
               chatId: input.chatId,
               threadId: input.threadId,
+              sourceMessageId: input.messageId,
               dueAt: detected.dueAt.toISOString(),
               text: detected.text,
               confidence: detected.confidence,
             });
           } catch {
             // тихий детект — не роняем ход
+          }
+        },
+        // R7: upsert участника группы (addedByUserId → owner при первом появлении).
+        participantUpsert: async (input) => {
+          if (!input.isGroup) return;
+          try {
+            const rec = await setup.get(input.chatId);
+            const role =
+              rec?.addedByUserId && String(rec.addedByUserId) === input.userId ? "owner" : undefined;
+            getGroupParticipantService().upsert({
+              chatId: input.chatId,
+              userId: input.userId,
+              displayName: input.displayName,
+              role,
+            });
+          } catch {
+            // не роняем ход
           }
         },
         rulesHandler: makeGuardedRulesHandler({

@@ -348,9 +348,14 @@ configured И (canManage ИЛИ isAllowed)), `groups_compare` (fail-closed по 
 low-confidence → `needs_confirmation` (без авто-спама); `fireDue` пропускает
 archived/pending-чаты и чаты с `auto_reminders=false`. Wire в tick готов:
 `startReminderTick()` (30s) → `fireDue` → `sendNotify` (та же группа, `message_thread_id`).
-Детект из входящего: `detectExplicitReminder` (без LLM) для scenario `secretary` создаёт
-reminder молча (не пишет в группу). Флаг `auto_reminders` (structured rule, default ON) —
-см. [docs/SECRETARY.md](SECRETARY.md).
+Детект из входящего: `detectExplicitReminder` (без LLM, tz Europe/Moscow) для scenario
+`secretary` создаёт reminder молча (не пишет в группу); overdue старше 24ч → `expired`.
+Флаг `auto_reminders` (structured rule, default ON) — см. [docs/SECRETARY.md](SECRETARY.md).
+
+**Роли участников** (`GroupParticipantService`, `~/.grish-ai/group-participants.sqlite`):
+owner/admin/member/finance (Griha-роли, не Telegram-админы); upsert на каждом групповом
+сообщении; `setRole` — только canManage. **Явная запись расхода** — tool
+`secretary_record_expense` (paymentPurpose из словаря, `needs_review=false`).
 
 ### Документы / расходы (MVP)
 

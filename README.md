@@ -162,12 +162,13 @@ Pool-wire (Phase 2.1) — `preparePoolRouting` перед `session.prompt`, fail
 max_tokens 256) + `ModelRouter.callWithDecision` применяет `initialMaxTokens`/
 `temperature` из бюджета при policy on.
 
-## Secretary (silent listener + reminders)
+## Secretary (silent listener + reminders + roles)
 
 Сценарий «Секретарь» в группах молчит по правилам (тихий архив, ответ только на
-@mention/reply) и умеет ставить групповые напоминания по таймеру: `fireDue` tick
-30с, флаг `auto_reminders` (default ON), детект «напомни … в 14:00» без LLM. Роли
-пользователей (S4) и «запиши расход» (S3) — later. Подробнее —
+@mention/reply), умеет ставить групповые напоминания по таймеру (tz Москва, флаг
+`auto_reminders` default ON, overdue 24ч → expired, детект «напомни … в 14:00» без
+LLM), ведёт реестр ролей (owner/admin/member/finance) и записывает явные расходы
+(`secretary_record_expense`, назначение платежа). Подробнее —
 [docs/SECRETARY.md](docs/SECRETARY.md).
 
 ## Observability

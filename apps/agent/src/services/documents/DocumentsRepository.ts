@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS expense_documents (
   currency TEXT NOT NULL DEFAULT 'RUB',
   raw_text TEXT,
   items_json TEXT,
+  payment_purpose TEXT,
   confidence REAL NOT NULL DEFAULT 0,
   needs_review INTEGER NOT NULL DEFAULT 1,
   source TEXT NOT NULL DEFAULT 'telegram',
@@ -130,6 +131,7 @@ interface DocRow {
   currency: string;
   raw_text: string | null;
   items_json: string | null;
+  payment_purpose: string | null;
   confidence: number;
   needs_review: number;
   source: string;
@@ -293,6 +295,7 @@ function rowToDoc(row: DocRow): ExpenseDocument {
     currency: row.currency,
     rawText: row.raw_text ?? undefined,
     itemsJson: row.items_json ?? undefined,
+    paymentPurpose: row.payment_purpose ?? undefined,
     confidence: row.confidence,
     needsReview: row.needs_review !== 0,
     source: row.source as ExpenseDocument["source"],
@@ -328,6 +331,10 @@ export class DocumentsRepository {
         `CREATE INDEX IF NOT EXISTS idx_expense_chat_thread_date
          ON expense_documents(chat_id, thread_id, doc_date);`,
       );
+    }
+    // R5: назначение платежа для явной записи расхода секретарём.
+    if (!columns.has("payment_purpose")) {
+      this.db.exec("ALTER TABLE expense_documents ADD COLUMN payment_purpose TEXT;");
     }
     // Listen-only OCR: additive-колонки архива (ocr_status/expense_id).
     const archiveColumns = new Set(
@@ -430,9 +437,9 @@ export class DocumentsRepository {
         .prepare(
           `INSERT INTO expense_documents
            (id, chat_id, thread_id, message_id, from_user_id, file_id, file_unique_id, file_name, mime_type,
-            kind, doc_date, supplier, total, currency, raw_text, items_json,
+            kind, doc_date, supplier, total, currency, raw_text, items_json, payment_purpose,
             confidence, needs_review, source, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -451,6 +458,7 @@ export class DocumentsRepository {
           doc.currency || "RUB",
           doc.rawText ?? null,
           doc.itemsJson ?? null,
+          doc.paymentPurpose ?? null,
           doc.confidence,
           doc.needsReview ? 1 : 0,
           doc.source,

@@ -500,3 +500,20 @@
 - [ ] UI-toggle `auto_reminders` (функция есть, команды/кнопки нет)
 - [ ] `sendNotify` в DM при `needs_confirmation` (follow-up)
 
+## Secretary full n2 (R1–R10)
+
+- [x] R1 Onboarding + silence: pending → полная тишина (prefilter `group-not-configured`)
+- [x] R2 Inbound behavior: listen_only + require_mention; архив всегда; нет проактивной критики
+- [x] R3 Scope: группа → свой chatId; личка → `resolveGroupQuery` + `assertCanReadChat` (уже было)
+- [x] R4 Documents: photo/PDF → OCR → archive; low confidence → `needs_review` (уже было)
+- [x] R5 Explicit write: tool `secretary_record_expense` + `payment_purpose` колонка + словарь
+- [x] R6 Reminders: tz Moscow, `auto_reminders` до add, overdue 24h → `expired`, `sourceMessageId`
+- [x] R7 Roles: `GroupParticipantService` (owner/admin/member/finance), upsert + setRole(canManage)
+- [x] R8 Reports: report_dispatch → tools; scope by chatId (уже было)
+- [x] R9 Lifecycle: markArchived/reactivate — данные не стираем (уже было)
+- [x] R10 Core: router/budget/obs используются, не форкнуты
+- [x] docs/SECRETARY.md переписан (n2 contract), OBSERVABILITY reminder.*/secretary.*
+- [ ] UI-toggle `auto_reminders` (функция есть, команды/кнопки нет)
+- [ ] `sendNotify` в DM при `needs_confirmation` (follow-up)
+- [ ] `reply_to` на source-сообщение в напоминании (follow-up)
+

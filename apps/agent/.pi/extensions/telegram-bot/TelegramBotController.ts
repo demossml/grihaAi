@@ -268,6 +268,15 @@ export interface TelegramBotControllerOptions {
     userId: string;
     text: string;
     threadId?: string;
+    messageId?: string;
+    displayName?: string;
+    isGroup: boolean;
+  }) => void | Promise<void>;
+  /** R7: upsert участника группы (после gate, каждый group message). */
+  participantUpsert?: (input: {
+    chatId: string;
+    userId: string;
+    displayName?: string;
     isGroup: boolean;
   }) => void | Promise<void>;
   /** self-инфо бота (id/username) для расчёта mention/reply флагов. */
@@ -480,6 +489,7 @@ export class TelegramBotController {
           archiveHandler: this.options?.archiveHandler,
           prepareTurn: this.options?.prepareTurn,
           detectReminder: this.options?.detectReminder,
+          participantUpsert: this.options?.participantUpsert,
           // PROMPT 6: idempotency gate + метрики (duplicates/reclaim/agent).
           updateGate: this.options?.updateGate,
           onMetric: (name) => incMetric(name),

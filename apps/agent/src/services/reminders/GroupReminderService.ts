@@ -17,7 +17,7 @@ import path from "node:path";
 import { getConfigDir } from "@griha/config";
 import { emit } from "@griha/observability";
 
-export type GroupReminderStatus = "pending" | "needs_confirmation" | "fired" | "cancelled";
+export type GroupReminderStatus = "pending" | "needs_confirmation" | "fired" | "cancelled" | "expired";
 
 export interface GroupReminder {
   id: string;
@@ -43,6 +43,9 @@ export interface GroupReminderAddInput {
 }
 
 export const LOW_CONFIDENCE_THRESHOLD = 0.5;
+
+/** R6: overdue старше 24ч → expired (не спамим при re-enable). */
+export const OVERDUE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS group_reminders (
@@ -179,13 +182,30 @@ export class GroupReminderService {
   /**
    * Разослать просроченные напоминания. Archived/pending-чат → пропуск (не шлём).
    * Low-confidence (needs_confirmation) сюда не попадают (listDue фильтрует).
-   * Никаких DELETE — fired помечается статусом.
+   * Overdue старше 24ч → expired (не спамим). Никаких DELETE — статусы.
    */
-  async fireDue(now: Date, deps: FireReminderDeps): Promise<{ fired: number; skipped: number }> {
+  async fireDue(
+    now: Date,
+    deps: FireReminderDeps,
+  ): Promise<{ fired: number; skipped: number; expired: number }> {
     const due = this.listDue(now);
     let fired = 0;
     let skipped = 0;
+    let expired = 0;
+    const overdueCutoff = now.getTime() - OVERDUE_WINDOW_MS;
     for (const r of due) {
+      // R6: overdue старше 24ч → expired, не шлём.
+      if (new Date(r.dueAt).getTime() < overdueCutoff) {
+        this.markExpired(r.id);
+        expired++;
+        emit({
+          component: "reminder",
+          event: "reminder.expired",
+          chatId: r.chatId,
+          data: { reason: "overdue_24h" },
+        });
+        continue;
+      }
       if (!deps.isChatActive(r.chatId)) {
         skipped++;
         emit({
@@ -216,13 +236,20 @@ export class GroupReminderService {
       });
       fired++;
     }
-    return { fired, skipped };
+    return { fired, skipped, expired };
   }
 
   markFired(id: string): void {
     const now = new Date().toISOString();
     this.requireDb()
       .prepare(`UPDATE group_reminders SET status = 'fired', updated_at = ? WHERE id = ?`)
+      .run(now, id);
+  }
+
+  markExpired(id: string): void {
+    const now = new Date().toISOString();
+    this.requireDb()
+      .prepare(`UPDATE group_reminders SET status = 'expired', updated_at = ? WHERE id = ?`)
       .run(now, id);
   }
 

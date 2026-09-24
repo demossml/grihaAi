@@ -25,9 +25,11 @@ export interface ExpenseDocument {
   currency: string; // default "RUB"
   rawText?: string;
   itemsJson?: string;
+  /** R5: назначение платежа из словаря secretary (materials/services/…). */
+  paymentPurpose?: string;
   confidence: number; // 0..1
   needsReview: boolean;
-  source: "telegram";
+  source: "telegram" | "secretary";
   createdAt: string;
   updatedAt: string;
 }

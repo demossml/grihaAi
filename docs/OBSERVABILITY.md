@@ -109,6 +109,8 @@ JSONL, без LLM.
 | `reminder` | `reminder.create` | status (pending/needs_confirmation), confidence |
 | `reminder` | `reminder.fire` | ok |
 | `reminder` | `reminder.skip` | reason (chat_inactive / auto_reminders_off) |
+| `reminder` | `reminder.expired` | reason (overdue_24h) |
+| `secretary` | `secretary.expense.write` | id, paymentPurpose |
 | `bot` | `process.uncaught` / `process.unhandledRejection` | message |
 
 ## Obs v2 — turn chain, budget, tools
