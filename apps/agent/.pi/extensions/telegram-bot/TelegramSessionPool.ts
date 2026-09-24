@@ -289,11 +289,42 @@ export class TelegramSessionPool {
   ): Promise<TelegramReply> {
     const entry = this.getOrCreate(sessionKey, userId, meta);
     const run = async (): Promise<TelegramReply> => {
-      const session = await entry.sessionPromise;
-      return this.runPrompt(session, meta.chatId, String(userId), message, meta.threadId, meta.updateId, meta.rulesContext, meta.hasImage, meta.hasVoice, meta.chatType);
+      // PROMPT 7: re-resolve live entry на момент выполнения. Если предыдущий
+      // ход завис и watchdog recycle'нул entry (dispose + удаление из пула),
+      // следующий queued-ход не должен трогать disposed-сессию.
+      const live = this.sessions.get(sessionKey) ?? entry;
+      const session = await live.sessionPromise;
+      return this.runPrompt(sessionKey, session, meta.chatId, String(userId), message, meta.threadId, meta.updateId, meta.rulesContext, meta.hasImage, meta.hasVoice, meta.chatType);
     };
     entry.queue = entry.queue.then(run, run);
     return entry.queue;
+  }
+
+  /**
+   * PROMPT 7: recycle сессии после watchdog TIMEOUT.
+   *
+   * В отличие от reset() (drain-then-dispose), здесь зависший prompt не может
+   * быть дождан — поэтому отцепляем entry от пула СИНХРОННО (до первого await)
+   * и dispose'им сессию немедленно. Следующий handleMessage создаст СВЕЖУЮ
+   * сессию (best-effort abort: отдельного session.abort() в SDK нет).
+   */
+  private recycleSession(sessionKey: string, session: AgentSession): void {
+    const entry = this.sessions.get(sessionKey);
+    if (entry) {
+      // Отцепляем entry от пула синхронно — новые операции пойдут в новую entry.
+      this.sessions.delete(sessionKey);
+    }
+    clearSessionTrust(session.sessionId);
+    try {
+      session.dispose();
+    } catch (err: unknown) {
+      logTelegramError({
+        operation: "recycle",
+        stage: "dispose",
+        error: err,
+        detail: sessionKey,
+      });
+    }
   }
 
   /**
@@ -309,6 +340,7 @@ export class TelegramSessionPool {
    * ровно один раз — очередь при этом всегда освобождается.
    */
   private async runPrompt(
+    sessionKey: string,
     session: AgentSession,
     chatId: string | undefined,
     userId: string,
@@ -461,6 +493,9 @@ export class TelegramSessionPool {
       turnOk = false;
       turnCode = "timeout";
       finish({ text: PROMPT_TIMEOUT_MESSAGE });
+      // PROMPT 7: зависший prompt остаётся фоновым — recycle сессии, чтобы
+      // следующий ход не ушёл в ту же (висящую) сессию и не раскачивал tools/history.
+      this.recycleSession(sessionKey, session);
     }, this.promptTimeoutMs);
 
     // Phase 2.1/2.2/2.3: маршрутизация + budget + apply на модель (fail-safe; флаги off → ноль накладных).

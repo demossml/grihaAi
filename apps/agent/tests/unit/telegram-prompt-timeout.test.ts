@@ -138,17 +138,28 @@ describe("telegram runPrompt watchdog (PROMPT 2)", () => {
     assert.equal(reply.text, PROMPT_TIMEOUT_MESSAGE, "ответ не меняется");
   });
 
-  it("6. queue proceeds after timeout: B выполняется после зависшего A", async () => {
-    const { pool, sessions } = makePool(() => {
-      const s = new FakeAgentSession();
-      s.firstPromptHangs = true;
-      return s;
-    }, 20);
+  it("6. after timeout session is recycled: B runs on a NEW session", async () => {
+    const created: FakeAgentSession[] = [];
+    const pool = new TelegramSessionPool({
+      promptTimeoutMs: 20,
+      sessionFactory: async () => {
+        const s = new FakeAgentSession();
+        // Висит только ПЕРВАЯ сессия (до recycle); новая — нормально отвечает.
+        s.firstPromptHangs = created.length === 0;
+        created.push(s);
+        return s as unknown as AgentSession;
+      },
+    });
     const a = await pool.handleMessage("tg:1:1", 1, "A висит", { chatId: "1" });
     assert.equal(a.text, PROMPT_TIMEOUT_MESSAGE);
+
     const b = await pool.handleMessage("tg:1:1", 1, "B после", { chatId: "1" });
     assert.equal(b.text, "ответ на: B после");
-    assert.deepEqual(sessions.get("tg:1:1")!.prompts, ["A висит", "B после"]);
+
+    assert.equal(created.length, 2, "после timeout создаётся новая сессия");
+    assert.equal(created[0].disposed, true, "старая (зависшая) сессия dispose");
+    assert.equal(created[1].disposed, false);
+    assert.deepEqual(created[1].prompts, ["B после"], "B выполняется на новой сессии");
   });
 
   it("7. SUCCESS-путь не ломается поздним watchdog (timer сброшен)", async () => {
@@ -174,5 +185,32 @@ describe("telegram runPrompt watchdog (PROMPT 2)", () => {
     assert.equal(b.text, "ответ на: B другой чат");
     const a = await aPromise;
     assert.equal(a.text, PROMPT_TIMEOUT_MESSAGE);
+  });
+
+  it("9. recycle removes pool entry and finish settles once (PROMPT 7)", async () => {
+    const created: FakeAgentSession[] = [];
+    const pool = new TelegramSessionPool({
+      promptTimeoutMs: 15,
+      sessionFactory: async () => {
+        const s = new FakeAgentSession();
+        s.firstPromptHangs = true;
+        created.push(s);
+        return s as unknown as AgentSession;
+      },
+    });
+
+    const reply = await pool.handleMessage("tg:1:1", 1, "висит", { chatId: "1" });
+    assert.equal(reply.text, PROMPT_TIMEOUT_MESSAGE);
+
+    // Entry убран из пула → activeCount 0; сессия dispose.
+    assert.equal(pool.activeCount(), 0, "зависшая entry удалена из пула");
+    assert.equal(created[0].disposed, true);
+
+    // Late agent_end не меняет ответ (settled-guard) и не «воскрешает» entry.
+    created[0].lastText = "поздний ответ";
+    created[0].emitAgentEnd();
+    await sleep(10);
+    assert.equal(reply.text, PROMPT_TIMEOUT_MESSAGE);
+    assert.equal(pool.activeCount(), 0, "entry не вернулась");
   });
 });

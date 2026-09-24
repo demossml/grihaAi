@@ -189,6 +189,15 @@ await session.bindExtensions({ mode: "json" });
 
 `disposeAll()` — закрывает все субсессии (на `session_shutdown`).
 
+### Timeout recycles session
+
+Watchdog хода (PROMPT 2, дефолт 5 минут) по таймауту не только отдаёт пользователю
+`PROMPT_TIMEOUT_MESSAGE`, но и **recycle'ит сессию**: entry отцепляется от пула
+(синхронно) и сессия `dispose()`-ится. Зависший `session.prompt` остаётся фоновым,
+но следующее сообщение в тот же чат создаёт **свежую** `AgentSession` — старый
+висящий runtime не получает второй ход и не раскачивает tools/history. Это отличает
+`recycleSession` от `reset()` (тот сначала дождаётся terminal state всех принятых ходов).
+
 ---
 
 ## 6. Почему в субсессиях не все расширения
