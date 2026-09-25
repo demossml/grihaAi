@@ -38,6 +38,7 @@ export {
   SkillCandidateStore,
   applyLessonRoute,
   getLessonRouteCtx,
+  getSkillCandidateStore,
   routeBackgroundLessons,
   type ApplyLessonRouteResult,
   type LessonRouteCtx,
@@ -46,6 +47,15 @@ export {
   type RouteLessonsOutcome,
   type SkillCandidateEvidence,
 } from "./apply-lesson-route.js";
+export {
+  LEARNING_THRESHOLDS,
+  maybeCreateSkillProposal,
+  maybeProposeFromCandidates,
+  type PendingProposalDraft,
+  type SkillProposalGateDeps,
+  type SkillProposalGateResult,
+  type SkillProposalRisk,
+} from "./skill-proposal-gate.js";
 export {
   UserModelStore,
   type UserInsight,

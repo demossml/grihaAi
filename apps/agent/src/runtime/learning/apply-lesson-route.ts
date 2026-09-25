@@ -135,6 +135,12 @@ export function getLessonRouteCtx(userId?: string, turnId?: string): LessonRoute
   };
 }
 
+/** Process-wide store накопленного procedural-evidence (L4 гейт). */
+export function getSkillCandidateStore(): SkillCandidateStore {
+  if (!skillCandidateSingleton) skillCandidateSingleton = new SkillCandidateStore();
+  return skillCandidateSingleton;
+}
+
 export interface RouteLessonsOutcome {
   routed: number;
   dropped: number;

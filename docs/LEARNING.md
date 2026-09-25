@@ -82,6 +82,32 @@ API:
 Call site: `apps/agent/.pi/extensions/core-agent/index.ts` — `pi.on("turn_end")`
 (в `.then` результата `maybeBackgroundReview`).
 
+## L4 Gated skill proposals
+
+Procedural candidates → pending proposal только после evidence-порога:
+
+```
+SkillCandidateStore (procedural evidence) → maybeProposeFromCandidates
+  → maybeCreateSkillProposal (threshold) → createPendingSkillProposal (pending)
+```
+
+- **Никогда**: auto-write production `SKILL.md`. **Никогда**: protected skills.
+- Порог `LEARNING_THRESHOLDS`: `minEvidenceForSkillProposal = 3`,
+  `minConfidenceForProposal = 0.6`.
+- Protected (не ослаблять): `human-approval-gate`, `approval-thresholds`,
+  `privacy-data-hygiene`, `delegation-triage` (+ security-термы через
+  `isProtectedSkillContent`).
+- Proposal — только `pending` (в `SkillProposalStore`, file-backed), с
+  explainability: `summary`, `reason` (evidence count), `affectedSkillId`,
+  `risk: low|medium`, `status: pending`. Активация — отдельно (`/skills-approve`).
+
+API:
+- `LEARNING_THRESHOLDS`, `maybeCreateSkillProposal(args, deps)` (детерминированный гейт).
+- `maybeProposeFromCandidates(store, deps)` (идемпотентно по объёму evidence).
+- `createPendingSkillProposal(draft)` — реальный pending в `SkillProposalStore`.
+
+Call site: `apps/agent/.pi/extensions/core-agent/index.ts` (после `routeBackgroundLessons`).
+
 ## L0 Audit
 
 Call graph as-is: [LEARNING_AUDIT_REPORT.md](LEARNING_AUDIT_REPORT.md).

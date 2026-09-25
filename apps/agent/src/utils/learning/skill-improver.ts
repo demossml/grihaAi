@@ -22,6 +22,14 @@ export interface SkillProposal {
   status: SkillProposalStatus;
   createdAt: string;
   appliedAt?: string;
+  /** L4 explainability: краткое резюме предложения. */
+  summary?: string;
+  /** L4 explainability: причина (evidence count). */
+  reason?: string;
+  /** L4 explainability: затронутый skillId (undefined = new-skill). */
+  affectedSkillId?: string;
+  /** L4 explainability: оценка риска. */
+  risk?: "low" | "medium";
 }
 
 function proposalsDir(): string {
@@ -193,6 +201,46 @@ export function isProtectedSkillContent(text: string, name?: string): boolean {
   if (name && PROTECTED_SKILL_NAMES.has(name)) return true;
   const lower = text.toLowerCase();
   return PROTECTED_TERMS.some((t) => lower.includes(t));
+}
+
+/** True когда skillId входит в protected-список (L4 гейт). */
+export function isProtectedSkillName(name?: string): boolean {
+  if (!name) return false;
+  return PROTECTED_SKILL_NAMES.has(name);
+}
+
+/**
+ * L4: создаёт pending proposal из procedural-evidence (детерминированно, без
+ * LLM). НЕ активирует скилл и НЕ пишет SKILL.md — только сохраняет pending
+ * в `SkillProposalStore` (file-backed). Возвращает `{ id }` или null.
+ */
+export function createPendingSkillProposal(draft: {
+  summary: string;
+  reason: string;
+  affectedSkillId?: string;
+  risk: "low" | "medium";
+  content: string;
+}): { id: string } | null {
+  try {
+    const proposal: SkillProposal = {
+      id: randomUUID(),
+      kind: "new-skill",
+      title: draft.summary.slice(0, 80) || "pending proposal",
+      content: draft.content,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      summary: draft.summary,
+      reason: draft.reason,
+      affectedSkillId: draft.affectedSkillId,
+      risk: draft.risk,
+    };
+    const store = new SkillProposalStore();
+    // best-effort durability: fire-and-forget, pending уже в памяти вызова.
+    void store.save(proposal);
+    return { id: proposal.id };
+  } catch {
+    return null;
+  }
 }
 
 /** Generate a review-gated skill proposal from accumulated notes. */

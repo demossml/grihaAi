@@ -10,7 +10,8 @@ import { runExecuteCode } from "./execute-code.js";
 import { pruneAgentToolResults } from "./tool-result-prune.js";
 import { maybeBackgroundReview } from "./background-review.js";
 import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
-import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes, routeBackgroundLessons } from "../../../src/runtime/learning/index.js";
+import { getSkillCandidateStore, getTurnExperienceStore, maybeProposeFromCandidates, recordTurnExperience, recordTurnSkillOutcomes, routeBackgroundLessons } from "../../../src/runtime/learning/index.js";
+import { createPendingSkillProposal, isProtectedSkillName } from "../../../src/utils/learning/skill-improver.js";
 import { renderTelemetryDashboard } from "../../../src/runtime/observability/dashboard.js";
 import { collectSkillCommands } from "./skill-commands.js";
 
@@ -104,6 +105,11 @@ export default function coreAgent(pi: ExtensionAPI): void {
         // L3: маршрутизируем уроки review в handlers (memory/user-model/skill).
         try {
           await routeBackgroundLessons(result.lessons);
+          // L4: гейт предложений — pending proposal только при evidence-пороге.
+          maybeProposeFromCandidates(getSkillCandidateStore(), {
+            createPendingProposal: createPendingSkillProposal,
+            isProtectedSkill: isProtectedSkillName,
+          });
         } catch {
           // уроки никогда не ломают ход.
         }
