@@ -2,6 +2,7 @@
 
 ## Current
 
+- Learning: audit done (L0 call graph — docs/LEARNING_AUDIT_REPORT.md).
 - Core: Flash router + Generation policy (flags default OFF); pool wire; obs v2.
 - Secretary n2: silence, reminders (Moscow TZ, auto_reminders before add), participants, record expense.
 - Security: execute_code runsc/refuse, env scrub, OCR injection scan, session trust (default untrusted).
