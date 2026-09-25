@@ -5,6 +5,8 @@ import { getConfigDir } from "@griha/config";
 import type { LearningLlm } from "./learning-extractor.js";
 import { isAgentRuntimeEnabled } from "../../runtime/index.js";
 import { SkillVersionStore } from "../../runtime/skill/index.js";
+import { evaluateCandidate } from "../../runtime/learning/skill-evaluation.js";
+import type { SkillQualityTracker } from "../../runtime/learning/quality.js";
 
 export type SkillProposalKind = "core-edit" | "new-skill";
 export type SkillProposalStatus = "pending" | "applied" | "rejected";
@@ -343,13 +345,18 @@ async function writeActiveVersion(skillsRoot: string, version: number): Promise<
 export async function activateSkillProposal(
   proposal: SkillProposal,
   skillsRoot: string,
-  options: { env?: NodeJS.ProcessEnv; qualityScore?: number } = {},
+  options: { env?: NodeJS.ProcessEnv; qualityScore?: number; qualityTracker?: SkillQualityTracker } = {},
 ): Promise<string> {
   if (!isAgentRuntimeEnabled(options.env ?? process.env)) {
     return applySkillProposal(proposal, skillsRoot, options);
   }
   if (proposal.kind !== "core-edit") {
     return applySkillProposal(proposal, skillsRoot, options);
+  }
+  // L5: protected skills никогда не auto-activate.
+  const protectedId = proposal.affectedSkillId ?? proposal.name;
+  if (isProtectedSkillName(protectedId)) {
+    throw new Error(`skill activation blocked: protected skill "${protectedId}"`);
   }
   const target = path.join(skillsRoot, "core", "SKILL.md");
   const versionsDir = path.join(skillsRoot, "core", ".versions");
@@ -378,8 +385,17 @@ export async function activateSkillProposal(
   }
   const store = getVersionStore(target, existing || "# Core\n");
   const proposed = store.propose(candidateContent, "skills-approve");
-  const score = options.qualityScore ?? 0.5;
-  store.evaluate(proposed.version, score, 0.5);
+  // L5: детерминированная оценка по реальным outcome (не placeholder score).
+  if (options.qualityTracker) {
+    const evaluation = evaluateCandidate("core", options.qualityTracker);
+    if (!evaluation.pass) {
+      throw new Error(`skill activation failed: evaluation not passed (${evaluation.reason})`);
+    }
+    store.evaluate(proposed.version, evaluation.successRate ?? 0.5, 0.5);
+  } else {
+    // legacy: явный score (обратная совместимость).
+    store.evaluate(proposed.version, options.qualityScore ?? 0.5, 0.5);
+  }
   const result = store.approveAndActivate(proposed.version);
   if (!result.activated) {
     throw new Error(`skill activation failed: ${result.reason}`);
@@ -413,4 +429,57 @@ export async function rollbackSkillVersion(
   await fs.writeFile(target, previousContent, "utf8");
   await writeActiveVersion(skillsRoot, previous);
   return { ok: true, message: `rolled back to v${previous}` };
+}
+
+function versionsDirFor(skillsRoot: string, skillId: string): string {
+  return path.join(skillsRoot, skillId, ".versions");
+}
+
+/** L5: активная версия скилла из active.txt (null — маркера нет). */
+export async function getActiveSkillVersion(
+  skillId: string,
+  skillsRoot: string,
+): Promise<number | null> {
+  const marker = path.join(versionsDirFor(skillsRoot, skillId), "active.txt");
+  const raw = await fs.readFile(marker, "utf8").catch(() => "");
+  const parsed = Number(raw.trim());
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * L5: тело активной версии скилла. Если есть активная версия > 1 — читает
+ * `vN.md`; иначе фоллбэк на `SKILL.md`. Это закрывает wiring-gap из L0:
+ * раньше prompt-лоадер читал только SKILL.md, игнорируя active.txt.
+ */
+export async function getActiveSkillBody(
+  skillId: string,
+  skillsRoot: string,
+): Promise<string | null> {
+  const active = await getActiveSkillVersion(skillId, skillsRoot);
+  if (active !== null && active > 1) {
+    const versionFile = path.join(versionsDirFor(skillsRoot, skillId), `v${active}.md`);
+    const content = await fs.readFile(versionFile, "utf8").catch(() => "");
+    if (content.trim()) return content;
+  }
+  return fs.readFile(path.join(skillsRoot, skillId, "SKILL.md"), "utf8").catch(() => null);
+}
+
+/** L5: откат скилла к конкретной версии (SKILL.md + active.txt). */
+export async function rollbackSkill(
+  skillId: string,
+  toVersion: number,
+  skillsRoot: string,
+): Promise<{ ok: boolean; message: string }> {
+  const versionFile = path.join(versionsDirFor(skillsRoot, skillId), `v${toVersion}.md`);
+  const content = await fs.readFile(versionFile, "utf8").catch(() => "");
+  if (!content.trim()) {
+    return { ok: false, message: `v${toVersion} not found` };
+  }
+  const skillDir = path.join(skillsRoot, skillId);
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.writeFile(path.join(skillDir, "SKILL.md"), content, "utf8");
+  const versionsDir = versionsDirFor(skillsRoot, skillId);
+  await fs.mkdir(versionsDir, { recursive: true });
+  await fs.writeFile(path.join(versionsDir, "active.txt"), String(toVersion), "utf8");
+  return { ok: true, message: `rolled back ${skillId} to v${toVersion}` };
 }

@@ -108,6 +108,44 @@ API:
 
 Call site: `apps/agent/.pi/extensions/core-agent/index.ts` (после `routeBackgroundLessons`).
 
+## L5 Skill version loader + evaluation gate + rollback
+
+Versioning больше не «фиктивный»: loader видит active version.
+
+```
+loader: getActiveSkillBody(skillId) → active.txt (vN.md) ?? SKILL.md (fallback)
+evaluate: evaluateCandidate(skillId, tracker) → successRate по окну (НЕ LLM score=1)
+rollback: rollbackSkill(skillId, toVersion) → SKILL.md + active.txt
+```
+
+- **Evaluation** детерминированная (`evaluateCandidate`): нет данных →
+  `insufficient_data`; `successRate < 0.5` по окну (default 20) → fail.
+  Никогда `pass: true` только из-за proposal от LLM.
+- **Activation** (`activateSkillProposal`): protected skill (через
+  `isProtectedSkillName`) → block; при инъекции `qualityTracker` оценка идёт
+  через `evaluateCandidate` (иначе legacy `qualityScore`).
+- **Rollback** (`rollbackSkill(skillId, toVersion)`): переключает SKILL.md и
+  active.txt на конкретную версию.
+
+API:
+- `getActiveSkillBody(skillId, skillsRoot)` / `getActiveSkillVersion` — loader.
+- `evaluateCandidate(skillId, tracker, window?)` — детерминированная оценка.
+- `rollbackSkill(skillId, toVersion, skillsRoot)` — откат.
+- `SkillQualityTracker.window(skillId, n)` / `successRate(skillId, window?)`.
+
+## Полный цикл (L0–L5)
+
+```
+execution → turn complete
+  → recordTurnExperience (L1, idempotent by turnId)
+  → recordTurnSkillOutcomes (L2, SkillQualityTracker)
+  → background review → routeLesson → handlers (L3)
+       factual → memory | preference → user-model | procedural → skill candidates
+  → skill candidates → evidence threshold → pending proposal (L4)
+  → proposal approve → evaluateCandidate (L5) → activate active version
+  → loader getActiveSkillBody видит active version → measure → rollback (L5)
+```
+
 ## L0 Audit
 
 Call graph as-is: [LEARNING_AUDIT_REPORT.md](LEARNING_AUDIT_REPORT.md).

@@ -57,6 +57,10 @@ export {
   type SkillProposalRisk,
 } from "./skill-proposal-gate.js";
 export {
+  evaluateCandidate,
+  type CandidateEvaluation,
+} from "./skill-evaluation.js";
+export {
   UserModelStore,
   type UserInsight,
   type UserInsightCategory,

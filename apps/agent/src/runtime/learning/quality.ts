@@ -87,4 +87,21 @@ export class SkillQualityTracker {
       regression: this.regression(skillId),
     };
   }
+
+  /** Последние N исходов скилла (L5 evaluation-окно). */
+  window(skillId: string, n: number): SkillOutcome[] {
+    const list = this.outcomes.get(skillId) ?? [];
+    return list.slice(-n);
+  }
+
+  /**
+   * successRate по окну (последние N исходов). null — нет данных.
+   * Детерминированно; используется в L5 evaluateCandidate.
+   */
+  successRate(skillId: string, window?: number): number | null {
+    const list = this.outcomes.get(skillId) ?? [];
+    const recent = window !== undefined ? list.slice(-window) : list;
+    if (recent.length === 0) return null;
+    return recent.filter((o) => o.success).length / recent.length;
+  }
 }
