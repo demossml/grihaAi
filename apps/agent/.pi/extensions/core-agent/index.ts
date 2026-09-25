@@ -10,7 +10,7 @@ import { runExecuteCode } from "./execute-code.js";
 import { pruneAgentToolResults } from "./tool-result-prune.js";
 import { maybeBackgroundReview } from "./background-review.js";
 import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
-import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes } from "../../../src/runtime/learning/index.js";
+import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes, routeBackgroundLessons } from "../../../src/runtime/learning/index.js";
 import { renderTelemetryDashboard } from "../../../src/runtime/observability/dashboard.js";
 import { collectSkillCommands } from "./skill-commands.js";
 
@@ -98,9 +98,15 @@ export default function coreAgent(pi: ExtensionAPI): void {
     void maybeBackgroundReview(
       { turnIndex: event.turnIndex, usedTools, hadError },
       { config: loadConfig() },
-    ).then((result) => {
+    ).then(async (result) => {
       if (result && result.lessons.length > 0) {
         runtimeObservability.backgroundReview(result.turnIndex, result.lessons.length);
+        // L3: маршрутизируем уроки review в handlers (memory/user-model/skill).
+        try {
+          await routeBackgroundLessons(result.lessons);
+        } catch {
+          // уроки никогда не ломают ход.
+        }
       }
     });
 

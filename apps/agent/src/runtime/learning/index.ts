@@ -35,6 +35,18 @@ export {
   type QualityOutcomeLine,
 } from "./quality-wire.js";
 export {
+  SkillCandidateStore,
+  applyLessonRoute,
+  getLessonRouteCtx,
+  routeBackgroundLessons,
+  type ApplyLessonRouteResult,
+  type LessonRouteCtx,
+  type LessonTarget,
+  type RoutedLesson,
+  type RouteLessonsOutcome,
+  type SkillCandidateEvidence,
+} from "./apply-lesson-route.js";
+export {
   UserModelStore,
   type UserInsight,
   type UserInsightCategory,

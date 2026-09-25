@@ -55,6 +55,33 @@ Call sites:
 - `apps/agent/.pi/extensions/core-agent/index.ts` — `pi.on("turn_end")`.
 - `apps/agent/.pi/extensions/telegram-bot/TelegramSessionPool.ts` — `finish()`.
 
+## L3 Review → routeLesson → handlers
+
+Результат фонового review теперь не только телеметрия, но и маршрутизация:
+
+```
+review.lessons → routeLesson → applyLessonRoute
+  factual     → memory    (MemoryEngine.remember, type=lesson)
+  preference  → user-model (UserModelStore.observe, candidate)
+  procedural  → skill     (SkillCandidateStore — ТОЛЬКО evidence, без proposal)
+  unknown     → drop
+```
+
+- Skill-branch **не** вызывает `applySkillProposal` и **не** пишет `SKILL.md` —
+  только накапливает candidate evidence (threshold + proposal — в L4).
+- LLM-JSON невалиден → `parseReviewLessons` даёт `[]` → нет уроков, нет throw.
+- Ни один handler не бросает наружу: ошибки → `"error"`, unknown → `"drop"`.
+- Не зависит от `hasUI`: headless Telegram-путь тоже маршрутизирует уроки, когда
+  сработал review (review за флагом `GRIHA_AGENT_RUNTIME`).
+
+API:
+- `applyLessonRoute(route, lesson, ctx)` — диспетчер.
+- `routeBackgroundLessons(lessons, ctx?)` — loop routeLesson → applyLessonRoute.
+- `SkillCandidateStore` / `getLessonRouteCtx()` — process-wide in-memory stores.
+
+Call site: `apps/agent/.pi/extensions/core-agent/index.ts` — `pi.on("turn_end")`
+(в `.then` результата `maybeBackgroundReview`).
+
 ## L0 Audit
 
 Call graph as-is: [LEARNING_AUDIT_REPORT.md](LEARNING_AUDIT_REPORT.md).
