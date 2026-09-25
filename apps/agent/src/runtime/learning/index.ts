@@ -28,6 +28,13 @@ export {
   type RecordTurnExperienceResult,
 } from "./record-turn-experience.js";
 export {
+  getQualityTracker,
+  qualityPath,
+  recordSkillOutcomes,
+  recordTurnSkillOutcomes,
+  type QualityOutcomeLine,
+} from "./quality-wire.js";
+export {
   UserModelStore,
   type UserInsight,
   type UserInsightCategory,

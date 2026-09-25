@@ -10,7 +10,7 @@ import { runExecuteCode } from "./execute-code.js";
 import { pruneAgentToolResults } from "./tool-result-prune.js";
 import { maybeBackgroundReview } from "./background-review.js";
 import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
-import { getTurnExperienceStore, recordTurnExperience } from "../../../src/runtime/learning/index.js";
+import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes } from "../../../src/runtime/learning/index.js";
 import { renderTelemetryDashboard } from "../../../src/runtime/observability/dashboard.js";
 import { collectSkillCommands } from "./skill-commands.js";
 
@@ -115,6 +115,8 @@ export default function coreAgent(pi: ExtensionAPI): void {
         error: hadError ? "tool error" : undefined,
         toolsUsed: event.toolResults.map((t) => t.toolName),
       });
+      // L2: skill quality outcomes — skillId на turn пока не известен (пустой список).
+      recordTurnSkillOutcomes([], !hadError);
     } catch {
       // learning никогда не ломает ход.
     }

@@ -27,6 +27,34 @@ API:
 Поля записи: `turnId`, `task`, `result`, `success`, `error`, `toolsUsed`,
 `skillId`, `userId`, `sessionKey`, `createdAt`.
 
+## L2 Quality
+
+Подключение `SkillQualityTracker.recordOutcome` к execution (success/fail сигналы
+для будущей regression):
+
+```
+turn complete → recordTurnSkillOutcomes(skillIds, success) → getQualityTracker()
+```
+
+- Используется существующий `SkillQualityTracker` (quality.ts) — без дублей.
+- `recordOutcome` вызывается **только** когда `skillId` известен; `skillId =
+  "unknown"` не пишется. На текущем этапе per-turn skillId не отслеживается —
+  список пуст (наполняется в L3/L4 из review→skill-candidate route).
+- Ошибки изолированы: один «плохой» skillId не роняет ход.
+- **Durability**: минимальная, append-only JSONL
+  `~/.grish-ai/learning/quality.jsonl` (переопределяется `GRISH_AI_HOME`).
+  Трекер остаётся in-memory; JSONL восстанавливает count/success после рестарта
+  (точная таймлайн не сохраняется).
+
+API:
+- `getQualityTracker()` — синглтон с best-effort load.
+- `recordSkillOutcomes(tracker, skillIds, success, atMs?)` — чистая, изолированная.
+- `recordTurnSkillOutcomes(skillIds, success, atMs?)` — durable-обёртка поверх синглтона.
+
+Call sites:
+- `apps/agent/.pi/extensions/core-agent/index.ts` — `pi.on("turn_end")`.
+- `apps/agent/.pi/extensions/telegram-bot/TelegramSessionPool.ts` — `finish()`.
+
 ## L0 Audit
 
 Call graph as-is: [LEARNING_AUDIT_REPORT.md](LEARNING_AUDIT_REPORT.md).

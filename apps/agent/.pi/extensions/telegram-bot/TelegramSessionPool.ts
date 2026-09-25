@@ -32,7 +32,7 @@ import obsTools from "../obs-tools/index.js";
 import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { clearSessionTrust, setSessionTrust } from "../../../src/sandbox/gateway-context.js";
-import { getTurnExperienceStore, recordTurnExperience } from "../../../src/runtime/learning/index.js";
+import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes } from "../../../src/runtime/learning/index.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
 import { preparePoolRouting, applyRouteGuidance, type PoolRoutingResult } from "./pool-routing.js";
@@ -428,6 +428,8 @@ export class TelegramSessionPool {
           userId,
           sessionKey: sessionId,
         });
+        // L2: skill quality outcomes — skillId на turn пока не известен (пустой список).
+        recordTurnSkillOutcomes([], turnOk);
       } catch {
         // learning никогда не ломает ход.
       }
