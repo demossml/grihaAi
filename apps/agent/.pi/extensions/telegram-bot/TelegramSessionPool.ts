@@ -32,6 +32,7 @@ import obsTools from "../obs-tools/index.js";
 import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { clearSessionTrust, setSessionTrust } from "../../../src/sandbox/gateway-context.js";
+import { getTurnExperienceStore, recordTurnExperience } from "../../../src/runtime/learning/index.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
 import { preparePoolRouting, applyRouteGuidance, type PoolRoutingResult } from "./pool-routing.js";
@@ -416,6 +417,20 @@ export class TelegramSessionPool {
         code: turnOk ? "unknown" : "error",
         data: { usageAvailable: false },
       });
+      // L1: запись experience на завершении хода (идемпотентно по correlationId).
+      try {
+        recordTurnExperience(getTurnExperienceStore(), {
+          turnId: correlationId,
+          task: message.slice(0, 2000),
+          assistantResponse: (value.text || "").slice(0, 4000),
+          success: turnOk,
+          error: turnCode === "timeout" || turnCode === "prompt_error" ? turnCode : undefined,
+          userId,
+          sessionKey: sessionId,
+        });
+      } catch {
+        // learning никогда не ломает ход.
+      }
       resolveReply(value);
     };
 

@@ -10,6 +10,7 @@ import { runExecuteCode } from "./execute-code.js";
 import { pruneAgentToolResults } from "./tool-result-prune.js";
 import { maybeBackgroundReview } from "./background-review.js";
 import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
+import { getTurnExperienceStore, recordTurnExperience } from "../../../src/runtime/learning/index.js";
 import { renderTelemetryDashboard } from "../../../src/runtime/observability/dashboard.js";
 import { collectSkillCommands } from "./skill-commands.js";
 
@@ -61,6 +62,23 @@ Do not add phrases like "I'll answer in English" or "Отвечаю на рус�
 Just answer naturally in the matching language.
 `.trim();
 
+/** Извлекает видимый текст из agent-сообщения (assistant/tool result). */
+function extractMessageText(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const parts = content
+      .filter(
+        (p): p is { type: "text"; text: string } =>
+          !!p && typeof p === "object" && (p as { type?: unknown }).type === "text",
+      )
+      .map((p) => p.text);
+    return parts.length > 0 ? parts.join("\n") : undefined;
+  }
+  return undefined;
+}
+
 export default function coreAgent(pi: ExtensionAPI): void {
   // C3 (§8): гигиена конвейера — старые tool-результаты сверх лимита
   // вычищаются перед LLM-вызовом (только за флагом; off = 1:1).
@@ -71,21 +89,35 @@ export default function coreAgent(pi: ExtensionAPI): void {
 
   // G1: фоновый review хода дешёвой моделью (models.learning) за флагом.
   // Fire-and-forget: результат не блокирует turn, ошибки глушатся внутри.
-  pi.on("turn_end", (event) => {
+  pi.on("turn_end", (event, ctx) => {
+    const usedTools = event.toolResults.length > 0;
+    const hadError = event.toolResults.some((t) =>
+      /error|ошибк|failed|exception/i.test(JSON.stringify(t.content ?? "")),
+    );
+
     void maybeBackgroundReview(
-      {
-        turnIndex: event.turnIndex,
-        usedTools: event.toolResults.length > 0,
-        hadError: event.toolResults.some((t) =>
-          /error|ошибк|failed|exception/i.test(JSON.stringify(t.content ?? "")),
-        ),
-      },
+      { turnIndex: event.turnIndex, usedTools, hadError },
       { config: loadConfig() },
     ).then((result) => {
       if (result && result.lessons.length > 0) {
         runtimeObservability.backgroundReview(result.turnIndex, result.lessons.length);
       }
     });
+
+    // L1: запись experience на завершении хода (без LLM, идемпотентно).
+    try {
+      const sessionId = ctx.sessionManager.getSessionId();
+      recordTurnExperience(getTurnExperienceStore(), {
+        turnId: `${sessionId}:${event.turnIndex}`,
+        task: "(unknown)",
+        assistantResponse: extractMessageText(event.message),
+        success: !hadError,
+        error: hadError ? "tool error" : undefined,
+        toolsUsed: event.toolResults.map((t) => t.toolName),
+      });
+    } catch {
+      // learning никогда не ломает ход.
+    }
   });
 
   pi.on("before_agent_start", async (event) => {

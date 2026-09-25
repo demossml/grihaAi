@@ -16,6 +16,18 @@ export {
   type ExperienceRecord,
 } from "./experience.js";
 export {
+  TurnExperienceStore,
+  defaultExperiencePath,
+  getTurnExperienceStore,
+  type TurnExperienceInput,
+  type TurnExperienceRecord,
+  type TurnExperienceStoreOptions,
+} from "./turn-experience.js";
+export {
+  recordTurnExperience,
+  type RecordTurnExperienceResult,
+} from "./record-turn-experience.js";
+export {
   UserModelStore,
   type UserInsight,
   type UserInsightCategory,

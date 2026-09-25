@@ -466,6 +466,7 @@ GRIHA_AGENT_RUNTIME=1 npx tsx --test "tests/unit/**/*.test.ts"  # on — 1127
 | docs/GENERATION_POLICY.md | Token budgets |
 | docs/OBSERVABILITY.md | JSONL events |
 | docs/SECURITY.md | Sandbox & injection |
+| docs/LEARNING.md | Learning loop (experience/review/route) |
 | STATUS.md | Current checklist |
 
 Phase `*_REPORT.md` files are historical; removed from tree — use git history.
@@ -483,6 +484,7 @@ Phase `*_REPORT.md` files are historical; removed from tree — use git history.
 7. [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — события и CLI.
 8. [docs/SECURITY.md](docs/SECURITY.md) — периметр, sandbox, env scrub, injection.
 9. [docs/SKILLS.md](docs/SKILLS.md) — каталог skills.
-9. [STATUS.md](STATUS.md) — прогресс по фазам.
+10. [docs/LEARNING.md](docs/LEARNING.md) — замкнутый цикл обучения (experience/review/route).
+11. [STATUS.md](STATUS.md) — прогресс по фазам.
 
 История (аудиты, планы и отчёты завершённых фаз) — в [docs/archive/](docs/archive/); это не актуальное состояние.
