@@ -986,6 +986,36 @@ export class DocumentsRepository {
     return rows.map(rowToDoc);
   }
 
+  /**
+   * reparse-expenses: кандидаты на переразбор. onlyProblematic (default true) —
+   * только «проблемные» (needs_review / total null/<=0 / supplier пуст / date
+   * пуст); false — все записи (rawText проверяется отдельно, чтобы skip по
+   * no_raw_text был честным). chatId — опциональный фильтр.
+   */
+  listReparseCandidates(opts: {
+    onlyProblematic: boolean;
+    chatId?: string;
+    limit: number;
+  }): ExpenseDocument[] {
+    const conds: string[] = [];
+    const params: Array<string | number> = [];
+    if (opts.chatId) {
+      conds.push("chat_id = ?");
+      params.push(opts.chatId);
+    }
+    if (opts.onlyProblematic) {
+      conds.push(
+        "(needs_review = 1 OR total IS NULL OR total <= 0 OR supplier IS NULL OR supplier = '' OR doc_date IS NULL)",
+      );
+    }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const limit = Math.min(Math.max(opts.limit, 1), 10000);
+    const rows = this.db
+      .prepare(`SELECT * FROM expense_documents ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit) as DocRow[];
+    return rows.map(rowToDoc);
+  }
+
   listExpenseRowsForReport(q: {
     chatId: string;
     threadId?: string;

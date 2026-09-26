@@ -75,6 +75,28 @@
   перепарс из `raw_text` ТЕМИ ЖЕ parse-функциями; `dryRun`-флаг, batch до 50–200; только
   `needs_review=1 OR total IS NULL`; старые записи без `raw_text` пропускаются. LLM не источник total.
 
+## Reparse expenses backfill (CLI)
+
+Переразбор старых чеков из сохранённого OCR text новыми правилами парсера
+(`apps/agent/src/services/documents/reparse-expenses.ts` → `reparseExpenses`).
+
+```bash
+# сухо — что изменится, без записи:
+npm run reparse:expenses -- --dry-run --limit=50
+# или: npx tsx apps/agent/scripts/reparse-expenses.ts --dry-run --limit=50
+
+# запись (батч 200):
+npm run reparse:expenses -- --limit=200
+
+# --all — все записи с rawText (не только «проблемные»), фильтр по чату:
+npm run reparse:expenses -- --all --limit=200 --chat-id=-5400215325
+```
+
+- Фото из Telegram **не** скачиваются: нужен сохранённый OCR text
+  (`expense_documents.raw_text`, fallback `chat_archive.raw_text` по `file_unique_id`).
+- Запись без `raw_text` → `skipped` (`reason=no_raw_text`) — только такие чеки переснять.
+- Exit code 0 при любом итоге (в т.ч. partial errors); 1 — только если БД не открылась.
+
 ## Related
 
 - `docs/TELEGRAM-BOT.md` — tools/scope (секция «Expense report tools»)

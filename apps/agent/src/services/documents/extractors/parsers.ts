@@ -301,6 +301,34 @@ export function computeNeedsReview(e: {
   return false;
 }
 
+/** Полный результат детерминированного разбора OCR-текста чека/накладной. */
+export interface ParsedReceipt {
+  total?: number;
+  docDate?: string;
+  supplier?: string;
+  items?: Array<{ name: string; qty?: number; sum?: number }>;
+  needsReview: boolean;
+}
+
+/**
+ * ЕДИНЫЙ parse-пайплайн для intake и backfill: тот же набор функций, что
+ * вызывает VisionExtractor, без OCR (текст уже распознан).
+ */
+export function parseReceiptFromText(text: string): ParsedReceipt {
+  const total = parseTotalFromText(text);
+  const docDate = parseDateFromText(text);
+  const supplier = parseSupplierFromText(text);
+  const items = parseItemsFromText(text);
+  const needsReview = computeNeedsReview({ total, supplier, docDate, items, rawText: text });
+  return {
+    total,
+    docDate,
+    supplier,
+    items: items.length ? items : undefined,
+    needsReview,
+  };
+}
+
 /**
  * Тип документа по распознанному тексту: waybill/invoice/receipt/unknown.
  * Используется VisionExtractor'ом (после OCR).

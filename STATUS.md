@@ -12,6 +12,7 @@
 - Phase: report tool timeout (data 30s / render 90s) + flash_error diagnostics + cheap fallback.
 - Phase: receipt parser hardening (ИТОГО-якоря, reject ИНН/date-мусор, supplier/items) + report filters + reparse backfill (dry-run).
 - Phase: telegram.send.reply obs (ok:false при провале доставки) + per-skill learning proposal dedup (Map + JSON persist).
+- Phase: reparse-expenses backfill CLI (переразбор из raw OCR text: --dry-run/--all/--limit/--chat-id).
 - Secretary n2: silence, reminders (Moscow TZ, auto_reminders before add), participants, record expense.
 - Security: execute_code runsc/refuse, env scrub, OCR injection scan, session trust (default untrusted).
 
