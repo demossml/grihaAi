@@ -64,6 +64,72 @@ export function parseFlashDecision(raw: string): RoutingDecision | null {
   }
 }
 
+export type FlashErrorCode =
+  | "timeout"
+  | "http_401"
+  | "http_4xx"
+  | "http_5xx"
+  | "parse"
+  | "empty"
+  | "network"
+  | "no_api_key"
+  | "unknown";
+
+/** Классифицировать ошибку Flash-вызова (без логирования headers/body с ключами). */
+export function classifyFlashError(err: unknown): { code: FlashErrorCode; message: string } {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (err instanceof Error && err.name === "AbortError") {
+    return { code: "timeout", message };
+  }
+  const http = /flash_http_(\d+)/.exec(message);
+  if (http) {
+    const status = Number(http[1]);
+    if (status === 401) return { code: "http_401", message };
+    if (status >= 500) return { code: "http_5xx", message };
+    if (status >= 400) return { code: "http_4xx", message };
+  }
+  if (/flash_empty_content/.test(message)) return { code: "empty", message };
+  if (/no[_ ]api[_ ]?key|missing api key/i.test(message)) return { code: "no_api_key", message };
+  if (/fetch failed|ECONN|ENOTFOUND|EAI_AGAIN|socket|network/i.test(message)) {
+    return { code: "network", message };
+  }
+  if (/JSON|parse|Unexpected token|SyntaxError/i.test(message)) {
+    return { code: "parse", message };
+  }
+  return { code: "unknown", message };
+}
+
+/**
+ * Дешёвый fallback при сбое Flash (не раздуваем короткий «ок/привет» до main/medium).
+ * rule-route (report_dispatch/analysis/vision) уже вернул решение раньше — сюда
+ * попадает только случай, когда Flash должен был классифицировать сам.
+ */
+function fallbackOnFlashError(ctx: RoutingContext): RoutingDecision {
+  const text = (ctx.userText ?? "").trim();
+  if (ctx.hasImage || ctx.hasVoice) {
+    return fallbackRoute(ctx); // image → vision
+  }
+  if (text.length <= 80) {
+    return {
+      role: "main",
+      complexity: "trivial",
+      kind: "chat_reply",
+      confidence: 0.3,
+      source: "fallback",
+      reason: "flash_error_short",
+    };
+  }
+  // Длиннее: не medium, а simple (анализ/отчёт уже поймал rule-route).
+  return {
+    role: "main",
+    complexity: "simple",
+    kind: "chat_reply",
+    confidence: 0.4,
+    source: "fallback",
+    reason: "flash_error_default",
+  };
+}
+
 export async function routeWithFlash(
   ctx: RoutingContext,
   deps: FlashRouterDeps,
@@ -77,7 +143,13 @@ export async function routeWithFlash(
     const parsed = parseFlashDecision(raw);
     if (parsed && parsed.confidence >= 0.5) return parsed;
     return { ...fallbackRoute(ctx), reason: "flash_low_confidence_or_parse" };
-  } catch {
-    return { ...fallbackRoute(ctx), reason: "flash_error" };
+  } catch (err) {
+    const { code, message } = classifyFlashError(err);
+    return {
+      ...fallbackOnFlashError(ctx),
+      reason: "flash_error",
+      flashErrorCode: code,
+      flashErrorMessage: message.slice(0, 200),
+    };
   }
 }

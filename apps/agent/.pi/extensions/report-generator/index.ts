@@ -17,6 +17,7 @@ import { logTelegramEvent } from "../telegram-bot/telegram-diagnostics.js";
 import { emit } from "@griha/observability";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import { getChatSetupService } from "../chat-setup/ChatSetupService.js";
+import { REPORT_TOOL_TIMEOUTS, TimeoutError, withTimeout } from "../../../src/runtime/util/with-timeout.js";
 import {
   buildExpenseReportInput,
   EXPENSE_REPORT_EMPTY_MESSAGE,
@@ -73,6 +74,10 @@ function buildPresentationCaption(slides: GeneratePresentationParams["slides"]):
   return first ? `Презентация: ${first}` : `Презентация (${slides.length} слайдов)`;
 }
 
+/** Короткий ответ пользователю при tool-level таймауте отчёта. */
+const REPORT_TIMEOUT_MESSAGE =
+  "Отчёт не успел сформироваться. Попробуйте ещё раз или сузьте период.";
+
 export default function reportGenerator(
   pi: ExtensionAPI,
   deps?: { documentsRepo?: DocumentsRepository },
@@ -113,15 +118,36 @@ export default function reportGenerator(
           const repo = deps?.documentsRepo ?? getDocumentsRepository();
           // R6: rich-вход ExpenseReportInput (group title + поставщики + чеки с
           // позициями) — тот же тип, что рисует @griha/render-tools.
-          const built = await buildExpenseReportInput(
-            repo,
-            {
-              chatId: sessionCtx.chatId,
-              threadId: sessionCtx.threadId,
-              period: typeof expenseData.period === "string" ? expenseData.period : undefined,
-            },
-            { getChatTitle: (chatId) => getChatSetupService().getChatTitleSync(chatId) },
-          );
+          // Tool-level таймаут на чтение данных из БД (не ждём 300s watchdog).
+          let built;
+          try {
+            built = await withTimeout("report_data", REPORT_TOOL_TIMEOUTS.dataMs, () =>
+              buildExpenseReportInput(
+                repo,
+                {
+                  chatId: sessionCtx.chatId,
+                  threadId: sessionCtx.threadId,
+                  period: typeof expenseData.period === "string" ? expenseData.period : undefined,
+                },
+                { getChatTitle: (chatId) => getChatSetupService().getChatTitleSync(chatId) },
+              ),
+            );
+          } catch (err) {
+            if (err instanceof TimeoutError) {
+              emit({
+                component: "report.render",
+                event: "report.render.end",
+                ok: false,
+                chatId: sessionCtx?.chatId,
+                data: { reportType: params.reportType, error: "report_data_timeout" },
+              });
+              return {
+                content: [{ type: "text", text: REPORT_TIMEOUT_MESSAGE }],
+                details: { error: "report_data_timeout" },
+              };
+            }
+            throw err;
+          }
           if (built.ok) {
             renderData = built.data as unknown as Record<string, unknown>;
           } else if (!hasExpenseReportData(expenseData)) {
@@ -170,8 +196,9 @@ export default function reportGenerator(
         });
         const startedAt = Date.now();
         // P5: ветвление рендера. Без GRIHA_RENDER_CLI=1 → legacy (renderPdfReport) 1:1.
-        const { filePath } = await renderViaCliOrLegacy(request, () =>
-          renderPdfReport(params.reportType, renderData),
+        // Tool-level таймаут рендера (не ждём глобальный watchdog 300s).
+        const { filePath } = await withTimeout("report_render", REPORT_TOOL_TIMEOUTS.renderMs, () =>
+          renderViaCliOrLegacy(request, () => renderPdfReport(params.reportType, renderData)),
         );
         const bytes = statSync(filePath).size;
         emit({
@@ -204,6 +231,20 @@ export default function reportGenerator(
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (error instanceof TimeoutError) {
+          // Рендер завис: короткий ответ + код, не «Report generation failed: …».
+          emit({
+            component: "report.render",
+            event: "report.render.end",
+            ok: false,
+            chatId: sessionCtx?.chatId,
+            data: { reportType: params.reportType, error: "report_timeout" },
+          });
+          return {
+            content: [{ type: "text", text: REPORT_TIMEOUT_MESSAGE }],
+            details: { error: "report_timeout" },
+          };
+        }
         emit({
           component: "report.render",
           event: "report.render.end",

@@ -650,6 +650,8 @@ export class TelegramSessionPool {
         source: routed.decision.source,
         reason: routed.decision.reason,
         flashCalled: routed.decision.source === "flash_llm",
+        flashErrorCode: routed.decision.flashErrorCode,
+        flashErrorMessage: routed.decision.flashErrorMessage,
         budgetApplied: budgetApplyStrategy === "set_model",
         budgetApplyStrategy,
         initialMaxTokens: routed.budget?.initialMaxTokens,
@@ -676,6 +678,8 @@ export class TelegramSessionPool {
           source: routed.decision.source,
           reason: routed.decision.reason,
           flashCalled: routed.decision.source === "flash_llm",
+          flashErrorCode: routed.decision.flashErrorCode,
+          flashErrorMessage: routed.decision.flashErrorMessage,
         },
       });
     }

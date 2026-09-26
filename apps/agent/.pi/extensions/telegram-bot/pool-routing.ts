@@ -106,7 +106,10 @@ export const REPORT_DISPATCH_GUIDANCE =
   "[ROUTE] report_dispatch: this is a data/report request. Call the report tools " +
   "(report_data_expenses / report_data_problems) to read real data from the DB. " +
   "Do NOT invent totals, line items or numbers — only report what the tools return. " +
-  "If there is no data, say so plainly.";
+  "If there is no data, say so plainly.\n" +
+  "REPORT: call a data tool at most once, render at most once, then answer. " +
+  "Do not retry the same report tool after success. " +
+  "If a tool returns an error or timeout — explain briefly and stop, do not loop.";
 
 export function applyRouteGuidance(
   message: string,

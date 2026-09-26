@@ -26,6 +26,10 @@ export interface RoutingDecision {
   source: "rule" | "flash_llm" | "fallback";
   /** короткая причина для obs/log, без user PII dump */
   reason: string;
+  /** Классифицированная причина сбоя Flash-классификатора (без секретов). */
+  flashErrorCode?: string;
+  /** Сообщение ошибки Flash, обрезанное до 200, без apiKey/token. */
+  flashErrorMessage?: string;
 }
 
 export interface FlashRouterDeps {

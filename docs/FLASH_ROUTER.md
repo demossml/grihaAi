@@ -75,3 +75,31 @@ Pool injects:
 ## 8. Observability
 
 Event `routing.decision` with role, complexity, kind, confidence, source, flashCalled.
+При сбое Flash дополнительно: `flashErrorCode` + `flashErrorMessage` (без секретов).
+
+## 9. flash_error diagnostics + cheap fallback
+
+Когда `callFlash` бросает, ошибка классифицируется (не только голый `flash_error`):
+
+| flashErrorCode | Причина |
+|----------------|---------|
+| `timeout` | AbortError (Flash-вызов не уложился) |
+| `http_401` | HTTP 401 |
+| `http_4xx` | прочий 4xx (429 и т.п.) |
+| `http_5xx` | 5xx |
+| `parse` | невалидный JSON ответа |
+| `empty` | пустой контент |
+| `network` | сеть (fetch failed / ECONN / …) |
+| `no_api_key` | нет api key |
+| `unknown` | прочее |
+
+`flashErrorMessage` обрезается до 200 символов, без apiKey/token.
+
+**Cheap fallback** (не раздуваем короткий «ок/привет» до main/medium):
+- короткий текст (≤80 chars, без image/voice) → `role=main, complexity=trivial, kind=chat_reply, confidence=0.3`.
+- длиннее → `complexity=simple` (не `medium`).
+- image/voice → vision (как раньше).
+
+`rule-route` (report_dispatch/analysis/vision, confidence ≥ 0.8) по-прежнему
+возвращается раньше Flash — дешёвый fallback срабатывает только когда Flash
+должен был классифицировать сам.

@@ -60,3 +60,20 @@ Allocator can raise toward hard max in multi-pass designs. Telegram multi-pass e
 - Does not choose which API vendor key to use.
 - Does not replace Flash routing.
 - Does not guarantee `finishReason=length` visibility if pi does not expose usage (`generation.finish` may have `usageAvailable: false`).
+
+## 8. Report tool timeouts (не путать с token budget)
+
+Это **timeout** на тяжёлые операции отчёта (не бюджет токенов). Чтобы зависший
+report не ждал глобальный watchdog 300s:
+
+| Операция | timeout |
+|----------|---------|
+| report data fetch (DB) | 30 000 ms |
+| report render (PDF) | 90 000 ms |
+
+Константы `REPORT_TOOL_TIMEOUTS` — `apps/agent/src/runtime/util/with-timeout.ts`.
+Обёртка `withTimeout(label, ms, fn)` бросает `TimeoutError` (code `TOOL_TIMEOUT`).
+При таймауте — короткий ответ «Отчёт не успел сформироваться…» + obs
+`report.render.end ok=false` с кодом `report_timeout`/`report_data_timeout`.
+Watchdog 300s остаётся last resort (обрыв `session.prompt` mid-flight не
+гарантирован платформой).

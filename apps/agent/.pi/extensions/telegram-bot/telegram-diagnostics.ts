@@ -95,6 +95,9 @@ export interface TelegramEvent {
   flashCalled?: boolean;
   /** Phase 2.3: стратегия применения бюджета. */
   budgetApplyStrategy?: string;
+  /** Классифицированная причина сбоя Flash (без секретов). */
+  flashErrorCode?: string;
+  flashErrorMessage?: string;
 }
 
 /** Записать структурированное событие lifecycle. Не бросает никогда. */
@@ -125,6 +128,8 @@ export function logTelegramEvent(event: TelegramEvent): void {
     if (event.policyVersion !== undefined) entry.policyVersion = event.policyVersion;
     if (event.flashCalled !== undefined) entry.flashCalled = event.flashCalled;
     if (event.budgetApplyStrategy !== undefined) entry.budgetApplyStrategy = event.budgetApplyStrategy;
+    if (event.flashErrorCode !== undefined) entry.flashErrorCode = event.flashErrorCode;
+    if (event.flashErrorMessage !== undefined) entry.flashErrorMessage = event.flashErrorMessage;
     console.log(`[telegram-bot] event ${JSON.stringify(entry)}`);
   } catch {
     /* никогда не бросаем из логирования */
