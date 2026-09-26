@@ -1,12 +1,18 @@
 /**
  * L4 — гейт предложений скиллов (evidence threshold, protected, pending only).
  */
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   LEARNING_THRESHOLDS,
+  loadProposedMap,
   maybeCreateSkillProposal,
   maybeProposeFromCandidates,
+  persistProposedMap,
+  resetProposedEvidenceForTests,
   type PendingProposalDraft,
   type SkillProposalGateDeps,
 } from "../../src/runtime/learning/skill-proposal-gate.js";
@@ -24,6 +30,24 @@ function makeDeps(
     isProtectedSkill: (skillId) => (skillId ? protectedIds.includes(skillId) : false),
   };
 }
+
+// Изоляция: per-skill Map — синглтон, а persist пишет в ~/.grish-ai. Тесты
+// сбрасывают Map и перенаправляют persist в temp-директорию.
+const savedHome = process.env.GRISH_AI_HOME;
+const tmpDirs: string[] = [];
+
+beforeEach(() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proposal-gate-"));
+  tmpDirs.push(dir);
+  process.env.GRISH_AI_HOME = dir;
+  resetProposedEvidenceForTests();
+});
+
+afterEach(() => {
+  if (savedHome === undefined) delete process.env.GRISH_AI_HOME;
+  else process.env.GRISH_AI_HOME = savedHome;
+  for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+});
 
 describe("maybeCreateSkillProposal (L4)", () => {
   it("evidenceCount=1 → no proposal (insufficient_evidence)", () => {
@@ -122,5 +146,58 @@ describe("maybeProposeFromCandidates (L4)", () => {
     const r3 = maybeProposeFromCandidates(store, deps); // не дублируем
     assert.equal(r3.created, false);
     assert.equal(drafts.length, 1);
+  });
+
+  it("per-skill дедуп: skill B не блокируется счётчиком skill A", () => {
+    const drafts: PendingProposalDraft[] = [];
+    const deps = makeDeps((d) => drafts.push(d));
+
+    // skill A: 3 evidence → proposal.
+    const storeA = new SkillCandidateStore(() => "t");
+    storeA.add("a1", "review", "skill-a");
+    storeA.add("a2", "review", "skill-a");
+    storeA.add("a3", "review", "skill-a");
+    const ra = maybeProposeFromCandidates(storeA, deps);
+    assert.equal(ra.created, true);
+    assert.equal((ra as { affectedSkillId?: string }).affectedSkillId, "skill-a");
+    assert.equal(drafts.length, 1);
+
+    // skill B: 3 evidence — НЕ заблокирован (старый скаляр дал бы 3 <= 3 → skip).
+    const storeB = new SkillCandidateStore(() => "t");
+    storeB.add("b1", "review", "skill-b");
+    storeB.add("b2", "review", "skill-b");
+    storeB.add("b3", "review", "skill-b");
+    const rb = maybeProposeFromCandidates(storeB, deps);
+    assert.equal(rb.created, true);
+    assert.equal((rb as { affectedSkillId?: string }).affectedSkillId, "skill-b");
+    assert.equal(drafts.length, 2);
+
+    // skill A повторно с тем же объёмом → dedup (created:false).
+    const ra2 = maybeProposeFromCandidates(storeA, deps);
+    assert.equal(ra2.created, false);
+    assert.equal(drafts.length, 2);
+  });
+
+  it("persist/load: Map переживает «рестарт»", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proposal-persist-"));
+    const p = path.join(dir, "proposed-evidence.json");
+    const m = new Map<string, number>([
+      ["skill-a", 3],
+      ["skill-b", 5],
+    ]);
+    persistProposedMap(m, p);
+    const loaded = loadProposedMap(p);
+    assert.equal(loaded.get("skill-a"), 3);
+    assert.equal(loaded.get("skill-b"), 5);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("loadProposedMap: нет файла / битый JSON → пустая Map", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proposal-bad-"));
+    assert.equal(loadProposedMap(path.join(dir, "nope.json")).size, 0);
+    const p = path.join(dir, "bad.json");
+    fs.writeFileSync(p, "{ not json");
+    assert.equal(loadProposedMap(p).size, 0);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

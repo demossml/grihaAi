@@ -25,6 +25,7 @@ Same `correlationId` on one user turn.
 | secretary.expense.write | explicit expense |
 | report.render.* | PDF render |
 | telegram.send.document/message | outbound |
+| telegram.send.reply | итог отправки ответа в чат: `ok:false` при провале текста/документа (в `data`: `textOk`, `docOk`, `hadFile`); `ok:true` при успехе |
 
 ## Privacy
 Never log raw message text, OCR body, bot tokens, api keys.

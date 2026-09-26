@@ -103,8 +103,13 @@ SkillCandidateStore (procedural evidence) → maybeProposeFromCandidates
 
 API:
 - `LEARNING_THRESHOLDS`, `maybeCreateSkillProposal(args, deps)` (детерминированный гейт).
-- `maybeProposeFromCandidates(store, deps)` (идемпотентно по объёму evidence).
+- `maybeProposeFromCandidates(store, deps)` — дедуп **per skillId** (Map, не глобальный скаляр): один скилл не блокирует другой; повторный вызов с тем же объёмом evidence не дублирует proposal.
 - `createPendingSkillProposal(draft)` — реальный pending в `SkillProposalStore`.
+
+Dedup persist (переживает рестарт): `~/.grish-ai/learning/proposed-evidence.json`
+(`skillId → last evidenceCount`). `loadProposedMap` / `persistProposedMap` —
+best-effort (try/catch, никогда не бросают в caller). Сброс для тестов —
+`resetProposedEvidenceForTests`.
 
 Call site: `apps/agent/.pi/extensions/core-agent/index.ts` (после `routeBackgroundLessons`).
 

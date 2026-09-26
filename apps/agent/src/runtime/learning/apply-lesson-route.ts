@@ -27,6 +27,8 @@ export interface SkillCandidateEvidence {
   content: string;
   source: string;
   createdAt: string;
+  /** Опционально — для per-skill дедупа предложений (L4). */
+  skillId?: string;
 }
 
 /** L3: candidate evidence только; threshold + proposal — в L4. */
@@ -34,8 +36,13 @@ export class SkillCandidateStore {
   private readonly items: SkillCandidateEvidence[] = [];
   constructor(private readonly now: () => string = () => new Date().toISOString()) {}
 
-  add(content: string, source: string): SkillCandidateEvidence {
-    const evidence: SkillCandidateEvidence = { content, source, createdAt: this.now() };
+  add(content: string, source: string, skillId?: string): SkillCandidateEvidence {
+    const evidence: SkillCandidateEvidence = {
+      content,
+      source,
+      createdAt: this.now(),
+      skillId,
+    };
     this.items.push(evidence);
     return evidence;
   }

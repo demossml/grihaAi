@@ -801,8 +801,24 @@ export class TelegramBotController {
       console.log(
         `[telegram-bot] reply sent to chat ${chatId}${filePath ? " (with document)" : ""}`,
       );
+      // P1: наблюдаемость успешной отправки (без текста сообщения).
+      emit({
+        component: "telegram.send",
+        event: "telegram.send.reply",
+        ok: true,
+        chatId: String(chatId),
+        data: { hadFile: Boolean(filePath) },
+      });
     } else {
       console.error(`[telegram-bot] reply to chat ${chatId} failed`);
+      // P1: тихие сбои доставки текста теперь видны в prod obs.
+      emit({
+        component: "telegram.send",
+        event: "telegram.send.reply",
+        ok: false,
+        chatId: String(chatId),
+        data: { textOk, docOk, hadFile: Boolean(filePath) },
+      });
     }
   }
 
