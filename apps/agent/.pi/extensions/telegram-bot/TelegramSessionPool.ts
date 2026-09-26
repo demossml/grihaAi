@@ -33,6 +33,7 @@ import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { clearSessionTrust, setSessionTrust } from "../../../src/sandbox/gateway-context.js";
 import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes } from "../../../src/runtime/learning/index.js";
+import { TraceManager, buildToolTrace, categoryForCode, codeFromTurnCode, computeTaskOutcome, getAgentVersion, getTraceStore, hashToolArgs, registerTrace, unregisterTrace, validateToolResult, type AgentTraceStatus, type FailureChainEntry } from "../../../src/runtime/observability/index.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
 import { sanitizeDirSegment } from "./session-key.js";
 import { preparePoolRouting, applyRouteGuidance, type PoolRoutingResult } from "./pool-routing.js";
@@ -44,6 +45,7 @@ import {
   emitGenerationFinish,
   emitTurnEnd,
   emitTurnStart,
+  isObsEnabled,
 } from "@griha/observability";
 
 /**
@@ -380,6 +382,24 @@ export class TelegramSessionPool {
     const baseEvent = { correlationId, chatId, threadId, updateId, userId, sessionId } as const;
     // P5: per-tool duration_ms (toolCallId → время старта).
     const toolStartedAt = new Map<string, number>();
+    // Prompt 05: per-tool argumentsHash (не сырые args).
+    const toolArgsHash = new Map<string, string>();
+
+    // Prompt 02: Core AgentTrace — один trace на ход (id = correlationId).
+    const trace = new TraceManager();
+    trace.start({
+      traceId: correlationId,
+      sessionId,
+      agentVersion: getAgentVersion(),
+      userId,
+      chatId: chatId ?? undefined,
+      threadId,
+      taskType: hasImage ? "image" : hasVoice ? "voice" : "text",
+    });
+    trace.addStep({ type: "input", status: "success", metadata: { textLen: message.length } });
+    // Prompt 03: реестр активного trace по sessionId — Context Builder (core-agent
+    // before_agent_start) добавит «context» step в этот же trace.
+    registerTrace(sessionId, trace);
 
     const finish = (value: TelegramReply): void => {
       if (settled) return;
@@ -433,6 +453,45 @@ export class TelegramSessionPool {
       } catch {
         // learning никогда не ломает ход.
       }
+      // Prompt 02: завершаем trace + persist (никогда не ломает ход).
+      try {
+        const finalStatus: AgentTraceStatus =
+          turnOk ? "success" : turnCode === "timeout" ? "timeout" : "failed";
+        trace.addStep({
+          type: "final",
+          status: turnOk ? "success" : "failed",
+          metadata: { responseLength: (value.text || "").length },
+        });
+        // Prompt 06: при провале — primaryFailure + failureChain.
+        if (!turnOk) {
+          const code = codeFromTurnCode(turnCode);
+          const chain: FailureChainEntry[] = (trace.current?.steps ?? [])
+            .filter((s) => s.status === "failed")
+            .map((s) => ({ stepId: s.stepId, stepType: s.type }));
+          trace.setFailure(
+            { category: categoryForCode(code), code, explanation: turnCode },
+            chain,
+          );
+        }
+        const finished = trace.finish(finalStatus, {
+          success: turnOk,
+          responseLength: (value.text || "").length,
+          errorCode: turnOk ? undefined : turnCode,
+          // Prompt 07: реальный исход задачи (не только «модель не упала»).
+          taskOutcome: computeTaskOutcome({
+            ok: turnOk,
+            hadReply: !!(value.text && value.text.trim()),
+            needsUserInput: !!(value.inlineButtons && value.inlineButtons.length > 0),
+          }),
+        });
+        if (isObsEnabled()) {
+          getTraceStore().save(finished);
+        }
+      } catch {
+        // trace никогда не ломает ход.
+      } finally {
+        unregisterTrace(sessionId);
+      }
       resolveReply(value);
     };
 
@@ -455,18 +514,48 @@ export class TelegramSessionPool {
       // P5: per-tool duration_ms. args/result НЕ логируются (содержимое).
       if (event.type === "tool_execution_start") {
         toolStartedAt.set(event.toolCallId, Date.now());
+        toolArgsHash.set(event.toolCallId, hashToolArgs(event.args));
         return;
       }
       if (event.type === "tool_execution_end") {
         const toolStart = toolStartedAt.get(event.toolCallId);
+        const argsHash = toolArgsHash.get(event.toolCallId);
         toolStartedAt.delete(event.toolCallId);
+        toolArgsHash.delete(event.toolCallId);
+        const toolDuration = toolStart !== undefined ? Date.now() - toolStart : undefined;
         logTelegramEvent({
           event: "tool.execution.completed",
           ...baseEvent,
           toolName: event.toolName,
-          durationMs: toolStart !== undefined ? Date.now() - toolStart : undefined,
+          durationMs: toolDuration,
           status: event.isError ? "failed" : "ok",
         });
+        // Prompt 05: ToolTrace step (имя тула + argsHash + тайминг; без args/result).
+        trace.addStep({
+          type: event.isError ? "tool_result" : "tool_call",
+          status: event.isError ? "failed" : "success",
+          durationMs: toolDuration,
+          metadata: {
+            tool: buildToolTrace({
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              startedAt: toolStart !== undefined ? new Date(toolStart).toISOString() : new Date().toISOString(),
+              durationMs: toolDuration,
+              status: event.isError ? "failed" : "success",
+              argumentsHash: argsHash,
+              errorCode: event.isError ? "tool_error" : undefined,
+            }),
+          },
+        });
+        // Prompt 05: валидация результата — при invalid → validation step.
+        const validation = validateToolResult(event.result);
+        if (!validation.valid) {
+          trace.addStep({
+            type: "validation",
+            status: "failed",
+            metadata: { toolName: event.toolName, reason: validation.reason },
+          });
+        }
         return;
       }
       if (event.type !== "agent_end") return;
@@ -614,6 +703,12 @@ export class TelegramSessionPool {
       const fullMessage = rulesContext ? `${rulesContext}\n\n${message}` : message;
       // Flash contract: report_dispatch → guidance брать данные из tools/БД.
       const promptMessage = applyRouteGuidance(fullMessage, routed.decision);
+      // Prompt 02: model step — вызов модели (без текста/токенов).
+      trace.addStep({
+        type: "model",
+        status: "started",
+        metadata: { role: routed.decision?.role, complexity: routed.decision?.complexity },
+      });
       // ВАЖНО: не await зависшего prompt напрямую — иначе runPrompt (и очередь)
       // останутся pending после finish. Terminal state решает результат;
       // висящий prompt остаётся фоновым, его ошибка глушится settled-guard'ом.

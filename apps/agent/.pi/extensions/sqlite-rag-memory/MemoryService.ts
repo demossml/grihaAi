@@ -389,16 +389,29 @@ export class SqliteRagMemoryService implements MemoryService {
     query: string,
     options: { limit?: number; projectId?: ProjectId; category?: string; botId?: BotId } = {},
   ): Promise<SearchResult[]> {
+    return (await this.searchWithStats(query, options)).results;
+  }
+
+  /**
+   * Search + статистика кандидатов (Prompt 04 retrieval observability).
+   * `candidatesCount` = всего кандидатов ДО fusion (fts + vector);
+   * `results` = отобранные после RRF (selected).
+   */
+  async searchWithStats(
+    query: string,
+    options: { limit?: number; projectId?: ProjectId; category?: string; botId?: BotId } = {},
+  ): Promise<{ results: SearchResult[]; candidatesCount: number }> {
     const limit = clampLimit(options.limit);
     const ftsHits = this.ftsSearch(query, options, limit * 2);
 
     if (!this.embeddingService) {
-      return ftsHits.slice(0, limit);
+      return { results: ftsHits.slice(0, limit), candidatesCount: ftsHits.length };
     }
 
     const queryEmbedding = await this.embeddingService.embed(query);
     const vectorHits = this.vectorSearch(queryEmbedding, options, limit * 2);
-    return reciprocalRankFusion(vectorHits, ftsHits, limit);
+    const results = reciprocalRankFusion(vectorHits, ftsHits, limit);
+    return { results, candidatesCount: ftsHits.length + vectorHits.length };
   }
 
   private ftsSearch(

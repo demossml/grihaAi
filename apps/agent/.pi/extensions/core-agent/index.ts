@@ -13,6 +13,8 @@ import { isAgentRuntimeEnabled } from "../../../src/runtime/index.js";
 import { getSkillCandidateStore, getTurnExperienceStore, maybeProposeFromCandidates, recordTurnExperience, recordTurnSkillOutcomes, routeBackgroundLessons } from "../../../src/runtime/learning/index.js";
 import { createPendingSkillProposal, isProtectedSkillName } from "../../../src/utils/learning/skill-improver.js";
 import { renderTelemetryDashboard } from "../../../src/runtime/observability/dashboard.js";
+import { getActiveTrace, type ContextSource, type ContextTrace } from "../../../src/runtime/observability/index.js";
+import { estimateTokens } from "../../../src/runtime/context/usage.js";
 import { collectSkillCommands } from "./skill-commands.js";
 
 const LEARNING_LOOP_POLICY = [
@@ -134,7 +136,7 @@ export default function coreAgent(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("before_agent_start", async (event) => {
+  pi.on("before_agent_start", async (event, ctx) => {
     const skills = await discoverSkills();
     const sections = [DELEGATION_POLICY, ORCHESTRATION_POLICY];
     if (skills.length > 0) {
@@ -142,19 +144,63 @@ export default function coreAgent(pi: ExtensionAPI): void {
     }
     sections.push(LANGUAGE_POLICY);
 
+    // Prompt 03: происхождение контекста — источники (без полного текста).
+    const sources: ContextSource[] = [
+      {
+        sourceType: "message",
+        selected: true,
+        reason: "recent message",
+        tokenEstimate: estimateTokens(event.prompt),
+      },
+      { sourceType: "system", selected: true, reason: "system instruction" },
+    ];
+
     // Adaptive router pre-filter: for COMPLEX messages add a ready delegation
     // plan as a hint. The agent still decides whether to call delegate_tasks.
     const cfg = loadConfig();
     if (cfg) {
       try {
         const hint = await buildRouterHint(event.prompt, createHttpLearningLlm(cfg));
-        if (hint) sections.push(hint);
+        if (hint) {
+          sections.push(hint);
+          sources.push({ sourceType: "system", selected: true, reason: "routing hint" });
+        }
       } catch {
         // Router hint is best-effort — never break the agent on it.
       }
       // W12 (O1/§29): профиль бота — только за флагом (off = секция пустая).
       const profile = buildProfileSection(process.env, cfg.profile);
-      if (profile.section) sections.push(profile.section);
+      if (profile.section) {
+        sections.push(profile.section);
+        sources.push({ sourceType: "memory", selected: true, reason: "user profile" });
+      }
+    }
+
+    if (skills.length > 0) {
+      sources.push({
+        sourceType: "system",
+        sourceId: `skills:${skills.length}`,
+        selected: true,
+        reason: "skill instruction",
+      });
+    }
+
+    // Prompt 03: привязка ContextTrace к активному trace (по sessionId).
+    try {
+      const manager = getActiveTrace(ctx.sessionManager.getSessionId());
+      if (manager) {
+        const contextTrace: ContextTrace = {
+          sources,
+          estimatedTokens: sources.reduce((sum, s) => sum + (s.tokenEstimate ?? 0), 0),
+        };
+        manager.addStep({
+          type: "context",
+          status: "success",
+          metadata: { context: contextTrace },
+        });
+      }
+    } catch {
+      // ContextTrace никогда не ломает ход.
     }
 
     return { systemPrompt: `${event.systemPrompt}\n\n${sections.join("\n\n")}` };

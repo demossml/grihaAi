@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import path from "node:path";
-import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { buildRetrievalTrace, getActiveTrace } from "../../../src/runtime/observability/index.js";
 import { SqliteRagMemoryService } from "./MemoryService.js";
 import {
   MemoryAddSchema,
@@ -78,14 +80,42 @@ export default function sqliteRagMemory(pi: ExtensionAPI): void {
     async execute(
       _toolCallId: string,
       params: MemorySearchParams,
+      _signal: unknown,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ results: SearchResult[] }>> {
       const service = await getService();
-      const results = await service.search(params.query, {
+      const startedAt = Date.now();
+      const { results, candidatesCount } = await service.searchWithStats(params.query, {
         limit: params.limit,
         projectId: params.projectId,
         category: params.category,
         botId: params.botId,
       });
+
+      // Prompt 04: retrieval step в активный trace (ID + counts + latency).
+      try {
+        const manager = getActiveTrace(ctx.sessionManager.getSessionId());
+        if (manager) {
+          manager.addStep({
+            type: "retrieval",
+            status: "success",
+            metadata: {
+              retrieval: buildRetrievalTrace({
+                queryId: randomUUID(),
+                queryType: "memory",
+                queryText: params.query,
+                candidatesCount,
+                selectedSourceIds: results.map((r) => r.id),
+                durationMs: Date.now() - startedAt,
+              }),
+            },
+          });
+        }
+      } catch {
+        // retrieval trace никогда не ломает tool.
+      }
+
       const text =
         results.length === 0
           ? "No matching memories."
