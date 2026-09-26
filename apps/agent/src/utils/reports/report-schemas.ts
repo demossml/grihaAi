@@ -40,6 +40,8 @@ export const ExpenseReportSchema = Type.Object({
       amount: Type.Number(),
     }),
   ),
+  // Кол-во чеков, требующих ручной проверки (не смешиваются с успешными строками).
+  needsReviewCount: Type.Optional(Type.Integer()),
 });
 export type ExpenseReportData = Static<typeof ExpenseReportSchema>;
 

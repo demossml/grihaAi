@@ -10,6 +10,7 @@
 - Learning: L5 active skill version loader + eval gate + rollback (L0–L5 done).
 - Core: Flash router + Generation policy (flags default OFF); pool wire; obs v2.
 - Phase: report tool timeout (data 30s / render 90s) + flash_error diagnostics + cheap fallback.
+- Phase: receipt parser hardening (ИТОГО-якоря, reject ИНН/date-мусор, supplier/items) + report filters + reparse backfill (dry-run).
 - Secretary n2: silence, reminders (Moscow TZ, auto_reminders before add), participants, record expense.
 - Security: execute_code runsc/refuse, env scrub, OCR injection scan, session trust (default untrusted).
 

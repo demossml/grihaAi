@@ -28,7 +28,9 @@ describe("createExtractor (vision vs stub)", () => {
 
 describe("VisionExtractor", () => {
   it("OCR «Итог = 125.00, чек из Ромашки» → total=125, kind=receipt, confidence≥0.4", async () => {
-    const mockOcr: VisionOcrFn = async () => "Магазин Ромашка\nИтог = 125.00 руб\nчек из Ромашка";
+    const y = new Date().getFullYear();
+    const mockOcr: VisionOcrFn = async () =>
+      `Магазин Ромашка\nдата ${y}-09-10\nИтог = 125.00 руб\nчек из Ромашка`;
     const extractor = new VisionExtractor(mockOcr);
     const res = await extractor.extract({
       filePath: "/tmp/fake.jpg",

@@ -90,6 +90,7 @@ export class VisionExtractor implements DocumentExtractor {
       parseSupplierFromText,
       parseTotalFromText,
       parseItemsFromText,
+      computeNeedsReview,
       todayYmd,
       detectKind,
     } = await import("./parsers.js");
@@ -112,7 +113,8 @@ export class VisionExtractor implements DocumentExtractor {
     const caption = input.caption?.trim() ?? "";
     const combined = [rawText, caption].filter(Boolean).join("\n");
     const total = parseTotalFromText(combined);
-    const docDate = parseDateFromText(combined) ?? todayYmd();
+    const parsedDate = parseDateFromText(combined);
+    const docDate = parsedDate ?? todayYmd();
     const supplier = parseSupplierFromText(combined);
     const kind = detectKind(combined);
     const items = parseItemsFromText(rawText || caption);
@@ -126,7 +128,13 @@ export class VisionExtractor implements DocumentExtractor {
       rawText: rawText || caption || undefined,
       items: items.length ? items : undefined,
       confidence: total != null ? 0.85 : rawText ? 0.55 : 0.1,
-      needsReview: total == null || !rawText,
+      needsReview: computeNeedsReview({
+        total,
+        supplier,
+        docDate: parsedDate,
+        items,
+        rawText: rawText || caption,
+      }),
     };
   }
 }

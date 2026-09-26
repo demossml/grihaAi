@@ -32,6 +32,20 @@ export type ExpenseReportBuildResult =
 
 export const EXPENSE_REPORT_EMPTY_MESSAGE = "Нет данных для PDF-отчёта.";
 
+/** Скрыть позицию/сумму: null, <=0 или ИНН-like (мусор OCR). */
+function isBadItemSum(sum: number | null | undefined): boolean {
+  if (sum == null) return true;
+  if (!Number.isFinite(sum) || sum <= 0) return true;
+  return /^\d{10,12}$/.test(String(sum));
+}
+
+/** Category: пустой или слишком длинный → «без категории». */
+function cleanCategory(supplier: string | null | undefined): string {
+  const s = supplier?.trim();
+  if (!s || s.length > 60) return "без категории";
+  return s;
+}
+
 /** E3: построить данные expense-отчёта из БД (items + категории + итог). */
 export async function buildExpenseReportData(
   repo: DocumentsRepository,
@@ -53,16 +67,22 @@ export async function buildExpenseReportData(
     return { ok: false, error: EXPENSE_REPORT_EMPTY_MESSAGE };
   }
 
-  const items = result.documents.map((d) => ({
-    date: d.docDate,
-    category: d.supplier ?? "без категории",
-    description: d.fileName ?? "",
-    amount: d.total ?? 0,
-  }));
+  // needsReview-чеки НЕ смешиваем с успешными строками — отдельная секция.
+  const clean = result.documents.filter((d) => !d.needsReview);
+  const reviewCount = result.documents.length - clean.length;
+
+  const items = clean
+    .filter((d) => !isBadItemSum(d.total))
+    .map((d) => ({
+      date: d.docDate,
+      category: cleanCategory(d.supplier),
+      description: d.fileName ?? "",
+      amount: d.total ?? 0,
+    }));
 
   const bySupplier = new Map<string, number>();
-  for (const d of result.documents) {
-    const key = d.supplier ?? "без категории";
+  for (const d of clean) {
+    const key = cleanCategory(d.supplier);
     bySupplier.set(key, (bySupplier.get(key) ?? 0) + (d.total ?? 0));
   }
   const categories = [...bySupplier.entries()].map(([name, amount]) => ({
@@ -81,6 +101,7 @@ export async function buildExpenseReportData(
       totalAmount: result.totalSum,
       categories,
       items,
+      needsReviewCount: reviewCount,
     },
   };
 }
@@ -125,10 +146,14 @@ export async function buildExpenseReportInput(
 
   const currency = result.currency === "RUB" ? "₽" : result.currency;
 
-  // Поставщики: агрегат по supplier.
+  // needsReview-чеки НЕ смешиваем с успешными строками — отдельная секция.
+  const clean = result.documents.filter((d) => !d.needsReview);
+  const reviewCount = result.documents.length - clean.length;
+
+  // Поставщики: агрегат по supplier (category очищается от мусора/длины).
   const bySupplier = new Map<string, { count: number; total: number }>();
-  for (const d of result.documents) {
-    const key = d.supplier ?? "без категории";
+  for (const d of clean) {
+    const key = cleanCategory(d.supplier);
     const cur = bySupplier.get(key) ?? { count: 0, total: 0 };
     cur.count += 1;
     cur.total += d.total ?? 0;
@@ -140,25 +165,39 @@ export async function buildExpenseReportInput(
     totalLabel: fmtMoney(v.total, currency),
   }));
 
-  // Чеки: items из itemsJson; нет items → одна позиция = total чека.
-  const receipts: ExpenseReceiptBlock[] = result.documents.map((d, idx) => {
-    const items: ExpenseLineItem[] =
-      d.items && d.items.length > 0
-        ? d.items.map((it) => ({
-            name: it.name,
-            qtyLabel: it.qty !== undefined ? String(it.qty) : "1",
-            amountLabel: fmtMoney(it.sum ?? 0, currency),
-          }))
-        : [{ name: d.fileName || d.supplier || "чек", qtyLabel: "1", amountLabel: fmtMoney(d.total ?? 0, currency) }];
+  // Чеки: items из itemsJson; нет валидных items → одна позиция = total чека.
+  const receipts: ExpenseReceiptBlock[] = clean.map((d, idx) => {
+    let lineItems: ExpenseLineItem[] = [];
+    if (d.items && d.items.length > 0) {
+      lineItems = d.items
+        .filter((it) => !isBadItemSum(it.sum))
+        .map((it) => ({
+          name: it.name,
+          qtyLabel: it.qty !== undefined ? String(it.qty) : "1",
+          amountLabel: fmtMoney(it.sum ?? 0, currency),
+        }));
+    }
+    if (lineItems.length === 0) {
+      lineItems = [
+        {
+          name: d.fileName || cleanCategory(d.supplier) || "чек",
+          qtyLabel: "1",
+          amountLabel: fmtMoney(d.total ?? 0, currency),
+        },
+      ];
+    }
     return {
-      title: `Чек №${idx + 1} · ${d.supplier ?? "без категории"}`,
+      title: `Чек №${idx + 1} · ${cleanCategory(d.supplier)}`,
       meta: `${d.docDate}${d.fileName ? ` · файл: ${d.fileName}` : ""}`,
       totalLabel: fmtMoney(d.total ?? 0, currency),
-      items,
+      items: lineItems,
     };
   });
 
-  const lineItems = result.documents.reduce((acc, d) => acc + (d.items?.length ?? 1), 0);
+  const lineItems = clean.reduce((acc, d) => {
+    const valid = d.items ? d.items.filter((it) => !isBadItemSum(it.sum)).length : 0;
+    return acc + (valid > 0 ? valid : 1);
+  }, 0);
   const periodLabel = input.period && input.period.trim() ? input.period : "весь период";
 
   // Title группы — best-effort (метаданные, не должны ронять отчёт).

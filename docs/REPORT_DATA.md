@@ -58,6 +58,23 @@
 { "expenseId": "…", "total": 100, "supplier": "Магнит" }
 ```
 
+## Receipt parse hardening & backfill
+
+- Детерминированный парсер (`apps/agent/src/services/documents/extractors/parsers.ts`):
+  - `total` — только по якорям `ИТОГО`/`ИТОГ`/`ВСЕГО К ОПЛАТЕ`/`ИТОГ К ОПЛАТЕ`/`СУММА К ОПЛАТЕ`;
+    не берётся из строк с `ИНН|КПП|ФН|ФД|ФП` и из голых 10–12-значных чисел (ИНН-like).
+  - `date` — отклоняет год вне `[currentYear-5, currentYear+1]` (мусор OCR «2028»).
+  - `supplier` — первый маркер юрлица/бренда (`ООО|ИП|ЗАО|ПАО|АО|МАГНИТ|ЛЕНТА|…`) в первых ~15 строках.
+  - `items` — позиция только с ценой; отбрасываются `КАССОВЫЙ ЧЕК`/`ИНН`/заголовки поставщика.
+- `needsReview` (детерминированно): true если `total`/`supplier`/`date` пусты, items пусты при
+  длинном `rawText` (>80) или был отброшен подозрительный ИНН-like сумма.
+- Отчёт: итог = `SUM(total)` из БД (не сумма `item.sum`); позиции с `sum<=0`/ИНН-like скрыты;
+  category длиннее 60 символов → «без категории»; needsReview-чеки выносятся в счётчик
+  `needsReviewCount`, не смешиваются с успешными строками.
+- Backfill: `reparseExpenseFromRaw` (`apps/agent/src/services/documents/backfill.ts`) —
+  перепарс из `raw_text` ТЕМИ ЖЕ parse-функциями; `dryRun`-флаг, batch до 50–200; только
+  `needs_review=1 OR total IS NULL`; старые записи без `raw_text` пропускаются. LLM не источник total.
+
 ## Related
 
 - `docs/TELEGRAM-BOT.md` — tools/scope (секция «Expense report tools»)

@@ -795,8 +795,8 @@ export class DocumentsRepository {
   fillExpenseDocument(
     id: string,
     fields: {
-      supplier?: string;
-      total?: number;
+      supplier?: string | null;
+      total?: number | null;
       docDate?: string;
       currency?: string;
       itemsJson?: string | null;
@@ -969,6 +969,23 @@ export class DocumentsRepository {
    * без изменения поведения query/expenses_sum). Отдаёт rawText/itemsJson/
    * messageId/confidence/kind, которых нет в сводке query().
    */
+  /**
+   * backfill: кандидаты на перепарс — needs_review=1 ИЛИ total IS NULL,
+   * с непустым raw_text (старые записи без OCR-текста пропускаются).
+   */
+  listBackfillCandidates(limit: number): ExpenseDocument[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM expense_documents
+         WHERE (needs_review = 1 OR total IS NULL)
+           AND raw_text IS NOT NULL AND trim(raw_text) != ''
+         ORDER BY created_at ASC
+         LIMIT ?`,
+      )
+      .all(Math.min(Math.max(limit, 1), 200)) as DocRow[];
+    return rows.map(rowToDoc);
+  }
+
   listExpenseRowsForReport(q: {
     chatId: string;
     threadId?: string;
