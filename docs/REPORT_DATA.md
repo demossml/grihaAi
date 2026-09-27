@@ -110,10 +110,21 @@ npm run reparse:expenses -- --all --limit=200 --chat-id=-5400215325
 ## Expense report dispatch
 
 - `kind=report_dispatch` → `runExpenseReportDispatch` (`services/documents/expense-report-dispatch.ts`)
-  → `buildExpenseReportData` (БД) → render PDF → `sendDocument` (через session-file outbox).
+  → build по `mode` → render PDF → `sendDocument` (через session-file outbox).
 - Без свободного LLM-цикла на успешном пути: один короткий text ack + один файл (не «только текст вместо PDF»).
 - Orchestrator-таймаут рендера **60s** (`withTimeout`) — не ждём глобальный watchdog 300s.
 - Файл валидируется `assertSendablePdf` (existsSync + size ≥ 1000) перед возвратом; никогда `ok:true` без файла.
+
+### Modes
+
+- `summary` — `buildExpenseReportData` (итог + таблица поставщиков + одна строка на чек, БЕЗ позиций).
+- `detailed` (default) — `buildExpenseReportInput` (rich: `receipts[].items[]` — позиции внутри чека, qty/sum).
+- `item_search` — `buildItemSearchData`: выборка позиций по `itemQuery` (name includes, case-insensitive);
+  колонки date/supplier/позиция/qty/sum; итог = сумма денег.
+- `problems` — **DECISION**: только через существующий tool `report_data_problems` (без PDF mode).
+
+`detectReportMode`/`detectItemQuery` — лёгкий детект по фразе: «кратко»→summary, «развёрнуто»→detailed,
+«сколько/когда закупали X»→item_search (X = itemQuery).
 - На Mini после деплоя: reparse для этого пути не нужен — данные берутся из БД as-is (канон уже в `cleanCategory`).
 
 ## Related

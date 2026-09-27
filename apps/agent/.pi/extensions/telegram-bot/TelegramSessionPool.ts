@@ -33,7 +33,11 @@ import obsTools from "../obs-tools/index.js";
 import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { clearSessionTrust, setSessionTrust } from "../../../src/sandbox/gateway-context.js";
-import { runExpenseReportDispatch } from "../../../src/services/documents/expense-report-dispatch.js";
+import {
+  runExpenseReportDispatch,
+  detectReportMode,
+  detectItemQuery,
+} from "../../../src/services/documents/expense-report-dispatch.js";
 import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes } from "../../../src/runtime/learning/index.js";
 import { TraceManager, buildToolTrace, categoryForCode, codeFromTurnCode, computeTaskOutcome, getAgentVersion, getTraceStore, hashToolArgs, registerTrace, unregisterTrace, validateToolResult, type AgentTraceStatus, type FailureChainEntry } from "../../../src/runtime/observability/index.js";
@@ -758,8 +762,10 @@ export class TelegramSessionPool {
     // (фикс 300s hang + «только текст вместо PDF»). Один orchestrator, один send.
     if (routed.decision?.kind === "report_dispatch" && chatId) {
       pathTaken = "fast_report_pdf";
+      const mode = detectReportMode(message);
+      const itemQuery = detectItemQuery(message);
       const dispatchResult = await runExpenseReportDispatch(
-        { chatId, threadId, userId },
+        { chatId, threadId, userId, mode, itemQuery },
         { repo: getDocumentsRepository() },
       );
       if (dispatchResult.ok) {

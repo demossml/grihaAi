@@ -9,10 +9,17 @@ import { statSync, existsSync } from "node:fs";
 import { emit } from "@griha/observability";
 import type { RenderRequest } from "@griha/render-contracts";
 import type { DocumentsRepository } from "./DocumentsRepository.js";
-import { buildExpenseReportData, EXPENSE_REPORT_EMPTY_MESSAGE } from "./expenseReportTools.js";
+import {
+  buildExpenseReportData,
+  buildExpenseReportInput,
+  buildItemSearchData,
+  EXPENSE_REPORT_EMPTY_MESSAGE,
+} from "./expenseReportTools.js";
 import { renderPdfReport } from "../../utils/reports/report-renderer.js";
 import { renderViaCliOrLegacy } from "../render/renderViaCliOrLegacy.js";
 import { withTimeout, TimeoutError } from "../../runtime/util/with-timeout.js";
+
+export type ExpenseReportMode = "summary" | "detailed" | "item_search" | "problems";
 
 export interface ReportDispatchInput {
   chatId: string;
@@ -22,6 +29,22 @@ export interface ReportDispatchInput {
   fromDate?: string;
   toDate?: string;
   periodLabel?: string;
+  /** relative период (если from/to не заданы). */
+  periodHint?: "all" | "week" | "month";
+
+  /** Вид отчёта. default: "detailed". */
+  mode?: ExpenseReportMode;
+  /** item_search: обязательная подстрока позиции. */
+  itemQuery?: string;
+
+  includeNeedsReview?: boolean; // default false
+  supplierFilter?: string;
+  maxDocuments?: number; // default 200
+  maxLineItems?: number; // default 30 per receipt (detailed)
+
+  groupBy?: "supplier" | "category"; // default supplier
+  categoryScheme?: "default" | "repair";
+  format?: "compact" | "expanded"; // compat: summary→compact, detailed→expanded
 }
 
 export type ReportDispatchCode =
@@ -52,12 +75,41 @@ export interface ReportDispatchDeps {
   canRead?: (userId: string | undefined, chatId: string) => Promise<boolean>;
   /** Рендер data → PDF path (инъекция для тестов). */
   renderPdf?: (data: Record<string, unknown>) => Promise<string>;
+  /** Title группы для rich-отчёта (инъекция, default — ChatSetupService). */
+  getChatTitle?: (chatId: string) => string | undefined;
 }
 
 /** Таймаут рендера PDF в dispatch-пути (не ждём глобальный watchdog 300s). */
 const PDF_RENDER_TIMEOUT_MS = 60_000;
 
 const PDF_TIMEOUT_MESSAGE = "Не удалось собрать PDF за отведённое время. Попробуйте ещё раз.";
+
+/** Детект режима по фразе пользователя (лёгкий, без LLM). */
+export function detectReportMode(text: string): ExpenseReportMode {
+  const t = text.toLowerCase();
+  // item_search: «сколько/когда ... закупали/купили/брали X».
+  if (/(сколько|когда).*(закуп|куп|покуп|брали|брал)/.test(t)) return "item_search";
+  if (/(кратко|кратк|коротко|суммарно|итого|сводно)/.test(t)) return "summary";
+  if (/(проблем|нужн.*провер|без сумм|не распозн)/.test(t)) return "problems";
+  return "detailed";
+}
+
+/** Извлечь подстроку позиции для item_search («сколько закупали цемент» → «цемент»). */
+export function detectItemQuery(text: string): string | undefined {
+  const m = /(?:закуп|покуп|куп|брали|брал)[а-яёa-z0-9]*\s+([а-яёa-z0-9\- ]{2,40})/i.exec(text);
+  if (!m) return undefined;
+  const q = m[1].replace(/\s+/g, " ").trim();
+  // отрезать хвостовые стоп-слова/пунктуацию.
+  return q.replace(/[.,!?;:].*$/, "").trim() || undefined;
+}
+
+/** Извлечь число из денежной метки «1 234,56 ₽» (для totalAmount из rich). */
+function parseMoneyLabel(label: string): number {
+  if (!label) return 0;
+  const cleaned = label.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(",", ".");
+  const v = Number.parseFloat(cleaned);
+  return Number.isFinite(v) ? v : 0;
+}
 
 /** Проверка файла перед отправкой: путь задан, существует, не пустой. */
 export function assertSendablePdf(filePath: string): void {
@@ -92,8 +144,8 @@ function defaultRender(periodLabel: string): (data: Record<string, unknown>) => 
 }
 
 /**
- * 1) ACL (если задан) 2) buildExpenseReportData (БД) 3) render PDF 4) validate
- * (existsSync + size) 5) вернуть filePath. Ошибки — короткий код, без stack.
+ * 1) ACL (если задан) 2) build по mode (summary/detailed/item_search) 3) render
+ * PDF 4) validate (existsSync + size) 5) вернуть filePath. Ошибки — код, без stack.
  */
 export async function runExpenseReportDispatch(
   input: ReportDispatchInput,
@@ -106,23 +158,128 @@ export async function runExpenseReportDispatch(
     }
   }
 
-  // 2) Данные строго из БД (канонический источник сумм/категорий).
+  const mode: ExpenseReportMode = input.mode ?? "detailed";
+
+  if (mode === "problems") {
+    // DECISION: «проблемы» — только через существующий tool report_data_problems.
+    return {
+      ok: false,
+      code: "EMPTY",
+      message: "Режим «проблемы» доступен через инструмент report_data_problems (без PDF).",
+    };
+  }
+
   emit({
     component: "report",
     event: "report.build_data",
     chatId: input.chatId,
-    data: { phase: "start" },
+    data: { phase: "start", mode },
   });
   const buildStartedAt = Date.now();
-  let built;
+
+  let renderData: Record<string, unknown>;
+  let periodLabel: string;
+  let totalAmount: number;
+  let docCount: number;
+  let needsReviewCount: number | undefined;
+
   try {
-    built = await buildExpenseReportData(deps.repo, {
-      chatId: input.chatId,
-      threadId: input.threadId,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
-      period: input.periodLabel,
-    });
+    if (mode === "item_search") {
+      const query = input.itemQuery?.trim();
+      if (!query) {
+        emit({
+          component: "report",
+          event: "report.build_data",
+          ok: false,
+          chatId: input.chatId,
+          durationMs: Date.now() - buildStartedAt,
+          data: { phase: "end", code: "EMPTY", mode },
+        });
+        return { ok: false, code: "EMPTY", message: "Укажите, что искать (itemQuery)." };
+      }
+      const built = await buildItemSearchData(deps.repo, {
+        chatId: input.chatId,
+        threadId: input.threadId,
+        fromDate: input.fromDate,
+        toDate: input.toDate,
+        period: input.periodLabel,
+        itemQuery: query,
+        supplierFilter: input.supplierFilter,
+        includeNeedsReview: input.includeNeedsReview,
+        maxDocuments: input.maxDocuments,
+      });
+      if (!built.ok) {
+        emit({
+          component: "report",
+          event: "report.build_data",
+          ok: false,
+          chatId: input.chatId,
+          durationMs: Date.now() - buildStartedAt,
+          data: { phase: "end", code: "EMPTY", mode },
+        });
+        return { ok: false, code: "EMPTY", message: built.error };
+      }
+      renderData = built.data as unknown as Record<string, unknown>;
+      periodLabel = built.periodLabel;
+      totalAmount = built.data.totalAmount;
+      docCount = built.data.items.length;
+      needsReviewCount = 0;
+    } else if (mode === "summary") {
+      const built = await buildExpenseReportData(deps.repo, {
+        chatId: input.chatId,
+        threadId: input.threadId,
+        fromDate: input.fromDate,
+        toDate: input.toDate,
+        period: input.periodLabel,
+      });
+      if (!built.ok) {
+        emit({
+          component: "report",
+          event: "report.build_data",
+          ok: false,
+          chatId: input.chatId,
+          durationMs: Date.now() - buildStartedAt,
+          data: { phase: "end", code: "EMPTY", mode },
+        });
+        const msg = built.error === EXPENSE_REPORT_EMPTY_MESSAGE ? "Нет данных для отчёта." : built.error;
+        return { ok: false, code: "EMPTY", message: msg };
+      }
+      renderData = built.data as unknown as Record<string, unknown>;
+      periodLabel = built.periodLabel;
+      totalAmount = built.data.totalAmount;
+      docCount = built.data.items.length;
+      needsReviewCount = built.data.needsReviewCount;
+    } else {
+      // detailed (default): rich через buildExpenseReportInput (позиции внутри чека).
+      const built = await buildExpenseReportInput(
+        deps.repo,
+        {
+          chatId: input.chatId,
+          threadId: input.threadId,
+          fromDate: input.fromDate,
+          toDate: input.toDate,
+          period: input.periodLabel,
+        },
+        { getChatTitle: deps.getChatTitle },
+      );
+      if (!built.ok) {
+        emit({
+          component: "report",
+          event: "report.build_data",
+          ok: false,
+          chatId: input.chatId,
+          durationMs: Date.now() - buildStartedAt,
+          data: { phase: "end", code: "EMPTY", mode },
+        });
+        const msg = built.error === EXPENSE_REPORT_EMPTY_MESSAGE ? "Нет данных для отчёта." : built.error;
+        return { ok: false, code: "EMPTY", message: msg };
+      }
+      renderData = built.data as unknown as Record<string, unknown>;
+      periodLabel = built.periodLabel;
+      totalAmount = parseMoneyLabel(built.data.summary.totalLabel);
+      docCount = built.data.summary.documents;
+      needsReviewCount = undefined;
+    }
   } catch {
     emit({
       component: "report",
@@ -130,22 +287,11 @@ export async function runExpenseReportDispatch(
       ok: false,
       chatId: input.chatId,
       durationMs: Date.now() - buildStartedAt,
-      data: { phase: "end", code: "BUILD_FAILED" },
+      data: { phase: "end", code: "BUILD_FAILED", mode },
     });
     return { ok: false, code: "BUILD_FAILED", message: "Не удалось собрать данные отчёта." };
   }
-  if (!built.ok) {
-    emit({
-      component: "report",
-      event: "report.build_data",
-      ok: false,
-      chatId: input.chatId,
-      durationMs: Date.now() - buildStartedAt,
-      data: { phase: "end", code: "EMPTY" },
-    });
-    const msg = built.error === EXPENSE_REPORT_EMPTY_MESSAGE ? "Нет данных для отчёта." : built.error;
-    return { ok: false, code: "EMPTY", message: msg };
-  }
+
   emit({
     component: "report",
     event: "report.build_data",
@@ -155,21 +301,21 @@ export async function runExpenseReportDispatch(
     data: {
       phase: "end",
       code: "OK",
-      docCount: built.data.items.length,
-      needsReviewCount: built.data.needsReviewCount,
-      totalAmount: built.data.totalAmount,
+      mode,
+      docCount,
+      needsReviewCount,
+      totalAmount,
     },
   });
 
-  const renderData = built.data as unknown as Record<string, unknown>;
-  const render = deps.renderPdf ?? defaultRender(built.periodLabel);
+  const render = deps.renderPdf ?? defaultRender(periodLabel);
 
   // 3) Рендер с таймаутом.
   emit({
     component: "report",
     event: "report.render_pdf",
     chatId: input.chatId,
-    data: { phase: "start" },
+    data: { phase: "start", mode },
   });
   const renderStartedAt = Date.now();
   let filePath: string;
@@ -243,15 +389,15 @@ export async function runExpenseReportDispatch(
     event: "report.pdf.ok",
     ok: true,
     chatId: input.chatId,
-    data: { bytes, totalAmount: built.data.totalAmount, docCount: built.data.items.length },
+    data: { bytes, totalAmount, docCount },
   });
 
   return {
     ok: true,
     filePath,
     bytes,
-    periodLabel: built.periodLabel,
-    totalAmount: built.data.totalAmount,
-    docCount: built.data.items.length,
+    periodLabel,
+    totalAmount,
+    docCount,
   };
 }

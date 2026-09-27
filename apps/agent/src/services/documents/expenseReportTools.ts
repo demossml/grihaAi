@@ -230,3 +230,82 @@ export async function buildExpenseReportInput(
     },
   };
 }
+
+/** Нормализация пробелов/регистра для поиска подстроки. */
+function normalizeForMatch(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * item_search: выборка позиций по всем чекам (name includes itemQuery,
+ * case-insensitive, нормализация пробелов). Результат — ExpenseReportData, где
+ * `items` = совпавшие позиции (description = «name × qty»), `totalAmount` = сумма
+ * денег. Совпадений 0 → error (понятный message).
+ */
+export async function buildItemSearchData(
+  repo: DocumentsRepository,
+  input: {
+    chatId: string;
+    threadId?: string;
+    fromDate?: string;
+    toDate?: string;
+    period?: string;
+    itemQuery: string;
+    supplierFilter?: string;
+    includeNeedsReview?: boolean;
+    maxDocuments?: number;
+  },
+): Promise<ExpenseReportBuildResult> {
+  const chatId = input.chatId.trim();
+  if (!chatId) return { ok: false, error: EXPENSE_REPORT_EMPTY_MESSAGE };
+  const query = input.itemQuery.trim();
+  if (!query) return { ok: false, error: "Укажите, что искать (itemQuery)." };
+
+  const result = await repo.query({
+    chatId,
+    threadId: input.threadId,
+    fromDate: input.fromDate,
+    toDate: input.toDate,
+    limit: input.maxDocuments ?? 200,
+  });
+  if (result.count === 0) return { ok: false, error: EXPENSE_REPORT_EMPTY_MESSAGE };
+
+  const q = normalizeForMatch(query);
+  const supplierNeedle = input.supplierFilter ? normalizeForMatch(input.supplierFilter) : undefined;
+
+  const items: Array<{ date: string; category: string; description: string; amount: number }> = [];
+  let totalSum = 0;
+
+  for (const d of result.documents) {
+    if (d.needsReview && !input.includeNeedsReview) continue;
+    if (supplierNeedle && !normalizeForMatch(d.supplier ?? "").includes(supplierNeedle)) continue;
+    for (const it of d.items ?? []) {
+      const name = it.name ?? "";
+      if (!normalizeForMatch(name).includes(q)) continue;
+      const sum = it.sum ?? 0;
+      totalSum += sum;
+      items.push({
+        date: d.docDate,
+        category: cleanCategory(d.supplier),
+        description: it.qty !== undefined ? `${name} × ${it.qty}` : name,
+        amount: sum,
+      });
+    }
+  }
+
+  if (items.length === 0) {
+    return { ok: false, error: `Не найдено позиций по запросу «${input.itemQuery}».` };
+  }
+
+  const periodLabel = input.period && input.period.trim() ? input.period : "весь период";
+  return {
+    ok: true,
+    periodLabel,
+    data: {
+      period: periodLabel,
+      totalAmount: totalSum,
+      categories: [],
+      items,
+    },
+  };
+}
