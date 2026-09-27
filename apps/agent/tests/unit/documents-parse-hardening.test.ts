@@ -70,7 +70,7 @@ describe("receipt parser hardening", () => {
 
   it("supplier: маркер юрлица в первых строках OCR", () => {
     assert.equal(parseSupplierFromText('ООО "Ромашка"\nИНН 123\nИТОГО 100'), "Ромашка");
-    assert.equal(parseSupplierFromText("МАГНИТ\nКассовый чек\nИТОГО 50"), "МАГНИТ");
+    assert.equal(parseSupplierFromText("МАГНИТ\nКассовый чек\nИТОГО 50"), "Магнит");
   });
 
   it("computeNeedsReview: пустые total/supplier/date → true", () => {

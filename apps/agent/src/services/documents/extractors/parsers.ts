@@ -2,6 +2,7 @@
  * Чистые парсеры caption-текста (StubExtractor, MVP без vision) + date helpers.
  */
 import type { DocumentKind } from "../types.js";
+import { normalizeSupplier } from "./normalize-supplier.js";
 
 export function todayYmd(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -252,7 +253,7 @@ export function parseSupplierFromText(text: string): string | undefined {
     const raw = m[1].replace(/[«»"'.,!?]+$/g, "").trim();
     const stop = /(?:итого|сумма|оплачено|total|sum|\d)/i.exec(raw);
     const cleaned = stop ? raw.slice(0, stop.index).trim() : raw;
-    if (cleaned.length >= 2) return cleaned;
+    if (cleaned.length >= 2) return normalizeSupplier(cleaned);
   }
 
   // 2) Первая осмысленная строка с юрлицом/брендом в первых ~15 строках OCR.
@@ -270,13 +271,13 @@ export function parseSupplierFromText(text: string): string | undefined {
         .replace(/(?:ООО|ИП|ЗАО|ПАО|АО)/gi, " ")
         .replace(/\s+/g, " ")
         .trim();
-      if (cleaned.length >= 2) return cleaned.slice(0, 120);
+      if (cleaned.length >= 2) return normalizeSupplier(cleaned);
       continue;
     }
 
     if (BRAND_RE.test(line)) {
       const cleaned = line.replace(/[«»"'.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
-      if (cleaned.length >= 2) return cleaned.slice(0, 120);
+      if (cleaned.length >= 2) return normalizeSupplier(cleaned);
     }
   }
   return undefined;

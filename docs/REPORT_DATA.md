@@ -97,6 +97,16 @@ npm run reparse:expenses -- --all --limit=200 --chat-id=-5400215325
 - Запись без `raw_text` → `skipped` (`reason=no_raw_text`) — только такие чеки переснять.
 - Exit code 0 при любом итоге (в т.ч. partial errors); 1 — только если БД не открылась.
 
+## Supplier normalization
+
+- `normalizeSupplier` (`extractors/normalize-supplier.ts`) — единый канон supplier/category:
+  `matchCanonical` (Магнит/Пятёрочка/Ozon/Wildberries/Лента/Банк Точка/Сбербанк/Победа)
+  **до** `isJunk` (БИК/отделение/Покупатель/Получатель/«Кассовый чек»/«Товарный чек»/URL → undefined).
+- Встроен в `parseSupplierFromText` (intake новых фото) и `cleanCategory` (`expenseReportTools`
+  — группировка отчёта): «МАГНИТ»/«М МАГНИТ»/«МАГНИТ (Милан)» сливаются в «Магнит».
+- Пустой/мусорный supplier → «без категории».
+- **После деплоя**: `npm run reparse:expenses -- --limit=100` — переразбор применит канон к старым чекам.
+
 ## Related
 
 - `docs/TELEGRAM-BOT.md` — tools/scope (секция «Expense report tools»)

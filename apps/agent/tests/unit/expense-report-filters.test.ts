@@ -103,13 +103,25 @@ describe("expense report filters (F5)", () => {
     );
   });
 
-  it("category длиннее 60 символов → «без категории»", async () => {
+  it("мусорный supplier → «без категории»", async () => {
     const repo = makeRepo();
-    await repo.insert(makeDoc({ supplier: "ООО ".repeat(30).trim(), total: 100 }));
+    await repo.insert(makeDoc({ supplier: "Кассовый чек АТОЛ (РМ№2)", total: 100 }));
     const built = await buildExpenseReportData(repo, { chatId: "-100" });
     assert.ok(built.ok);
     if (!built.ok) return;
     assert.equal(built.data.items[0].category, "без категории");
+  });
+
+  it("«МАГНИТ» и «М МАГНИТ» → одна категория «Магнит» с суммой totals", async () => {
+    const repo = makeRepo();
+    await repo.insert(makeDoc({ id: "a", supplier: "МАГНИТ", total: 100 }));
+    await repo.insert(makeDoc({ id: "b", supplier: "М МАГНИТ", total: 200 }));
+    const built = await buildExpenseReportData(repo, { chatId: "-100" });
+    assert.ok(built.ok);
+    if (!built.ok) return;
+    assert.equal(built.data.categories.length, 1, "одна категория после канонизации");
+    assert.equal(built.data.categories[0].name, "Магнит");
+    assert.equal(built.data.categories[0].amount, 300, "сумма totals двух чеков");
   });
 });
 
@@ -155,7 +167,7 @@ describe("backfill reparseExpenseFromRaw", () => {
 
     const after = repo.getExpenseById("doc-1")!;
     assert.equal(after.total, 50);
-    assert.equal(after.supplier, "МАГНИТ");
+    assert.equal(after.supplier, "Магнит");
     assert.equal(after.needsReview, false);
   });
 

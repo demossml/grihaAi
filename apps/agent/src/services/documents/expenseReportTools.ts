@@ -7,6 +7,7 @@
  * контекста сессии.
  */
 import type { DocumentsRepository } from "./DocumentsRepository.js";
+import { normalizeSupplier } from "./extractors/normalize-supplier.js";
 import type { ExpenseReportData } from "../../utils/reports/report-schemas.js";
 import type {
   ExpenseLineItem,
@@ -39,11 +40,11 @@ function isBadItemSum(sum: number | null | undefined): boolean {
   return /^\d{10,12}$/.test(String(sum));
 }
 
-/** Category: пустой или слишком длинный → «без категории». */
+/** Category: канонизация supplier (магазины/банки сливаются, мусор OCR отсекается). */
 function cleanCategory(supplier: string | null | undefined): string {
-  const s = supplier?.trim();
-  if (!s || s.length > 60) return "без категории";
-  return s;
+  const n = normalizeSupplier(supplier);
+  if (!n) return "без категории";
+  return n;
 }
 
 /** E3: построить данные expense-отчёта из БД (items + категории + итог). */
