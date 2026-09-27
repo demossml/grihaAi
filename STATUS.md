@@ -17,6 +17,7 @@
 - Phase: report_dispatch fast-path — детерминированный expense-PDF (БД → render → sendDocument) без 300s hang.
 - Phase: obs P0 full trace — spans (withSpan), tool.start/end, report.build_data/render_pdf, pathTaken в turn.end.
 - Phase: expense report modes — summary/detailed/item_search (+ detect по фразе) в dispatch; detailed=rich (позиции).
+- Phase: gate mention diagnostics (botMentioned/repliedToBot/entityMention/textualMention/entityCount) + textual @username fallback.
 - Secretary n2: silence, reminders (Moscow TZ, auto_reminders before add), participants, record expense.
 - Security: execute_code runsc/refuse, env scrub, OCR injection scan, session trust (default untrusted).
 

@@ -10,6 +10,8 @@ import {
 } from "../../.pi/extensions/telegram-bot/group-runtime.js";
 import { evaluatePreFilter } from "../../.pi/extensions/user-rules/prefilter.js";
 import { formatRulesContext } from "../../.pi/extensions/user-rules/format-rules-context.js";
+import { initObs, resetObsForTests } from "@griha/observability";
+import type { ObsEvent, ObsSink } from "@griha/observability";
 
 const rule = (key: string, value: string | boolean, kind: "hard" | "soft" = "hard"): UserRule => ({
   id: `r-${key}`,
@@ -222,5 +224,73 @@ describe("shouldNotifyPoorOcr (R-GR-8)", () => {
       shouldNotifyPoorOcr([rule("notify_poor_ocr", true)], { confidence: 0.8 }),
       false,
     );
+  });
+});
+
+describe("gate emit mention diagnostics", () => {
+  function captured(): ObsEvent[] {
+    const list: ObsEvent[] = [];
+    const sink: ObsSink = { write(e) { list.push(e); } };
+    delete process.env.GRIHA_OBS;
+    resetObsForTests();
+    initObs({ sink });
+    return list;
+  }
+
+  it("gate.allow data содержит mention-диагностику (entity + textual)", () => {
+    const list = captured();
+    const res = prepareGroupTurn(
+      groupCtx({
+        botMentioned: true,
+        entityMention: true,
+        textualMention: false,
+        botUsername: "griha_ai_bot",
+        entityCount: 1,
+      }),
+      makeDeps({ getHardRules: () => [] }), // без правил → allow
+    );
+    assert.equal(res.process, true);
+    const allow = list.find((e) => e.event === "gate.allow");
+    assert.ok(allow, "gate.allow есть");
+    const d = allow.data as Record<string, unknown>;
+    assert.equal(d.botMentioned, true);
+    assert.equal(d.entityMention, true);
+    assert.equal(d.textualMention, false);
+    assert.equal(d.botUsername, "griha_ai_bot");
+    assert.equal(d.entityCount, 1);
+    resetObsForTests();
+  });
+
+  it("gate.block (listen_only) data содержит botMentioned:false + repliedToBot", () => {
+    const list = captured();
+    const res = prepareGroupTurn(
+      groupCtx({ botMentioned: false, repliedToBot: false, entityMention: false, textualMention: false, entityCount: 0 }),
+      makeDeps({ getHardRules: () => [rule("listen_only", true)] }),
+    );
+    assert.equal(res.process, false);
+    const block = list.find((e) => e.event === "gate.block");
+    assert.ok(block, "gate.block есть");
+    const d = block.data as Record<string, unknown>;
+    assert.equal(d.reason, "listen_only");
+    assert.equal(d.botMentioned, false);
+    assert.equal(d.repliedToBot, false);
+    assert.equal(d.entityMention, false);
+    assert.equal(d.textualMention, false);
+    assert.equal(d.entityCount, 0);
+    resetObsForTests();
+  });
+
+  it("textual fallback: @username без entity → botMentioned true → listen_only пропускает", () => {
+    const list = captured();
+    // Эмуляция: normalizer уже применил fallback (textualMention=true → botMentioned=true).
+    const res = prepareGroupTurn(
+      groupCtx({ botMentioned: true, entityMention: false, textualMention: true, botUsername: "griha_ai_bot", entityCount: 0 }),
+      makeDeps({ getHardRules: () => [rule("listen_only", true)] }),
+    );
+    assert.equal(res.process, true, "listen_only + textual mention → allow");
+    const allow = list.find((e) => e.event === "gate.allow");
+    const d = allow!.data as Record<string, unknown>;
+    assert.equal(d.textualMention, true);
+    resetObsForTests();
   });
 });

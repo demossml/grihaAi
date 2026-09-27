@@ -59,3 +59,16 @@ export function mergeMentionFlags(a: MentionFlags, b: MentionFlags): MentionFlag
     startsWithOtherMention: a.startsWithOtherMention || b.startsWithOtherMention,
   };
 }
+
+/**
+ * Fallback: в тексте есть @<botUsername> (case-insensitive), но entities не
+ * разметили mention (пользователь вставил @username вручную). Если username
+ * нет — false (не угадывать). Не проверяет entity — только сырой текст.
+ */
+export function hasTextualBotMention(text: string, botUsername?: string): boolean {
+  if (!botUsername) return false;
+  const u = normUser(botUsername);
+  if (!u) return false;
+  const escaped = u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`@${escaped}(?![a-z0-9_])`, "i").test(text);
+}

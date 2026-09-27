@@ -235,6 +235,44 @@ describe("normalizer: контент и файлы", () => {
     assert.equal(n.message.contentKind, "photo");
   });
 
+  it("fallback: @username в тексте БЕЗ entity → botMentioned + textualMention", () => {
+    const n = normalizeTelegramUpdate(
+      {
+        update: { update_id: 13 },
+        message: {
+          message_id: 65,
+          from: { id: 42 },
+          chat: { id: -100, type: "supergroup" },
+          text: "@griha_ai_bot привет",
+          // entities отсутствуют — вставили @username вручную.
+        },
+      },
+      { botSelf: self },
+    )!;
+    assert.equal(n.message.botMentioned, true, "fallback считает mention");
+    assert.equal(n.message.textualMention, true);
+    assert.equal(n.message.entityMention, undefined, "entity не разметили");
+    assert.equal(n.message.botUsername, "griha_ai_bot");
+    assert.equal(n.message.entityCount, 0);
+  });
+
+  it("fallback НЕ применяется, если botUsername нет", () => {
+    const n = normalizeTelegramUpdate(
+      {
+        update: { update_id: 14 },
+        message: {
+          message_id: 66,
+          from: { id: 42 },
+          chat: { id: -100, type: "supergroup" },
+          text: "@griha_ai_bot привет",
+        },
+      },
+      { botSelf: { id: 777 } }, // username отсутствует
+    )!;
+    assert.equal(n.message.botMentioned, undefined, "без username не угадываем");
+    assert.equal(n.message.textualMention, undefined);
+  });
+
   it("rawMessageOf и normalizeChatType — краевые случаи", () => {
     assert.equal(rawMessageOf(null), null);
     assert.equal(rawMessageOf({}), null);

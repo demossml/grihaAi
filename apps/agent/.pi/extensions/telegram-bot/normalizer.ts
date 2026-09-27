@@ -8,7 +8,7 @@
  * `message.from!.id`.
  */
 import { normalizeThreadId } from "./threads.js";
-import { collectMentionFlags, type MentionEntity } from "./mentions.js";
+import { collectMentionFlags, hasTextualBotMention, normUser, type MentionEntity } from "./mentions.js";
 
 export type TelegramChatKind = "private" | "group" | "supergroup" | "channel";
 
@@ -108,6 +108,14 @@ export interface NormalizedMessage {
   botMentioned?: boolean;
   repliedToBot?: boolean;
   startsWithOtherMention?: boolean;
+  /** Только из entities (до textual-fallback). */
+  entityMention?: boolean;
+  /** Сработал fallback @username (без entity). */
+  textualMention?: boolean;
+  /** Username бота без @ (не секрет). */
+  botUsername?: string;
+  /** entities?.length + caption_entities?.length. */
+  entityCount?: number;
 }
 
 export interface NormalizedTelegramUpdate {
@@ -263,10 +271,18 @@ export function normalizeTelegramUpdate(
 
   // ── Pre-filter флаги (structured rules §9): mention/reply/bot/service. ──
   const textOrCaption = m.text ?? m.caption ?? "";
-  const fromText = collectMentionFlags(textOrCaption, m.entities ?? [], self);
-  const fromCaption = collectMentionFlags(m.caption ?? "", m.caption_entities ?? [], self);
-  const botMentioned =
+  const entities = m.entities ?? [];
+  const captionEntities = m.caption_entities ?? [];
+  const fromText = collectMentionFlags(textOrCaption, entities, self);
+  const fromCaption = collectMentionFlags(m.caption ?? "", captionEntities, self);
+  const entityMention =
     fromText.botMentioned || fromCaption.botMentioned ? true : undefined;
+  const entityCount = entities.length + captionEntities.length;
+  const botUsername = self?.username ? normUser(self.username) : undefined;
+  // Fallback: @username в тексте без entity → считаем mention.
+  const textualMention =
+    !entityMention && hasTextualBotMention(textOrCaption, botUsername) ? true : undefined;
+  const botMentioned = entityMention || textualMention ? true : undefined;
   const startsWithOtherMention =
     fromText.startsWithOtherMention || fromCaption.startsWithOtherMention ? true : undefined;
   const replyFromId = m.reply_to_message?.from?.id;
@@ -384,6 +400,10 @@ export function normalizeTelegramUpdate(
       botMentioned,
       repliedToBot,
       startsWithOtherMention,
+      entityMention,
+      textualMention,
+      botUsername,
+      entityCount,
     },
   };
 }

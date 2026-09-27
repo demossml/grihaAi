@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   collectMentionFlags,
+  hasTextualBotMention,
   mergeMentionFlags,
   type MentionEntity,
 } from "../../.pi/extensions/telegram-bot/mentions.js";
@@ -56,6 +57,29 @@ describe("collectMentionFlags (D1)", () => {
       { botMentioned: true, startsWithOtherMention: false },
     );
     assert.deepEqual(merged, { botMentioned: true, startsWithOtherMention: true });
+  });
+});
+
+describe("hasTextualBotMention (fallback @username без entity)", () => {
+  it("в тексте @username (без entity) → true", () => {
+    assert.equal(hasTextualBotMention("привет @griha_ai_bot", "griha_ai_bot"), true);
+  });
+
+  it("case-insensitive + с ведущим @ в username", () => {
+    assert.equal(hasTextualBotMention("@GRIHA_AI_BOT хелп", "@griha_ai_bot"), true);
+  });
+
+  it("нет username → false (не угадывать)", () => {
+    assert.equal(hasTextualBotMention("@griha_ai_bot", undefined), false);
+    assert.equal(hasTextualBotMention("@griha_ai_bot", ""), false);
+  });
+
+  it("не совпадает, если @username — часть другого слова", () => {
+    assert.equal(hasTextualBotMention("@griha_ai_botting", "griha_ai_bot"), false);
+  });
+
+  it("нет упоминания → false", () => {
+    assert.equal(hasTextualBotMention("обычный текст", "griha_ai_bot"), false);
   });
 });
 

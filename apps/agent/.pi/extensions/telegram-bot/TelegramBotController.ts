@@ -1000,6 +1000,10 @@ export class TelegramBotController {
         botMentioned: n.message.botMentioned,
         repliedToBot: n.message.repliedToBot,
         startsWithOtherMention: n.message.startsWithOtherMention,
+        entityMention: n.message.entityMention,
+        textualMention: n.message.textualMention,
+        botUsername: n.message.botUsername,
+        entityCount: n.message.entityCount,
       },
     };
   }

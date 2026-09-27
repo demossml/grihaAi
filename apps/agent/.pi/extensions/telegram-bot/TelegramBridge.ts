@@ -73,6 +73,11 @@ export interface TgMessage {
   botMentioned?: boolean;
   repliedToBot?: boolean;
   startsWithOtherMention?: boolean;
+  /** Диагностика mentions (для gate.allow/block observability). */
+  entityMention?: boolean;
+  textualMention?: boolean;
+  botUsername?: string;
+  entityCount?: number;
 }
 
 export interface TgUpdate {
@@ -612,6 +617,10 @@ export class TelegramBridge {
         botMentioned: msg.botMentioned,
         repliedToBot: msg.repliedToBot,
         startsWithOtherMention: msg.startsWithOtherMention,
+        entityMention: msg.entityMention,
+        textualMention: msg.textualMention,
+        botUsername: msg.botUsername,
+        entityCount: msg.entityCount,
         fromIsBot: msg.fromIsBot,
         isService: msg.isService,
         groupConfigured: isManaged ? (msg.groupConfigured ?? false) : undefined,

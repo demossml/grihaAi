@@ -26,6 +26,11 @@ export interface PrepareTurnInput {
   botMentioned?: boolean;
   repliedToBot?: boolean;
   startsWithOtherMention?: boolean;
+  /** Диагностика mentions (для gate.allow/block observability). */
+  entityMention?: boolean;
+  textualMention?: boolean;
+  botUsername?: string;
+  entityCount?: number;
   fromIsBot?: boolean;
   isService?: boolean;
   groupConfigured?: boolean;
@@ -80,6 +85,18 @@ function blocked(
   };
 }
 
+/** Диагностика mentions для gate.allow/block data (без текста пользователя). */
+function mentionDiagnostics(input: PrepareTurnInput): Record<string, unknown> {
+  return {
+    botMentioned: input.botMentioned === true,
+    repliedToBot: input.repliedToBot === true,
+    entityMention: input.entityMention === true,
+    textualMention: input.textualMention === true,
+    ...(input.botUsername !== undefined ? { botUsername: input.botUsername } : {}),
+    entityCount: input.entityCount ?? 0,
+  };
+}
+
 export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps): PrepareTurnResult {
   // 2) R-GR-1: pending (group/supergroup/channel) — нулевой ответ (даже на @mention).
   if ((input.isGroup || input.isChannel === true) && !deps.isGroupConfigured(input.chatId)) {
@@ -88,7 +105,7 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
       event: "gate.block",
       chatId: input.chatId,
       userId: input.userId,
-      data: { reason: "group-not-configured" },
+      data: { reason: "group-not-configured", ...mentionDiagnostics(input) },
     });
     return blocked("group-not-configured");
   }
@@ -140,6 +157,7 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
         scenario,
         archive: gate.archive === true,
         suppressReply: gate.suppressReply === true,
+        ...mentionDiagnostics(input),
       },
     });
     return blocked("prefilter", {
@@ -159,6 +177,7 @@ export function prepareGroupTurn(input: PrepareTurnInput, deps: PrepareTurnDeps)
       scenario: scenario,
       archive: gate.archive === true,
       suppressReply: gate.suppressReply === true,
+      ...mentionDiagnostics(input),
     },
   });
 

@@ -434,6 +434,23 @@ silent-until-configured (R1–R8) и forum-topic `message_thread_id`.
   и `entities` (текст), и `caption_entities` (подпись фото/документа); `mergeMentionFlags`
   — ИЛИ по обоим источникам. `botMentioned`/`startsWithOtherMention` идут в pre-filter.
   Без `username` обычный `@` не матчится (documented), `text_mention` по id — всегда.
+  **Fallback**: `hasTextualBotMention(text, botUsername)` — если в тексте есть `@<username>`
+  (case-insensitive), а entities не разметили mention, `botMentioned=true` (закрывает
+  «вставил @username без entity»). Без `botUsername` fallback не применяется.
+
+### Gate mention diagnostics (observability)
+
+`gate.allow` / `gate.block` (`group-runtime.ts`) несут диагностику mentions **без текста
+пользователя**:
+
+```ts
+{ reason?, scenario?, archive?, suppressReply?,
+  botMentioned, repliedToBot, entityMention, textualMention, botUsername?, entityCount }
+```
+
+- `botMentioned` — итоговый флаг (после fallback); `entityMention` — только из entities
+  (до fallback); `textualMention` — сработал fallback `@username`.
+- Позволяет отличить «нет entity» от «бага детекта» в проде (listen_only/secretary).
 - **D2 Session keys**: `session-key.ts` — `buildTelegramSessionKey({userId, chatId?, threadId?})`
   → `tg:{uid}:{chat}[:t:{threadId}]` (без chatId — `dm`). Ключ сквозной: bridge, pool,
   sessions-директория (`sanitizeDirSegment` против traversal), `/new` сбрасывает
