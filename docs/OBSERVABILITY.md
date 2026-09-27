@@ -32,3 +32,27 @@ Never log raw message text, OCR body, bot tokens, api keys.
 
 ## Query
 Tool `obs_query` (operators); CLI if present.
+
+## P0 Full trace
+
+### Correlation timeline
+```
+turn.start → gate.* → routing.decision → generation.budget
+  → spans: agent.prompt / tool.start|end / report.build_data|render_pdf
+  → telegram.send.*
+  → turn.end (pathTaken, hadReply, hadFile, code)
+```
+
+- `pathTaken` (turn.end data): `fast_report_pdf` | `full_agent` | `gate_only` | `unknown`.
+- `withSpan`/`span.start`/`span.end` (`packages/observability/src/helpers.ts`) — timeline хода.
+- `turn.start` data: `textHash` (sha256 slice 12) — отпечаток текста, не сам текст.
+- `tool.start`/`tool.end` — `toolName`, `argsKeys` (только имена ключей), `durationMs`, `ok`,
+  `argsHash`, `resultSummary` (безопасная сводка, без содержимого результата).
+
+### Privacy
+No raw message/OCR. Tokens usage only if provider returns (иначе `usageAvailable:false`).
+
+### Report diagnostics
+`report.build_data` / `report.render_pdf` (фазы `start`/`end`) — коды:
+`OK` | `EMPTY` | `BUILD_FAILED` | `RENDER_FAILED` | `WRITE_FAILED` | `TIMEOUT_PDF` | `PATH_NOT_FOUND`;
+`data`: `docCount`, `needsReviewCount`, `totalAmount`, `pdfBytes`, `pdfPathExists`, `pdfBasename`.

@@ -107,6 +107,13 @@ export async function runExpenseReportDispatch(
   }
 
   // 2) Данные строго из БД (канонический источник сумм/категорий).
+  emit({
+    component: "report",
+    event: "report.build_data",
+    chatId: input.chatId,
+    data: { phase: "start" },
+  });
+  const buildStartedAt = Date.now();
   let built;
   try {
     built = await buildExpenseReportData(deps.repo, {
@@ -117,17 +124,54 @@ export async function runExpenseReportDispatch(
       period: input.periodLabel,
     });
   } catch {
+    emit({
+      component: "report",
+      event: "report.build_data",
+      ok: false,
+      chatId: input.chatId,
+      durationMs: Date.now() - buildStartedAt,
+      data: { phase: "end", code: "BUILD_FAILED" },
+    });
     return { ok: false, code: "BUILD_FAILED", message: "Не удалось собрать данные отчёта." };
   }
   if (!built.ok) {
+    emit({
+      component: "report",
+      event: "report.build_data",
+      ok: false,
+      chatId: input.chatId,
+      durationMs: Date.now() - buildStartedAt,
+      data: { phase: "end", code: "EMPTY" },
+    });
     const msg = built.error === EXPENSE_REPORT_EMPTY_MESSAGE ? "Нет данных для отчёта." : built.error;
     return { ok: false, code: "EMPTY", message: msg };
   }
+  emit({
+    component: "report",
+    event: "report.build_data",
+    ok: true,
+    chatId: input.chatId,
+    durationMs: Date.now() - buildStartedAt,
+    data: {
+      phase: "end",
+      code: "OK",
+      docCount: built.data.items.length,
+      needsReviewCount: built.data.needsReviewCount,
+      totalAmount: built.data.totalAmount,
+    },
+  });
 
   const renderData = built.data as unknown as Record<string, unknown>;
   const render = deps.renderPdf ?? defaultRender(built.periodLabel);
 
   // 3) Рендер с таймаутом.
+  emit({
+    component: "report",
+    event: "report.render_pdf",
+    chatId: input.chatId,
+    data: { phase: "start" },
+  });
+  const renderStartedAt = Date.now();
   let filePath: string;
   try {
     filePath = await withTimeout("report_dispatch_render", PDF_RENDER_TIMEOUT_MS, () =>
@@ -135,6 +179,14 @@ export async function runExpenseReportDispatch(
     );
   } catch (err) {
     const timedOut = err instanceof TimeoutError;
+    emit({
+      component: "report",
+      event: "report.render_pdf",
+      ok: false,
+      chatId: input.chatId,
+      durationMs: Date.now() - renderStartedAt,
+      data: { phase: "end", code: timedOut ? "TIMEOUT_PDF" : "RENDER_FAILED" },
+    });
     emit({
       component: "report",
       event: "report.pdf.fail",
@@ -155,6 +207,14 @@ export async function runExpenseReportDispatch(
   } catch {
     emit({
       component: "report",
+      event: "report.render_pdf",
+      ok: false,
+      chatId: input.chatId,
+      durationMs: Date.now() - renderStartedAt,
+      data: { phase: "end", code: "PATH_NOT_FOUND", pdfPathExists: false },
+    });
+    emit({
+      component: "report",
       event: "report.pdf.fail",
       ok: false,
       chatId: input.chatId,
@@ -164,6 +224,20 @@ export async function runExpenseReportDispatch(
   }
 
   const bytes = statSync(filePath).size;
+  emit({
+    component: "report",
+    event: "report.render_pdf",
+    ok: true,
+    chatId: input.chatId,
+    durationMs: Date.now() - renderStartedAt,
+    data: {
+      phase: "end",
+      code: "OK",
+      pdfBytes: bytes,
+      pdfPathExists: true,
+      pdfBasename: filePath.split(/[\\/]/).pop(),
+    },
+  });
   emit({
     component: "report",
     event: "report.pdf.ok",

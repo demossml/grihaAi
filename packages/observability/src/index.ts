@@ -10,4 +10,8 @@ export {
   emitTurnEnd,
   emitGenerationBudget,
   emitGenerationFinish,
+  emitSpanStart,
+  emitSpanEnd,
+  withSpan,
+  newSpanId,
 } from "./helpers.js";

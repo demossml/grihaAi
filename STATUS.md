@@ -15,6 +15,7 @@
 - Phase: reparse-expenses backfill CLI (переразбор из raw OCR text: --dry-run/--all/--limit/--chat-id).
 - Phase: normalizeSupplier + cleanCategory (канонические Магнит/Пятёрочка/Ozon/банки; мусор OCR → «без категории»).
 - Phase: report_dispatch fast-path — детерминированный expense-PDF (БД → render → sendDocument) без 300s hang.
+- Phase: obs P0 full trace — spans (withSpan), tool.start/end, report.build_data/render_pdf, pathTaken в turn.end.
 - Secretary n2: silence, reminders (Moscow TZ, auto_reminders before add), participants, record expense.
 - Security: execute_code runsc/refuse, env scrub, OCR injection scan, session trust (default untrusted).
 

@@ -64,3 +64,98 @@ export function emitGenerationFinish(p: {
     data: p.data,
   });
 }
+
+// ── P0 spans: timeline одного хода (span.start/end + обёртка withSpan) ──
+
+/** Машиночитаемый id спана (`${correlationId}:${span}:${timestamp36}`). */
+export function newSpanId(correlationId: string, span: string): string {
+  return `${correlationId}:${span}:${Date.now().toString(36)}`;
+}
+
+export function emitSpanStart(input: {
+  correlationId: string;
+  span: string;
+  spanId: string;
+  chatId?: string;
+  sessionKey?: string;
+  data?: Record<string, unknown>;
+}): void {
+  emit({
+    level: "debug",
+    component: "span",
+    event: "span.start",
+    correlationId: input.correlationId,
+    chatId: input.chatId,
+    sessionKey: input.sessionKey,
+    data: { span: input.span, spanId: input.spanId, ...input.data },
+  });
+}
+
+export function emitSpanEnd(input: {
+  correlationId: string;
+  span: string;
+  spanId: string;
+  ok: boolean;
+  durationMs: number;
+  chatId?: string;
+  sessionKey?: string;
+  code?: string;
+  data?: Record<string, unknown>;
+}): void {
+  emit({
+    level: input.ok ? "debug" : "warn",
+    component: "span",
+    event: "span.end",
+    correlationId: input.correlationId,
+    chatId: input.chatId,
+    sessionKey: input.sessionKey,
+    ok: input.ok,
+    code: input.code,
+    durationMs: input.durationMs,
+    data: { span: input.span, spanId: input.spanId, ...input.data },
+  });
+}
+
+/**
+ * Обёртка: span.start → fn() → span.end (ok:true) / span.end (ok:false) + rethrow.
+ * Никогда не глотает throw без span.end. emit() внутри fail-safe (не бросает).
+ */
+export async function withSpan<T>(
+  meta: { correlationId: string; span: string; chatId?: string; sessionKey?: string },
+  fn: () => Promise<T>,
+): Promise<T> {
+  const spanId = newSpanId(meta.correlationId, meta.span);
+  emitSpanStart({
+    correlationId: meta.correlationId,
+    span: meta.span,
+    spanId,
+    chatId: meta.chatId,
+    sessionKey: meta.sessionKey,
+  });
+  const startedAt = Date.now();
+  try {
+    const result = await fn();
+    emitSpanEnd({
+      correlationId: meta.correlationId,
+      span: meta.span,
+      spanId,
+      ok: true,
+      durationMs: Date.now() - startedAt,
+      chatId: meta.chatId,
+      sessionKey: meta.sessionKey,
+    });
+    return result;
+  } catch (e) {
+    emitSpanEnd({
+      correlationId: meta.correlationId,
+      span: meta.span,
+      spanId,
+      ok: false,
+      durationMs: Date.now() - startedAt,
+      code: e instanceof Error ? e.name : "error",
+      chatId: meta.chatId,
+      sessionKey: meta.sessionKey,
+    });
+    throw e;
+  }
+}

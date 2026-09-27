@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { initObs, resetObsForTests } from "@griha/observability";
+import type { ObsEvent, ObsSink } from "@griha/observability";
 import {
   assertSendablePdf,
   runExpenseReportDispatch,
@@ -16,6 +18,7 @@ import type { ExpenseDocument } from "../../src/services/documents/types.js";
 const tmpDirs: string[] = [];
 after(() => {
   for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  resetObsForTests();
 });
 
 function makeRepo(): DocumentsRepository {
@@ -67,6 +70,39 @@ describe("runExpenseReportDispatch", () => {
     assert.ok(fs.existsSync(res.filePath), "файл существует");
     assert.equal(res.totalAmount, 300, "итог из БД (SUM total)");
     assert.equal(res.docCount, 2);
+  });
+
+  it("emit report.build_data/render_pdf фазы (docCount/totalAmount, без сырого текста)", async () => {
+    const captured: ObsEvent[] = [];
+    const sink: ObsSink = { write(e) { captured.push(e); } };
+    delete process.env.GRIHA_OBS;
+    resetObsForTests();
+    initObs({ sink });
+
+    const repo = makeRepo();
+    await repo.insert(makeDoc({ id: "a", supplier: "Магнит", total: 100 }));
+    const pdfPath = makeDummyPdf();
+    const res = await runExpenseReportDispatch({ chatId: "-100" }, { repo, renderPdf: async () => pdfPath });
+    assert.equal(res.ok, true);
+
+    const buildEnd = captured.find(
+      (e) => e.event === "report.build_data" && (e.data as Record<string, unknown>).phase === "end",
+    );
+    assert.ok(buildEnd, "build_data end есть");
+    const bd = buildEnd.data as Record<string, unknown>;
+    assert.equal(bd.docCount, 1);
+    assert.equal(bd.totalAmount, 100);
+    assert.ok(!("rawText" in bd), "нет сырого текста в data");
+
+    const renderEnd = captured.find(
+      (e) => e.event === "report.render_pdf" && (e.data as Record<string, unknown>).phase === "end",
+    );
+    assert.ok(renderEnd, "render_pdf end есть");
+    const rd = renderEnd.data as Record<string, unknown>;
+    assert.equal(rd.pdfPathExists, true);
+    assert.equal(typeof rd.pdfBytes, "number");
+    assert.equal(typeof rd.pdfBasename, "string");
+    resetObsForTests();
   });
 
   it("пустая БД → ok:false EMPTY", async () => {

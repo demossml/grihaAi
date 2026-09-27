@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -48,6 +49,7 @@ import {
   emitTurnEnd,
   emitTurnStart,
   isObsEnabled,
+  withSpan,
 } from "@griha/observability";
 
 /**
@@ -369,6 +371,8 @@ export class TelegramSessionPool {
     // Obs v2: terminal status хода (для turn.end / generation.finish).
     let turnOk = true;
     let turnCode = "ok";
+    // P0: какой путь прошёл ход (fast_report_pdf | full_agent | …).
+    let pathTaken = "full_agent";
 
     // Объявлены до finish, чтобы cleanup не падал по TDZ.
     let unsubscribe: () => void = () => {};
@@ -429,7 +433,12 @@ export class TelegramSessionPool {
         ok: turnOk,
         code: turnCode,
         durationMs: Date.now() - startedAt,
-        data: { hadReply: !!(value.text && value.text.trim()), hadFile: !!value.filePath },
+        data: {
+          hadReply: !!(value.text && value.text.trim()),
+          hadFile: !!value.filePath,
+          pathTaken,
+          replyLen: value.text ? value.text.length : 0,
+        },
       });
       emitGenerationFinish({
         correlationId,
@@ -502,6 +511,10 @@ export class TelegramSessionPool {
     logTelegramEvent({ event: "session.prompt.started", ...baseEvent });
 
     // Obs v2: turn.start (тот же correlationId до turn.end).
+    // P0: textHash — короткий отпечаток входящего текста (сам текст НЕ логируется).
+    const textHash = message
+      ? createHash("sha256").update(message).digest("hex").slice(0, 12)
+      : undefined;
     emitTurnStart({
       correlationId,
       chatId,
@@ -509,7 +522,13 @@ export class TelegramSessionPool {
       userId,
       updateId,
       sessionKey: sessionId,
-      data: { chatType, hasImage: !!hasImage, hasVoice: !!hasVoice, textLen: message.length },
+      data: {
+        chatType,
+        hasImage: !!hasImage,
+        hasVoice: !!hasVoice,
+        textLen: message.length,
+        ...(textHash ? { textHash } : {}),
+      },
     });
 
     unsubscribe = session.subscribe((event) => {
@@ -517,6 +536,21 @@ export class TelegramSessionPool {
       if (event.type === "tool_execution_start") {
         toolStartedAt.set(event.toolCallId, Date.now());
         toolArgsHash.set(event.toolCallId, hashToolArgs(event.args));
+        // P0: tool.start — только имена ключей аргументов, не значения.
+        emit({
+          component: "tool",
+          event: "tool.start",
+          correlationId,
+          chatId,
+          sessionKey: sessionId,
+          data: {
+            toolName: event.toolName,
+            argsKeys:
+              event.args && typeof event.args === "object"
+                ? Object.keys(event.args as Record<string, unknown>)
+                : [],
+          },
+        });
         return;
       }
       if (event.type === "tool_execution_end") {
@@ -531,6 +565,22 @@ export class TelegramSessionPool {
           toolName: event.toolName,
           durationMs: toolDuration,
           status: event.isError ? "failed" : "ok",
+        });
+        // P0: tool.end — только безопасная сводка (без содержимого результата).
+        emit({
+          component: "tool",
+          event: "tool.end",
+          correlationId,
+          chatId,
+          sessionKey: sessionId,
+          ok: !event.isError,
+          durationMs: toolDuration,
+          code: event.isError ? "tool_error" : undefined,
+          data: {
+            toolName: event.toolName,
+            argsHash,
+            resultSummary: { ok: !event.isError },
+          },
         });
         // Prompt 05: ToolTrace step (имя тула + argsHash + тайминг; без args/result).
         trace.addStep({
@@ -707,6 +757,7 @@ export class TelegramSessionPool {
     // report_dispatch fast-path: детерминированный PDF без свободного LLM-цикла
     // (фикс 300s hang + «только текст вместо PDF»). Один orchestrator, один send.
     if (routed.decision?.kind === "report_dispatch" && chatId) {
+      pathTaken = "fast_report_pdf";
       const dispatchResult = await runExpenseReportDispatch(
         { chatId, threadId, userId },
         { repo: getDocumentsRepository() },
@@ -737,10 +788,14 @@ export class TelegramSessionPool {
       // ВАЖНО: не await зависшего prompt напрямую — иначе runPrompt (и очередь)
       // останутся pending после finish. Terminal state решает результат;
       // висящий prompt остаётся фоновым, его ошибка глушится settled-guard'ом.
-      const promptPromise = session.prompt(promptMessage, {
-        source: "extension",
-        ...(session.isStreaming ? { streamingBehavior: "followUp" as const } : {}),
-      });
+      const promptPromise = withSpan(
+        { correlationId, span: "agent.prompt", chatId, sessionKey: sessionId },
+        () =>
+          session.prompt(promptMessage, {
+            source: "extension",
+            ...(session.isStreaming ? { streamingBehavior: "followUp" as const } : {}),
+          }),
+      );
       promptPromise.catch((err: unknown) => {
         // PROMPT 4: ошибка хода — структурированная диагностика, без
         // пользовательского текста; пользователю — безопасное сообщение.
