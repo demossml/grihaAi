@@ -32,6 +32,8 @@ import obsTools from "../obs-tools/index.js";
 import systemUpdate from "../system-update/index.js";
 import { clearSessionContext, setSessionContext } from "../user-rules/context.js";
 import { clearSessionTrust, setSessionTrust } from "../../../src/sandbox/gateway-context.js";
+import { runExpenseReportDispatch } from "../../../src/services/documents/expense-report-dispatch.js";
+import { getDocumentsRepository } from "../../../src/services/documents/index.js";
 import { getTurnExperienceStore, recordTurnExperience, recordTurnSkillOutcomes } from "../../../src/runtime/learning/index.js";
 import { TraceManager, buildToolTrace, categoryForCode, codeFromTurnCode, computeTaskOutcome, getAgentVersion, getTraceStore, hashToolArgs, registerTrace, unregisterTrace, validateToolResult, type AgentTraceStatus, type FailureChainEntry } from "../../../src/runtime/observability/index.js";
 import { buildTelegramCorrelationId, logTelegramError, logTelegramEvent } from "./telegram-diagnostics.js";
@@ -700,6 +702,25 @@ export class TelegramSessionPool {
           budgetApplyStrategy,
         },
       });
+    }
+
+    // report_dispatch fast-path: детерминированный PDF без свободного LLM-цикла
+    // (фикс 300s hang + «только текст вместо PDF»). Один orchestrator, один send.
+    if (routed.decision?.kind === "report_dispatch" && chatId) {
+      const dispatchResult = await runExpenseReportDispatch(
+        { chatId, threadId, userId },
+        { repo: getDocumentsRepository() },
+      );
+      if (dispatchResult.ok) {
+        finish({
+          text: `Отчёт по расходам во вложении (${dispatchResult.periodLabel}, итого ${dispatchResult.totalAmount.toLocaleString("ru-RU")}).`,
+          filePath: dispatchResult.filePath,
+          documentCaption: `Отчёт по расходам за ${dispatchResult.periodLabel}`,
+        });
+      } else {
+        finish({ text: dispatchResult.message });
+      }
+      return reply;
     }
 
     try {

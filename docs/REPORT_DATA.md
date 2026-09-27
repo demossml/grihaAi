@@ -107,6 +107,15 @@ npm run reparse:expenses -- --all --limit=200 --chat-id=-5400215325
 - Пустой/мусорный supplier → «без категории».
 - **После деплоя**: `npm run reparse:expenses -- --limit=100` — переразбор применит канон к старым чекам.
 
+## Expense report dispatch
+
+- `kind=report_dispatch` → `runExpenseReportDispatch` (`services/documents/expense-report-dispatch.ts`)
+  → `buildExpenseReportData` (БД) → render PDF → `sendDocument` (через session-file outbox).
+- Без свободного LLM-цикла на успешном пути: один короткий text ack + один файл (не «только текст вместо PDF»).
+- Orchestrator-таймаут рендера **60s** (`withTimeout`) — не ждём глобальный watchdog 300s.
+- Файл валидируется `assertSendablePdf` (existsSync + size ≥ 1000) перед возвратом; никогда `ok:true` без файла.
+- На Mini после деплоя: reparse для этого пути не нужен — данные берутся из БД as-is (канон уже в `cleanCategory`).
+
 ## Related
 
 - `docs/TELEGRAM-BOT.md` — tools/scope (секция «Expense report tools»)
